@@ -50,7 +50,7 @@ export default function Login() {
 
     alert("Login Success");
 
-    navigate("/dashboard");
+    navigate("/accounts/dashboard/");
 }catch (error: unknown) {
   if (axios.isAxiosError(error)) {
     console.log("Axios error:", error);
