@@ -36,9 +36,10 @@ Thumbs.db
 .coverage
 htmlcov/
 
-# Migrations (Optional)
-# */migrations/*
-# !*/migrations/__init__.py
+Migrations (Optional)
+*/migrations/*
+!*/migrations/__init__.py
+
 
 # PostgreSQL
 *.sql
