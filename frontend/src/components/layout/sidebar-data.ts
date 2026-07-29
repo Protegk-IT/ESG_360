@@ -21,7 +21,7 @@ export const navMain = [
     items: [
       {
         title: "Company Management",
-        url: "/accounts/companies/",
+        url: "/companies/",
       },
     ],
   },
