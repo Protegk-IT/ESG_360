@@ -211,3 +211,18 @@ class LogoutView(APIView):
             },
             status=status.HTTP_200_OK
         )
+
+class PlatformDashboardView(APIView):
+
+    def get(self, request):
+
+        return Response(
+            {
+                # "companies": Company.objects.count(),
+                "users": User.objects.count(),
+                "platform_admins": User.objects.filter(
+                    is_superuser=True
+                ).count(),
+                "system_status": "Healthy",
+            }
+        )

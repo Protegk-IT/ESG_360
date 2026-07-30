@@ -5,6 +5,7 @@ from .views import (
     MeView,
     LoginView,
     LogoutView,
+    PlatformDashboardView
 )
 
 urlpatterns = [
@@ -13,4 +14,5 @@ urlpatterns = [
     path("me/", MeView.as_view()),
     path("login/", LoginView.as_view(), name="login"),
     path("logout/", LogoutView.as_view(), name="logout"),
+    path("dashboard/", PlatformDashboardView.as_view(),name="platform-dashboard"),
 ]
