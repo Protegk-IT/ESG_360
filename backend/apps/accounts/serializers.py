@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import User
+from .models import User, Permissions, Role
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -129,3 +129,53 @@ class LoginSerializer(serializers.Serializer):
         required=True,
         style={"input_type": "password"}
     )
+class PermissionSerializer(serializers.ModelSerializer):
+    permission_type_display = serializers.CharField(
+        source="get_permission_type_display",
+        read_only=True
+    )
+
+    class Meta:
+        model = Permissions
+        fields = [
+            "id",
+            "code",
+            "name",
+            "description",
+            "permission_type",
+            "permission_type_display",
+            "display_order",
+            "is_module_access",
+        ]
+
+class RoleSerializer(serializers.ModelSerializer):
+    permissions = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Permissions.objects.all()
+    )
+
+    permission_details = PermissionSerializer(
+        source="permissions",
+        many=True,
+        read_only=True
+    )
+
+    class Meta:
+        model = Role
+        fields = [
+            "id",
+            "role_code",
+            "role_name",
+            "description",
+            "is_active",
+            "permissions",
+            "permission_details",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "created_at",
+            "updated_at",
+        ]
+

@@ -1,6 +1,6 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status,viewsets
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import authenticate, login, logout
 
@@ -9,10 +9,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 
-from .serializers import LoginSerializer
-from .models import User
-
-from .models import User
+from .serializers import LoginSerializer,RoleSerializer,PermissionSerializer
+from .models import User,Permissions,Role
 from .serializers import (
     UserSerializer,
     UserCreateUpdateSerializer
@@ -226,3 +224,87 @@ class PlatformDashboardView(APIView):
                 "system_status": "Healthy",
             }
         )
+class RoleViewSet(viewsets.ModelViewSet):
+
+    serializer_class = RoleSerializer
+    permission_classes = [IsAuthenticated]
+
+    queryset = Role.objects.prefetch_related(
+        "permissions"
+    ).order_by("role_name")
+
+    def get_queryset(self):
+
+        queryset = super().get_queryset()
+
+        if not self.request.user.is_superuser:
+            queryset = queryset.exclude(
+                role_code="SUPERADMIN"
+            )
+
+        return queryset
+
+    def create(self, request, *args, **kwargs):
+
+        serializer = self.get_serializer(
+            data=request.data
+        )
+
+        serializer.is_valid(raise_exception=True)
+
+        role = serializer.save()
+
+        return Response(
+            {
+                "message": "Role created successfully.",
+                "data": RoleSerializer(role).data
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+    def update(self, request, *args, **kwargs):
+
+        partial = kwargs.pop("partial", False)
+
+        instance = self.get_object()
+
+        serializer = self.get_serializer(
+            instance,
+            data=request.data,
+            partial=partial
+        )
+
+        serializer.is_valid(raise_exception=True)
+
+        role = serializer.save()
+
+        return Response(
+            {
+                "message": "Role updated successfully.",
+                "data": RoleSerializer(role).data
+            }
+        )
+
+    def destroy(self, request, *args, **kwargs):
+
+        role = self.get_object()
+
+        role.delete()
+
+        return Response(
+            {
+                "message": "Role deleted successfully."
+            },
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+class PermissionViewSet(viewsets.ModelViewSet):
+
+    serializer_class = PermissionSerializer
+
+    permission_classes = [IsAuthenticated]
+
+    queryset = Permissions.objects.order_by(
+        "display_order",
+        "name"
+    )
