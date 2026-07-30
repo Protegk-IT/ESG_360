@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status,viewsets
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import authenticate, login, logout
+from django.middleware.csrf import get_token
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -176,11 +177,13 @@ class LoginView(APIView):
             )
 
         login(request, user)
+        csrf_token = get_token(request)
 
         return Response(
             {
                 "success": True,
                 "message": "Login successful.",
+                "csrf_token": csrf_token,
                 "user": {
                     "id": user.id,
                     "username": user.username,

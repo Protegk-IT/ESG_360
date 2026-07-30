@@ -37,8 +37,8 @@ Thumbs.db
 htmlcov/
 
 Migrations (Optional)
-*/migrations/*
-!*/migrations/__init__.py
+**/migrations/*
+!**/migrations/__init__.py
 
 
 # PostgreSQL
