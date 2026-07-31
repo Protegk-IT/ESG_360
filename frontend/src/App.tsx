@@ -1,38 +1,23 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import Login from "./pages/auth/Login";
-
-// Existing Pages
-// import Dashboard from "./pages/dashboard/Dashboard";
 import CompaniesPage from "./pages/companies/CompaniesPage";
 import OrganizationsPage from "./pages/organizations/OrganizationsPage";
-
-// Platform Admin
+import DepartmentsPage from "./pages/departments/DepartmentsPage";
+import FacilitiesPage from "./pages/facilities/FacilitiesPage";
 import PlatformAdminDashboard from "./pages/platform_admin/Dashboard";
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Authentication */}
         <Route path="/" element={<Login />} />
-
-        {/* Existing Dashboard
-        <Route path="/dashboard" element={<Dashboard />} /> */}
-
-        {/* Platform Admin Dashboard */}
-        <Route
-          path="/accounts/dashboard/"
-          element={<PlatformAdminDashboard />}
-        />
-
-        {/* Existing Pages */}
+        <Route path="/dashboard" element={<Navigate to="/accounts/dashboard/" replace />} />
+        <Route path="/accounts/dashboard/" element={<PlatformAdminDashboard />} />
         <Route path="/companies" element={<CompaniesPage />} />
         <Route path="/organizations" element={<OrganizationsPage />} />
-
-        {/* Future Company Routes */}
-        {/* <Route path="/companies/create" element={<CreateCompany />} /> */}
-
+        <Route path="/departments" element={<DepartmentsPage />} />
+        <Route path="/facilities" element={<FacilitiesPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

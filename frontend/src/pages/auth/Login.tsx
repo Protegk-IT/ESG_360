@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Eye, EyeOff, Lock, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import api from "../../services/api";
+import api, { setCsrfToken } from "../../services/api";
 
 interface LoginForm {
   username: string;
@@ -44,6 +44,7 @@ export default function Login() {
 
     try {
     const response = await api.post("/accounts/login/", formData);
+    setCsrfToken(response.data.csrf_token ?? "");
 
     console.log("SUCCESS:", response.status);
     console.log(response.data);

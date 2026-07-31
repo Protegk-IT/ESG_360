@@ -21,7 +21,7 @@ export const navMain = [
     items: [
       {
         title: "Company Management",
-        url: "/companies/",
+        url: "/companies",
       },
     ],
   },
@@ -32,16 +32,16 @@ export const navMain = [
 
     items: [
       {
-        title: "Users",
-        url: "/accounts/users/",
-      },
-      {
-        title: "Roles",
-        url: "/accounts/roles/",
+        title: "Organizations",
+        url: "/organizations",
       },
       {
         title: "Departments",
-        url: "/accounts/departments/",
+        url: "/departments",
+      },
+      {
+        title: "Facilities",
+        url: "/facilities",
       },
     ],
   },
@@ -53,11 +53,11 @@ export const navMain = [
     items: [
       {
         title: "BRSR",
-        url: "/frameworks/brsr/",
+        url: "",
       },
       {
         title: "GRI",
-        url: "/frameworks/gri/",
+        url: "",
       },
     ],
   },
