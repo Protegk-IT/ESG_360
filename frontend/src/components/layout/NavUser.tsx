@@ -1,11 +1,26 @@
-import {
-  SidebarFooter,
-} from "@/components/ui/sidebar";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import api from "../../services/api";
+
+import api from "@/services/api";
+import { SidebarFooter } from "@/components/ui/sidebar";
+
+interface User {
+  id: number;
+  full_name: string;
+  username: string;
+  email: string;
+}
 
 export function NavUser() {
   const navigate = useNavigate();
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    api
+      .get("/accounts/me/")
+      .then((res) => setUser(res.data))
+      .catch((err) => console.error(err));
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -19,15 +34,13 @@ export function NavUser() {
 
   return (
     <SidebarFooter className="group-data-[collapsible=icon]:p-2">
-
       <div className="w-full border-t p-4 group-data-[collapsible=icon]:hidden">
-
         <p className="font-medium">
-          Platform Admin
+          {user?.full_name || user?.username || "Loading..."}
         </p>
 
         <p className="text-xs text-muted-foreground">
-          admin@esg360.com
+          {user?.email || ""}
         </p>
 
         <button
@@ -37,9 +50,7 @@ export function NavUser() {
         >
           Logout
         </button>
-
       </div>
-
     </SidebarFooter>
   );
 }
