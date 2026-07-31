@@ -1,6 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
-
+import uuid
 
 class User(AbstractUser):
 
@@ -22,6 +22,21 @@ class User(AbstractUser):
         blank=True,
         null=True
     )
+
+    company = models.ForeignKey(
+        'companies.Company',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True
+    )
+
+    role = models.ManyToManyField(
+    'accounts.Role',
+    through='UserRole',
+    through_fields=('user', 'role'),
+    related_name='users',
+    blank=True
+)
 
     about = models.TextField(
         blank=True,
@@ -129,3 +144,67 @@ class Role(models.Model):
 
     def __str__(self):
         return self.role_name
+
+    
+class UserRole(models.Model):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="user_roles"
+    )
+
+    role = models.ForeignKey(
+        Role,
+        on_delete=models.CASCADE,
+        related_name="role_users"
+    )
+
+    assigned_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_roles"
+    )
+
+    assigned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "role")
+
+
+class UserRoleScope(models.Model):
+
+    SCOPE_TYPES = (
+        ("facility", "Facility"),
+        ("category", "Category"),
+    )
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
+    )
+
+    user_role = models.ForeignKey(
+        "UserRole",
+        on_delete=models.CASCADE,
+        related_name="scopes"
+    )
+
+    scope_type = models.CharField(
+        max_length=50,
+        choices=SCOPE_TYPES
+    )
+
+    scope_id = models.CharField(
+        max_length=100
+    )
+
+
+    class Meta:
+        db_table = "user_role_scope"
+
+
+    def __str__(self):
+        return f"{self.user_role} - {self.scope_type}"
