@@ -9,7 +9,7 @@ export default function Dashboard() {
       showLogoutButton
     >
       <div className="mx-auto max-w-6xl space-y-6">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-3">
           <Link
             to="/companies"
             className="rounded-lg border bg-white p-6 shadow-sm transition hover:border-orange-300"
@@ -24,9 +24,9 @@ export default function Dashboard() {
             to="/organizations"
             className="rounded-lg border bg-white p-6 shadow-sm transition hover:border-orange-300"
           >
-            <h2 className="text-lg font-semibold text-gray-900">Organizations</h2>
+            <h2 className="text-lg font-semibold text-gray-900">OrgNodes</h2>
             <p className="mt-2 text-sm text-gray-600">
-              View organization structure details.
+              View company hierarchy details.
             </p>
           </Link>
 
@@ -37,16 +37,6 @@ export default function Dashboard() {
             <h2 className="text-lg font-semibold text-gray-900">Departments</h2>
             <p className="mt-2 text-sm text-gray-600">
               Access department-related pages.
-            </p>
-          </Link>
-
-          <Link
-            to="/facilities"
-            className="rounded-lg border bg-white p-6 shadow-sm transition hover:border-orange-300"
-          >
-            <h2 className="text-lg font-semibold text-gray-900">Facilities</h2>
-            <p className="mt-2 text-sm text-gray-600">
-              Access facility-related pages.
             </p>
           </Link>
         </div>

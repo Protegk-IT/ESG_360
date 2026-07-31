@@ -1,6 +1,6 @@
-# companies/models.py
+from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
-from django.utils import timezone
 import uuid
 
 class Country(models.Model):
@@ -178,3 +178,84 @@ class Company(models.Model):
 
     def __str__(self):
         return f"{self.company_code} - {self.company_name}"
+
+
+class Department(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="departments",
+    )
+    name = models.CharField(max_length=255)
+    department_code = models.CharField(max_length=50, unique=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "name"],
+                name="unique_department_name_per_company",
+            ),
+            models.UniqueConstraint(
+                fields=["company", "department_code"],
+                name="unique_department_code_per_company",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["company", "name"]),
+            models.Index(fields=["company", "department_code"]),
+        ]
+
+
+    def __str__(self):
+        return self.name
+
+
+class UserDepartment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="user_departments",
+    )
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.CASCADE,
+        related_name="user_departments",
+    )
+    is_primary = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["user__username"]
+        unique_together = ("user", "department")
+        indexes = [
+            models.Index(fields=["user", "department"]),
+            models.Index(fields=["department", "is_primary"]),
+        ]
+
+    def clean(self):
+        if self.is_primary:
+            existing_primary = UserDepartment.objects.filter(
+                user=self.user,
+                department__company=self.department.company,
+                is_primary=True,
+            )
+            if self.pk:
+                existing_primary = existing_primary.exclude(pk=self.pk)
+
+            if existing_primary.exists():
+                raise ValidationError(
+                    {
+                        "is_primary": (
+                            "User already has a primary department for this company."
+                        )
+                    }
+                )
+
+    def __str__(self):
+        return f"{self.user} - {self.department}"

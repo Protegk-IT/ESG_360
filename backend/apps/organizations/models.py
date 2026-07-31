@@ -1,94 +1,88 @@
 import uuid
 
+from django.core.exceptions import ValidationError
 from django.db import models
 
-from apps.companies.models import Company, Country, State, City
+from apps.companies.models import Company
 
 
-class Organization(models.Model):
+class OrgNode(models.Model):
+
+    NODE_TYPE_CHOICES = [
+        ("LEGAL_ENTITY", "Legal Entity"),
+        ("BUSINESS_UNIT", "Business Unit"),
+        ("DIVISION", "Division"),
+        ("REGION", "Region"),
+        ("FACILITY", "Facility"),
+
+    ]    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     company = models.ForeignKey(
         Company,
         on_delete=models.CASCADE,
-        related_name='organizations',
+        related_name="org_nodes",
     )
-    name = models.CharField(max_length=255)
-    organization_code = models.CharField(max_length=50, unique=True)
-    parent_organization = models.ForeignKey(
-        'self',
+    parent = models.ForeignKey(
+        "self",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='child_organizations',
+        related_name="children",
     )
-    country = models.ForeignKey(Country, on_delete=models.SET_NULL, null=True, blank=True, related_name='organizations')
-    state = models.ForeignKey(State, on_delete=models.SET_NULL, null=True, blank=True, related_name='organizations')
-    city = models.ForeignKey(City, on_delete=models.SET_NULL, null=True, blank=True, related_name='organizations')
+    name = models.CharField(max_length=255)
+    node_type = models.CharField(max_length=30, choices=NODE_TYPE_CHOICES)
+    node_code = models.CharField(max_length=50, blank=True, null=True)
+    description = models.TextField(blank=True)
+    ownership_percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    operational_control = models.BooleanField(default=True)
+    financial_control = models.BooleanField(default=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['name']
+        ordering = ["company__company_name", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "name"],
+                name="unique_org_node_name_per_company",
+            ),
+            models.UniqueConstraint(
+                fields=["company", "node_code"],
+                name="unique_org_node_code_per_company",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["company", "name"]),
+            models.Index(fields=["company", "node_type"]),
+            models.Index(fields=["parent"]),
+        ]
+
+    def clean(self):
+        if self.parent_id is None:
+            return
+
+        if self.parent_id == self.id:
+            raise ValidationError({"parent": "A node cannot be its own parent."})
+
+        if self.parent.company_id != self.company_id:
+            raise ValidationError({"parent": "Parent and child must belong to the same company."})
+
+        ancestor = self.parent
+        while ancestor is not None:
+            if ancestor.id == self.id:
+                raise ValidationError({"parent": "Circular organization hierarchy is not allowed."})
+            ancestor = ancestor.parent
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
     def __str__(self):
-        return self.name
-
-
-class Department(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    organization = models.ForeignKey(
-        Organization,
-        on_delete=models.CASCADE,
-        related_name='departments',
-    )
-    name = models.CharField(max_length=255)
-    department_code = models.CharField(max_length=50, unique=True)
-    parent_department = models.ForeignKey(
-        'self',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='child_departments',
-    )
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ['name']
-
-    def __str__(self):
-        return self.name
-
-
-class Facility(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    organization = models.ForeignKey(
-        Organization,
-        on_delete=models.CASCADE,
-        related_name='facilities',
-    )
-    department = models.ForeignKey(
-        Department,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='facilities',
-    )
-    name = models.CharField(max_length=255)
-    facility_code = models.CharField(max_length=50, unique=True)
-    facility_type = models.CharField(max_length=100, blank=True)
-    country = models.ForeignKey(Country, on_delete=models.SET_NULL, null=True, blank=True, related_name='facilities')
-    state = models.ForeignKey(State, on_delete=models.SET_NULL, null=True, blank=True, related_name='facilities')
-    city = models.ForeignKey(City, on_delete=models.SET_NULL, null=True, blank=True, related_name='facilities')
-    address = models.TextField(blank=True)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ['name']
-
-    def __str__(self):
-        return self.name
+        return f"{self.company.company_name} - {self.name}"

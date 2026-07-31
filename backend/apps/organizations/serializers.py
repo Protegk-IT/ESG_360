@@ -1,74 +1,55 @@
 from rest_framework import serializers
 
-from .models import Department, Facility, Organization
+from .models import OrgNode
 
 
-class OrganizationSerializer(serializers.ModelSerializer):
-    company_name = serializers.CharField(source='company.company_name', read_only=True)
-    parent_organization_name = serializers.CharField(source='parent_organization.name', read_only=True)
-
-    class Meta:
-        model = Organization
-        fields = [
-            'id',
-            'company',
-            'company_name',
-            'name',
-            'organization_code',
-            'parent_organization',
-            'parent_organization_name',
-            'country',
-            'state',
-            'city',
-            'is_active',
-            'created_at',
-            'updated_at',
-        ]
-        read_only_fields = ['created_at', 'updated_at']
-
-
-class DepartmentSerializer(serializers.ModelSerializer):
-    organization_name = serializers.CharField(source='organization.name', read_only=True)
-    parent_department_name = serializers.CharField(source='parent_department.name', read_only=True)
+class OrgNodeSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+    parent_name = serializers.CharField(source="parent.name", read_only=True)
+    children_count = serializers.IntegerField(read_only=True)
 
     class Meta:
-        model = Department
+        model = OrgNode
         fields = [
-            'id',
-            'organization',
-            'organization_name',
-            'name',
-            'department_code',
-            'parent_department',
-            'parent_department_name',
-            'is_active',
-            'created_at',
-            'updated_at',
+            "id",
+            "name",
+            "node_type",
+            "node_code",
+            "company",
+            "company_name",
+            "parent",
+            "parent_name",
+            "description",
+            "ownership_percentage",
+            "operational_control",
+            "financial_control",
+            "is_active",
+            "created_at",
+            "updated_at",
+            "children_count",
         ]
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ["created_at", "updated_at", "children_count"]
 
+    def validate(self, attrs):
+        instance = self.instance
+        company = attrs.get("company", getattr(instance, "company", None))
+        parent = attrs.get("parent", getattr(instance, "parent", None))
 
-class FacilitySerializer(serializers.ModelSerializer):
-    organization_name = serializers.CharField(source='organization.name', read_only=True)
-    department_name = serializers.CharField(source='department.name', read_only=True)
+        if parent and company and parent.company_id != company.id:
+            raise serializers.ValidationError(
+                {"parent": "Parent and child must belong to the same company."}
+            )
 
-    class Meta:
-        model = Facility
-        fields = [
-            'id',
-            'organization',
-            'organization_name',
-            'department',
-            'department_name',
-            'name',
-            'facility_code',
-            'facility_type',
-            'country',
-            'state',
-            'city',
-            'address',
-            'is_active',
-            'created_at',
-            'updated_at',
-        ]
-        read_only_fields = ['created_at', 'updated_at']
+        if instance and parent:
+            if parent.id == instance.id:
+                raise serializers.ValidationError({"parent": "A node cannot be its own parent."})
+
+            ancestor = parent
+            while ancestor is not None:
+                if ancestor.id == instance.id:
+                    raise serializers.ValidationError(
+                        {"parent": "Circular organization hierarchy is not allowed."}
+                    )
+                ancestor = ancestor.parent
+
+        return attrs

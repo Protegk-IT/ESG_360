@@ -1,19 +1,14 @@
+from django.db.models import Count
 from rest_framework import viewsets
 
-from .models import Department, Facility, Organization
-from .serializers import DepartmentSerializer, FacilitySerializer, OrganizationSerializer
+from .models import OrgNode
+from .serializers import OrgNodeSerializer
 
 
-class OrganizationViewSet(viewsets.ModelViewSet):
-    queryset = Organization.objects.select_related('company', 'parent_organization', 'country', 'state', 'city').all()
-    serializer_class = OrganizationSerializer
-
-
-class DepartmentViewSet(viewsets.ModelViewSet):
-    queryset = Department.objects.select_related('organization', 'parent_department').all()
-    serializer_class = DepartmentSerializer
-
-
-class FacilityViewSet(viewsets.ModelViewSet):
-    queryset = Facility.objects.select_related('organization', 'department', 'country', 'state', 'city').all()
-    serializer_class = FacilitySerializer
+class OrgNodeViewSet(viewsets.ModelViewSet):
+    queryset = (
+        OrgNode.objects.select_related("company", "parent")
+        .annotate(children_count=Count("children"))
+        .all()
+    )
+    serializer_class = OrgNodeSerializer

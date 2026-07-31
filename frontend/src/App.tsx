@@ -4,7 +4,6 @@ import Login from "./pages/auth/Login";
 import CompaniesPage from "./pages/companies/CompaniesPage";
 import OrganizationsPage from "./pages/organizations/OrganizationsPage";
 import DepartmentsPage from "./pages/departments/DepartmentsPage";
-import FacilitiesPage from "./pages/facilities/FacilitiesPage";
 import PlatformAdminDashboard from "./pages/platform_admin/Dashboard";
 
 export default function App() {
@@ -17,7 +16,6 @@ export default function App() {
         <Route path="/companies" element={<CompaniesPage />} />
         <Route path="/organizations" element={<OrganizationsPage />} />
         <Route path="/departments" element={<DepartmentsPage />} />
-        <Route path="/facilities" element={<FacilitiesPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
