@@ -1,29 +1,18 @@
-export interface Organization {
+export interface OrgNode {
   id: string;
+  name: string;
+  node_type: "LEGAL_ENTITY" | "BUSINESS_UNIT" | "DIVISION" | "REGION" | "FACILITY";
+  node_code: string | null;
   company: string;
   company_name?: string;
-  name: string;
-  organization_code: string;
+  parent: string | null;
+  parent_name?: string;
+  description: string;
+  ownership_percentage: string | null;
+  operational_control: boolean;
+  financial_control: boolean;
   is_active: boolean;
-}
-
-export interface Department {
-  id: string;
-  organization: string;
-  organization_name?: string;
-  name: string;
-  department_code: string;
-  is_active: boolean;
-}
-
-export interface Facility {
-  id: string;
-  organization: string;
-  organization_name?: string;
-  department: string | null;
-  department_name?: string;
-  name: string;
-  facility_code: string;
-  facility_type: string;
-  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  children_count: number;
 }

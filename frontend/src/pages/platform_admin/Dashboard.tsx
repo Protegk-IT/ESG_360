@@ -1,7 +1,6 @@
 import {
   Building,
   Building2,
-  Factory,
   FolderTree,
   Plus,
 } from "lucide-react";
@@ -59,7 +58,7 @@ export default function Dashboard() {
 
         <main className="min-h-[calc(100vh-64px)] bg-gray-100 p-8">
 
-          <div className="mb-10 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mb-10 grid gap-6 md:grid-cols-3">
             <div className="rounded-xl bg-white p-6 shadow">
               <Building2 className="mb-3 text-orange-500" />
 
@@ -76,7 +75,7 @@ export default function Dashboard() {
               <FolderTree className="mb-3 text-blue-500" />
 
               <h3 className="text-gray-500">
-                Organizations
+                OrgNodes
               </h3>
 
               <p className="text-3xl font-bold">
@@ -96,17 +95,6 @@ export default function Dashboard() {
               </p>
             </div>
 
-            <div className="rounded-xl bg-white p-6 shadow">
-              <Factory className="mb-3 text-purple-500" />
-
-              <h3 className="text-gray-500">
-                Facilities
-              </h3>
-
-              <p className="text-3xl font-bold">
-                0
-              </p>
-            </div>
           </div>
 
           <div className="mb-10 rounded-xl bg-white p-6 shadow">
@@ -114,7 +102,7 @@ export default function Dashboard() {
               Quick Actions
             </h2>
 
-            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-5 md:grid-cols-3">
               <button
                 onClick={() => navigate("/companies")}
                 className="rounded-xl border p-6 transition hover:bg-orange-50"
@@ -130,7 +118,7 @@ export default function Dashboard() {
               >
                 <FolderTree className="mx-auto mb-3 text-orange-500" />
 
-                Organizations
+                OrgNodes
               </button>
 
               <button
@@ -142,14 +130,6 @@ export default function Dashboard() {
                 Departments
               </button>
 
-              <button
-                onClick={() => navigate("/facilities")}
-                className="rounded-xl border p-6 transition hover:bg-orange-50"
-              >
-                <Factory className="mx-auto mb-3 text-orange-500" />
-
-                Facilities
-              </button>
             </div>
           </div>
 
@@ -161,7 +141,7 @@ export default function Dashboard() {
             <ul className="space-y-4 text-gray-600">
               <li>Platform initialized</li>
               <li>Administrator logged in</li>
-              <li>Use the sidebar to open companies, organizations, departments, or facilities.</li>
+              <li>Use the sidebar to open companies, OrgNodes, or departments.</li>
             </ul>
           </div>
         </main>

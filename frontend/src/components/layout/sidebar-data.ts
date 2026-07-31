@@ -23,6 +23,10 @@ export const navMain = [
         title: "Company Management",
         url: "/companies",
       },
+      {
+        title: "Departments",
+        url: "/departments",
+      },
     ],
   },
 
@@ -32,16 +36,8 @@ export const navMain = [
 
     items: [
       {
-        title: "Organizations",
+        title: "OrgNodes",
         url: "/organizations",
-      },
-      {
-        title: "Departments",
-        url: "/departments",
-      },
-      {
-        title: "Facilities",
-        url: "/facilities",
       },
     ],
   },
