@@ -45,6 +45,13 @@ const initialFormState: OrgNodeFormState = {
   is_active: true,
 };
 
+function getInitialFormState(companyId = ""): OrgNodeFormState {
+  return {
+    ...initialFormState,
+    company: companyId,
+  };
+}
+
 export default function OrganizationsPage() {
   const [orgNodes, setOrgNodes] = useState<OrgNode[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -67,6 +74,12 @@ export default function OrganizationsPage() {
 
       setOrgNodes(nodesResponse.data);
       setCompanies(companiesResponse.data);
+      if (companiesResponse.data.length === 1) {
+        setFormData((currentData) => ({
+          ...currentData,
+          company: currentData.company || companiesResponse.data[0].id,
+        }));
+      }
     } catch (caughtError) {
       setError(getApiErrorMessage(caughtError, "Unable to load OrgNode data. Please try again."));
     } finally {
@@ -150,7 +163,7 @@ export default function OrganizationsPage() {
         setSuccessMessage("OrgNode created successfully.");
       }
 
-      setFormData(initialFormState);
+      setFormData(getInitialFormState(companies.length === 1 ? companies[0].id : ""));
       setEditingId(null);
       await loadPageData();
     } catch (caughtError) {
@@ -180,7 +193,7 @@ export default function OrganizationsPage() {
 
   const handleCancelEdit = () => {
     setEditingId(null);
-    setFormData(initialFormState);
+    setFormData(getInitialFormState(companies.length === 1 ? companies[0].id : ""));
     setError("");
     setSuccessMessage("");
   };

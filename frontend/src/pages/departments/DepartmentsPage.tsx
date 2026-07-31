@@ -28,6 +28,13 @@ const initialFormState: DepartmentFormState = {
   department_code: "",
 };
 
+function getInitialFormState(companyId = ""): DepartmentFormState {
+  return {
+    ...initialFormState,
+    company: companyId,
+  };
+}
+
 export default function DepartmentsPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -49,6 +56,12 @@ export default function DepartmentsPage() {
 
       setDepartments(departmentsResponse.data);
       setCompanies(companiesResponse.data);
+      if (companiesResponse.data.length === 1) {
+        setFormData((currentData) => ({
+          ...currentData,
+          company: currentData.company || companiesResponse.data[0].id,
+        }));
+      }
     } catch {
       setError("Unable to load department data. Please try again.");
     } finally {
@@ -94,7 +107,7 @@ export default function DepartmentsPage() {
         department_code: formData.department_code,
       });
 
-      setFormData(initialFormState);
+      setFormData(getInitialFormState(companies.length === 1 ? companies[0].id : ""));
       setSuccessMessage("Department created successfully.");
       await loadPageData();
     } catch {
