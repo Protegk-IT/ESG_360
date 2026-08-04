@@ -40,8 +40,10 @@ INSTALLED_APPS = [
     'apps.accounts',
     'apps.companies',
     'apps.organizations',
+    'apps.periods',
     "rest_framework",
     "corsheaders",
+    "django_filters",
 ]
 
 MIDDLEWARE = [

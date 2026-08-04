@@ -1,7 +1,7 @@
 from django.contrib.auth.hashers import make_password
 from rest_framework import serializers
 
-from .models import City, Company, Country, Department, State, UserDepartment
+from .models import City, Company, Country, Department, State
 
 
 class CountrySerializer(serializers.ModelSerializer):
@@ -23,101 +23,75 @@ class CitySerializer(serializers.ModelSerializer):
 
 
 class CompanySerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, required=False, allow_blank=False)
     class Meta:
         model = Company
         fields = [
-            'id',
-            'company_logo',
-            'company_code',
-            'company_name',
-            'gst_number',
-            'cin_number',
-            'date_of_incorporation',
-            'about_company',
-            'password',
-            'company_password_hash',
-            'billing_address',
-            'billing_zip_code',
-            'billing_country',
-            'billing_state',
-            'billing_city',
-            'contact_person',
-            'email',
-            'mobile_number',
-            'website',
-            'listed_company',
-            'last_login',
-            'is_active',
-            'created_at',
-            'updated_at',
-        ]
-        read_only_fields = ['created_at', 'updated_at', 'company_password_hash']
-
-    def create(self, validated_data):
-        password = validated_data.pop("password", None)
-        if password:
-            validated_data["company_password_hash"] = make_password(password)
-        return super().create(validated_data)
-
-    def update(self, instance, validated_data):
-        password = validated_data.pop("password", None)
-        if password:
-            validated_data["company_password_hash"] = make_password(password)
-        return super().update(instance, validated_data)
-
-
-class DepartmentSerializer(serializers.ModelSerializer):
-    company_name = serializers.CharField(source="company.company_name", read_only=True)
-    class Meta:
-        model = Department
-        fields = [
             "id",
-            "company",
+            "company_logo",
+            "company_code",
             "company_name",
-            "name",
-            "department_code",
+            "about_company",
+            "date_of_incorporation",
+
+            "cin_number",
+            "gst_number",
+            "listed_company",
+            "stock_exchanges",
+            "paid_up_capital",
+            "turnover",
+            "ownership_form",
+
+            "registered_address",
+            "corporate_address",
+
+            "country",
+            "state",
+            "city",
+
+            "contact_person",
+            "email",
+            "mobile_number",
+            "website",
+
+            "employee_count",
+            "financial_year_start_month",
+
             "is_active",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["created_at", "updated_at"]
 
+        read_only_fields = [
+            "created_at",
+            "updated_at",
+        ]
 
-class UserDepartmentSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(source="user.username", read_only=True)
-    department_name = serializers.CharField(source="department.name", read_only=True)
+class DepartmentSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+    parent_department_name = serializers.CharField(source="parent_department.name", read_only=True)
 
     class Meta:
-        model = UserDepartment
+        model = Department
         fields = [
             "id",
-            "user",
-            "username",
-            "department",
-            "department_name",
-            "is_primary",
+
+            "company",
+            "company_name",
+
+            "parent_department",
+            "parent_department_name",
+
+            "name",
+            "code",
+            "description",
+
+            "is_active",
+
             "created_at",
+            "updated_at",
         ]
-        read_only_fields = ["created_at"]
 
-    def validate(self, attrs):
-        user = attrs.get("user", getattr(self.instance, "user", None))
-        department = attrs.get("department", getattr(self.instance, "department", None))
-        is_primary = attrs.get("is_primary", getattr(self.instance, "is_primary", False))
-
-        if user and department and is_primary:
-            existing_primary = UserDepartment.objects.filter(
-                user=user,
-                department__company=department.company,
-                is_primary=True,
-            )
-            if self.instance:
-                existing_primary = existing_primary.exclude(pk=self.instance.pk)
-
-            if existing_primary.exists():
-                raise serializers.ValidationError(
-                    {"is_primary": "User already has a primary department for this company."}
-                )
-
-        return attrs
+        read_only_fields = [
+            "created_at",
+            "updated_at",
+        ]

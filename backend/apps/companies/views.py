@@ -1,7 +1,8 @@
-from rest_framework import viewsets
-
-from .models import City, Company, Country, Department, State, UserDepartment
-from .serializers import CitySerializer, CompanySerializer, CountrySerializer, DepartmentSerializer, StateSerializer, UserDepartmentSerializer
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from .models import City, Company, Country, Department, State
+from .serializers import CitySerializer, CompanySerializer, CountrySerializer, DepartmentSerializer, StateSerializer
 
 
 class CountryViewSet(viewsets.ModelViewSet):
@@ -10,25 +11,56 @@ class CountryViewSet(viewsets.ModelViewSet):
 
 
 class StateViewSet(viewsets.ModelViewSet):
-    queryset = State.objects.select_related('country').all()
+    queryset = State.objects.select_related('country')
     serializer_class = StateSerializer
 
 
 class CityViewSet(viewsets.ModelViewSet):
-    queryset = City.objects.select_related('country', 'state').all()
+    queryset = City.objects.select_related(
+        "country",
+        "state",
+    )
     serializer_class = CitySerializer
 
 
-class CompanyViewSet(viewsets.ModelViewSet):
-    queryset = Company.objects.select_related('billing_country', 'billing_state', 'billing_city').all()
+class CompanyViewSet(viewsets.GenericViewSet):
+    queryset = Company.objects.select_related(
+        "country",
+        "state",
+        "city",
+    )
     serializer_class = CompanySerializer
+
+    @action(detail=False, methods=["get", "patch"], url_path="profile")
+    def profile(self, request):
+        company = self.get_queryset().first()
+
+        if not company:
+            return Response(
+                {"detail": "Company profile not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if request.method == "GET":
+            serializer = self.get_serializer(company)
+            return Response(serializer.data)
+
+        serializer = self.get_serializer(
+            company,
+            data=request.data,
+            partial=True,
+        )
+
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(serializer.data)
 
 
 class DepartmentViewSet(viewsets.ModelViewSet):
-    queryset = Department.objects.select_related('company').all()
+    queryset = Department.objects.select_related(
+        "company",
+        "parent_department",
+    )
     serializer_class = DepartmentSerializer
 
-
-class UserDepartmentViewSet(viewsets.ModelViewSet):
-    queryset = UserDepartment.objects.select_related('company').all()
-    serializer_class = UserDepartmentSerializer

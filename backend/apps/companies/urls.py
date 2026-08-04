@@ -7,7 +7,7 @@ from .views import (
     CountryViewSet,
     DepartmentViewSet,
     StateViewSet,
-    UserDepartmentViewSet,
+    
 )
 
 
@@ -17,10 +17,9 @@ router = DefaultRouter()
 router.register(r'countries', CountryViewSet, basename='country')
 router.register(r'states', StateViewSet, basename='state')
 router.register(r'cities', CityViewSet, basename='city')
-router.register(r'companies', CompanyViewSet, basename='company')
 router.register(r'departments', DepartmentViewSet, basename='department')
-router.register(r'user-departments', UserDepartmentViewSet, basename='user-department')
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('profile/', CompanyViewSet.as_view({'get': 'profile', 'patch': 'profile'}), name='company-profile'),
 ]
