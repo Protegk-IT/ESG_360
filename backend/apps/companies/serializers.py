@@ -1,6 +1,7 @@
+from django.contrib.auth.hashers import make_password
 from rest_framework import serializers
 
-from .models import City, Company, Country, State
+from .models import City, Company, Country, Department, State
 
 
 class CountrySerializer(serializers.ModelSerializer):
@@ -25,28 +26,72 @@ class CompanySerializer(serializers.ModelSerializer):
     class Meta:
         model = Company
         fields = [
-            'id',
-            'company_logo',
-            'company_code',
-            'company_name',
-            'gst_number',
-            'cin_number',
-            'date_of_incorporation',
-            'about_company',
-            'company_password_hash',
-            'billing_address',
-            'billing_zip_code',
-            'billing_country',
-            'billing_state',
-            'billing_city',
-            'contact_person',
-            'email',
-            'mobile_number',
-            'website',
-            'listed_company',
-            'last_login',
-            'is_active',
-            'created_at',
-            'updated_at',
+            "id",
+            "company_logo",
+            "company_code",
+            "company_name",
+            "about_company",
+            "date_of_incorporation",
+
+            "cin_number",
+            "gst_number",
+            "listed_company",
+            "stock_exchanges",
+            "paid_up_capital",
+            "turnover",
+            "ownership_form",
+
+            "registered_address",
+            "corporate_address",
+
+            "country",
+            "state",
+            "city",
+
+            "contact_person",
+            "email",
+            "mobile_number",
+            "website",
+
+            "employee_count",
+            "financial_year_start_month",
+
+            "is_active",
+            "created_at",
+            "updated_at",
         ]
-        read_only_fields = ['created_at', 'updated_at']
+
+        read_only_fields = [
+            "created_at",
+            "updated_at",
+        ]
+
+class DepartmentSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+    parent_department_name = serializers.CharField(source="parent_department.name", read_only=True)
+
+    class Meta:
+        model = Department
+        fields = [
+            "id",
+
+            "company",
+            "company_name",
+
+            "parent_department",
+            "parent_department_name",
+
+            "name",
+            "code",
+            "description",
+
+            "is_active",
+
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "created_at",
+            "updated_at",
+        ]

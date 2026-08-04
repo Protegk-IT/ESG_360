@@ -1,13 +1,13 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import OrgNodeViewSet
+from .views import ReportingPeriodViewSet
 
 
-app_name = "organizations"
+app_name = "periods"
 
 router = DefaultRouter()
-router.register(r"nodes", OrgNodeViewSet, basename="org-node")
+router.register(r"", ReportingPeriodViewSet, basename="reporting-period")
 
 urlpatterns = [
     path("", include(router.urls)),

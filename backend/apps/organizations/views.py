@@ -1,19 +1,131 @@
-from rest_framework import viewsets
+from django.db.models import Count
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import filters, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
-from .models import Department, Facility, Organization
-from .serializers import DepartmentSerializer, FacilitySerializer, OrganizationSerializer
-
-
-class OrganizationViewSet(viewsets.ModelViewSet):
-    queryset = Organization.objects.select_related('company', 'parent_organization', 'country', 'state', 'city').all()
-    serializer_class = OrganizationSerializer
-
-
-class DepartmentViewSet(viewsets.ModelViewSet):
-    queryset = Department.objects.select_related('organization', 'parent_department').all()
-    serializer_class = DepartmentSerializer
+from .models import OrgNode
+from .serializers import OrgNodeSerializer
 
 
-class FacilityViewSet(viewsets.ModelViewSet):
-    queryset = Facility.objects.select_related('organization', 'department', 'country', 'state', 'city').all()
-    serializer_class = FacilitySerializer
+class OrgNodeViewSet(viewsets.ModelViewSet):
+    serializer_class = OrgNodeSerializer
+    #permission_classes = [IsAuthenticated]
+
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
+
+    filterset_fields = [
+        "company",
+        "node_type",
+        "parent",
+        "is_active",
+    ]
+
+    search_fields = [
+        "name",
+        "code",
+    ]
+
+    ordering_fields = [
+        "name",
+        "depth",
+        "created_at",
+        "updated_at",
+    ]
+
+    ordering = [
+        "depth",
+        "name",
+    ]
+
+    def get_queryset(self):
+        return (
+            OrgNode.objects.select_related(
+                "company",
+                "parent",
+                "country",
+                "state",
+                "city",
+            ).annotate(
+                children_count=Count("children")
+            )
+        )
+
+    @action(detail=False, methods=["get"])
+    def tree(self, request):
+        """
+        Returns the complete organization tree.
+        For now, returns all root nodes.
+        Later this can use a dedicated recursive serializer.
+        """
+        queryset = self.get_queryset().filter(parent__isnull=True)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["get"])
+    def subtree(self, request, pk=None):
+        """
+        Returns this node and all its descendants.
+        """
+        node = self.get_object()
+
+        queryset = self.get_queryset().filter(
+            path__startswith=node.path
+        )
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["get"])
+    def ancestors(self, request, pk=None):
+        """
+        Returns all ancestors of the current node.
+        """
+        node = self.get_object()
+
+        ancestors = []
+
+        current = node.parent
+
+        while current:
+            ancestors.insert(0, current)
+            current = current.parent
+
+        serializer = self.get_serializer(ancestors, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def move(self, request, pk=None):
+        """
+        Moves a node to another parent.
+        """
+
+        node = self.get_object()
+
+        parent_id = request.data.get("parent_id")
+
+        if not parent_id:
+            return Response(
+                {"parent_id": "This field is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            new_parent = OrgNode.objects.get(pk=parent_id)
+        except OrgNode.DoesNotExist:
+            return Response(
+                {"parent_id": "Invalid parent node."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        node.parent = new_parent
+        node.save()
+
+        serializer = self.get_serializer(node)
+
+        return Response(serializer.data)

@@ -2,39 +2,42 @@ import { useEffect, useState } from "react";
 import AppShell from "../../components/layout/AppShell";
 import api from "../../services/api";
 
-interface Organization {
+interface Company {
   id: string;
-  name: string;
+  company_name: string;
 }
 
 interface Department {
   id: string;
-  organization: string;
-  organization_name?: string;
+  company: string;
+  company_name?: string;
   name: string;
   department_code: string;
-  parent_department: string | null;
-  parent_department_name?: string;
   is_active: boolean;
 }
 
 interface DepartmentFormState {
-  organization: string;
+  company: string;
   name: string;
   department_code: string;
-  parent_department: string;
 }
 
 const initialFormState: DepartmentFormState = {
-  organization: "",
+  company: "",
   name: "",
   department_code: "",
-  parent_department: "",
 };
+
+function getInitialFormState(companyId = ""): DepartmentFormState {
+  return {
+    ...initialFormState,
+    company: companyId,
+  };
+}
 
 export default function DepartmentsPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [formData, setFormData] = useState<DepartmentFormState>(initialFormState);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -46,13 +49,19 @@ export default function DepartmentsPage() {
     setError("");
 
     try {
-      const [departmentsResponse, organizationsResponse] = await Promise.all([
-        api.get<Department[]>("/organizations/departments/"),
-        api.get<Organization[]>("/organizations/organizations/"),
+      const [departmentsResponse, companiesResponse] = await Promise.all([
+        api.get<Department[]>("/companies/departments/"),
+        api.get<Company[]>("/companies/companies/"),
       ]);
 
       setDepartments(departmentsResponse.data);
-      setOrganizations(organizationsResponse.data);
+      setCompanies(companiesResponse.data);
+      if (companiesResponse.data.length === 1) {
+        setFormData((currentData) => ({
+          ...currentData,
+          company: currentData.company || companiesResponse.data[0].id,
+        }));
+      }
     } catch {
       setError("Unable to load department data. Please try again.");
     } finally {
@@ -72,7 +81,7 @@ export default function DepartmentsPage() {
   };
 
   const validateForm = () => {
-    if (!formData.organization) return "Please select an organization.";
+    if (!formData.company) return "Please select a company.";
     if (!formData.name.trim()) return "Department name is required.";
     if (!formData.department_code.trim()) return "Department code is required.";
     return "";
@@ -92,14 +101,13 @@ export default function DepartmentsPage() {
     setError("");
 
     try {
-      await api.post("/organizations/departments/", {
-        organization: formData.organization,
+      await api.post("/companies/departments/", {
+        company: formData.company,
         name: formData.name,
         department_code: formData.department_code,
-        parent_department: formData.parent_department || null,
       });
 
-      setFormData(initialFormState);
+      setFormData(getInitialFormState(companies.length === 1 ? companies[0].id : ""));
       setSuccessMessage("Department created successfully.");
       await loadPageData();
     } catch {
@@ -126,17 +134,17 @@ export default function DepartmentsPage() {
 
           <form onSubmit={handleSubmit} className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Organization</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Company</label>
               <select
-                name="organization"
-                value={formData.organization}
+                name="company"
+                value={formData.company}
                 onChange={handleInputChange}
                 className="w-full rounded-md border px-3 py-2"
               >
-                <option value="">Select organization</option>
-                {organizations.map((organization) => (
-                  <option key={organization.id} value={organization.id}>
-                    {organization.name}
+                <option value="">Select company</option>
+                {companies.map((company) => (
+                  <option key={company.id} value={company.id}>
+                    {company.company_name}
                   </option>
                 ))}
               </select>
@@ -160,23 +168,6 @@ export default function DepartmentsPage() {
                 onChange={handleInputChange}
                 className="w-full rounded-md border px-3 py-2"
               />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Parent Department</label>
-              <select
-                name="parent_department"
-                value={formData.parent_department}
-                onChange={handleInputChange}
-                className="w-full rounded-md border px-3 py-2"
-              >
-                <option value="">Select parent department</option>
-                {departments.map((department) => (
-                  <option key={department.id} value={department.id}>
-                    {department.name}
-                  </option>
-                ))}
-              </select>
             </div>
 
             <div className="md:col-span-2 xl:col-span-3">
@@ -208,8 +199,7 @@ export default function DepartmentsPage() {
                   <tr>
                     <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">Code</th>
                     <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">Name</th>
-                    <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">Organization</th>
-                    <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">Parent</th>
+                    <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">Company</th>
                     <th className="border-b px-4 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
                   </tr>
                 </thead>
@@ -218,8 +208,7 @@ export default function DepartmentsPage() {
                     <tr key={department.id} className="hover:bg-gray-50">
                       <td className="border-b px-4 py-3 text-sm text-gray-700">{department.department_code}</td>
                       <td className="border-b px-4 py-3 text-sm text-gray-700">{department.name}</td>
-                      <td className="border-b px-4 py-3 text-sm text-gray-700">{department.organization_name ?? "Unknown"}</td>
-                      <td className="border-b px-4 py-3 text-sm text-gray-700">{department.parent_department_name ?? "None"}</td>
+                      <td className="border-b px-4 py-3 text-sm text-gray-700">{department.company_name ?? "Unknown"}</td>
                       <td className="border-b px-4 py-3 text-sm text-gray-700">{department.is_active ? "Active" : "Inactive"}</td>
                     </tr>
                   ))}
