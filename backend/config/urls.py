@@ -24,6 +24,7 @@ urlpatterns = [
     path('api/accounts/', include('apps.accounts.urls')),
     path('api/companies/', include('apps.companies.urls', namespace='companies')),
     path('api/organizations/', include('apps.organizations.urls', namespace='organizations')),
+    path("api/core/", include("apps.core.urls")),
 ]
 
 if settings.DEBUG:
