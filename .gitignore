@@ -1,50 +1,74 @@
+# =========================
 # Python
+# =========================
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
 
+# =========================
 # Virtual Environment
+# =========================
 venv/
 env/
 .venv/
 
+# =========================
 # Django
+# =========================
 db.sqlite3
 media/
 staticfiles/
 
-# Environment variables
+# =========================
+# Environment Variables
+# =========================
 .env
 
-# VS Code
+# =========================
+# IDEs
+# =========================
 .vscode/
-
-# PyCharm
 .idea/
 
-# macOS
+# =========================
+# OS Files
+# =========================
 .DS_Store
-
-# Windows
 Thumbs.db
 
+# =========================
 # Logs
+# =========================
 *.log
 
+# =========================
 # Coverage
+# =========================
 .coverage
 htmlcov/
 
-Migrations (Optional)
-*/migrations/*
-!*/migrations/__init__.py
+# =========================
+# Django Migrations
+# Ignore all migration files except __init__.py
+# =========================
+**/migrations/*
+!**/migrations/__init__.py
 
-
-# PostgreSQL
+# =========================
+# PostgreSQL Dumps
+# =========================
 *.sql
 
-# Python build
+# =========================
+# Build Files
+# =========================
 build/
 dist/
 *.egg-info/
+
+# =========================
+# Python Cache
+# =========================
+.pytest_cache/
+.mypy_cache/
