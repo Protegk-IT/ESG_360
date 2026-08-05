@@ -6,7 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .models import OrgNode
-from .serializers import OrgNodeSerializer
+from .serializers import OrgNodeSerializer, OrgTreeSerializer
 
 
 class OrgNodeViewSet(viewsets.ModelViewSet):
@@ -63,8 +63,8 @@ class OrgNodeViewSet(viewsets.ModelViewSet):
         For now, returns all root nodes.
         Later this can use a dedicated recursive serializer.
         """
-        queryset = self.get_queryset().filter(parent__isnull=True)
-        serializer = self.get_serializer(queryset, many=True)
+        queryset = self.get_queryset().filter(parent__isnull=True, is_active=True)
+        serializer = OrgTreeSerializer(queryset, many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=["get"])

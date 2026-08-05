@@ -11,4 +11,5 @@ router.register(r"nodes", OrgNodeViewSet, basename="org-node")
 
 urlpatterns = [
     path("", include(router.urls)),
+    path("tree/",OrgNodeViewSet.as_view({"get": "tree"}),name="org-tree"),
 ]
