@@ -188,5 +188,17 @@ class OrgNode(models.Model):
             self.path = f"/{self.code}/"
         super().save(*args, **kwargs)
 
+    def update_subtree_paths(self):
+        """
+        Recalculate path and depth for all descendants recursively.
+        """
+        for child in self.children.all():
+            child.depth = self.depth + 1
+            child.path = f"{self.path}{child.code}/"
+
+            # Save without triggering another subtree update
+            super(OrgNode, child).save(update_fields=["depth", "path"])
+            child.update_subtree_paths()    
+
     def __str__(self):
         return f"{self.company.company_code} - {self.name}"

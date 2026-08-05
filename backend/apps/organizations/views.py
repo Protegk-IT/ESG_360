@@ -4,6 +4,8 @@ from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.db import transaction
+from django.core.exceptions import ValidationError
 
 from .models import OrgNode
 from .serializers import OrgNodeSerializer, OrgTreeSerializer
@@ -123,9 +125,15 @@ class OrgNodeViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        node.parent = new_parent
-        node.save()
-
+        with transaction.atomic():
+            try:
+                node.parent = new_parent
+                node.save()
+                node.update_subtree_paths()
+            except ValidationError as e:
+                return Response(
+                    e.message_dict,
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         serializer = self.get_serializer(node)
-
         return Response(serializer.data)
