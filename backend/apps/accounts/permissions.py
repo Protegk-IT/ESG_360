@@ -1,35 +1,27 @@
 from rest_framework.permissions import BasePermission
 
+from apps.accounts.services.rbac import RBACService
+
 
 class HasRolePermission(BasePermission):
     """
-    Generic RBAC permission.
-
-    Usage:
-        class UserViewPermission(HasRolePermission):
-            permission_code = "user.view"
+    Checks whether the authenticated user has
+    the required permission for the current action.
     """
 
-    permission_code = None
+    message = "You do not have permission to perform this action."
 
     def has_permission(self, request, view):
 
-        user = request.user
-
-        # User must be logged in
-        if not user or not user.is_authenticated:
-            return False
-
-        # Superuser bypass
-        if user.is_superuser:
+        if request.user.is_superuser:
             return True
 
-        # User has no role assigned
-        if not user.role.exists():
+        permission_code = view.get_required_permission()
+
+        if not permission_code:
             return False
 
-        # Check whether any assigned role has the required permission
-        return user.role.filter(
-            permissions__code=self.permission_code,
-            is_active=True
-        ).exists()
+        return RBACService.has_permission(
+            request.user,
+            permission_code
+        )
