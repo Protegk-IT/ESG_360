@@ -12,6 +12,9 @@ from apps.accounts.permissions import HasRolePermission
 from rest_framework import viewsets
 from apps.accounts.viewsets import RBACModelViewSet
 from rest_framework.exceptions import PermissionDenied
+from django.middleware.csrf import get_token
+from rest_framework.decorators import api_view
+
 
 from .models import (
     User,
@@ -360,6 +363,17 @@ class UserViewSet(RBACModelViewSet):
         )
 
 # ==========================================
+# CSRF Token
+# ==========================================
+
+class CSRFTokenView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response({
+            "csrfToken": get_token(request)
+        })
+# ==========================================
 # Login
 # ==========================================
 
@@ -386,10 +400,13 @@ class LoginView(APIView):
         login(request, user)
 
         return Response(
-            UserSerializer(user).data,
+            {
+                "user": UserSerializer(user).data,
+                "csrfToken": get_token(request),
+            },
             status=status.HTTP_200_OK,
         )
-
+    
 
 # ==========================================
 # Logout

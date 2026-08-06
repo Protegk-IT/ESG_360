@@ -9,6 +9,7 @@ from .views import (
     UserViewSet,
     RoleViewSet,
     PermissionViewSet,
+    CSRFTokenView,
 )
 
 router = DefaultRouter()
@@ -40,6 +41,7 @@ urlpatterns = [
         "change-password/",
         ChangePasswordView.as_view(),
     ),
+    path("csrf/", CSRFTokenView.as_view(), name="csrf-token"),
 
     # CRUD APIs
     path("", include(router.urls)),

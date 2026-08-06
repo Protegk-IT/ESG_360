@@ -24,6 +24,7 @@ staticfiles/
 # Environment Variables
 # =========================
 .env
+!.env.example
 
 # =========================
 # IDEs
