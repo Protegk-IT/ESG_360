@@ -24,6 +24,7 @@ staticfiles/
 # Environment Variables
 # =========================
 .env
+!.env.example
 
 # =========================
 # IDEs
@@ -52,6 +53,7 @@ htmlcov/
 # Django Migrations
 # Ignore all migration files except __init__.py
 # =========================
+Migrations (Optional)
 **/migrations/*
 !**/migrations/__init__.py
 

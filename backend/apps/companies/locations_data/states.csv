@@ -1,0 +1,113 @@
+country_iso_code,state_code,state_name
+IN,AN,Andaman and Nicobar Islands
+IN,AP,Andhra Pradesh
+IN,AR,Arunachal Pradesh
+IN,AS,Assam
+IN,BR,Bihar
+IN,CH,Chandigarh
+IN,CG,Chhattisgarh
+IN,DN,Dadra and Nagar Haveli and Daman and Diu
+IN,DL,Delhi
+IN,GA,Goa
+IN,GJ,Gujarat
+IN,HR,Haryana
+IN,HP,Himachal Pradesh
+IN,JK,Jammu and Kashmir
+IN,JH,Jharkhand
+IN,KA,Karnataka
+IN,KL,Kerala
+IN,LA,Ladakh
+IN,LD,Lakshadweep
+IN,MP,Madhya Pradesh
+IN,MH,Maharashtra
+IN,MN,Manipur
+IN,ML,Meghalaya
+IN,MZ,Mizoram
+IN,NL,Nagaland
+IN,OD,Odisha
+IN,PY,Puducherry
+IN,PB,Punjab
+IN,RJ,Rajasthan
+IN,SK,Sikkim
+IN,TN,Tamil Nadu
+IN,TS,Telangana
+IN,TR,Tripura
+IN,UP,Uttar Pradesh
+IN,UK,Uttarakhand
+IN,WB,West Bengal
+US,CA,California
+US,TX,Texas
+US,NY,New York
+US,FL,Florida
+GB,ENG,England
+GB,SCT,Scotland
+GB,WLS,Wales
+GB,NIR,Northern Ireland
+CA,ON,Ontario
+CA,QC,Quebec
+CA,BC,British Columbia
+CA,AB,Alberta
+AU,NSW,New South Wales
+AU,VIC,Victoria
+AU,QLD,Queensland
+AU,WA,Western Australia
+DE,BW,Baden-Württemberg
+DE,BY,Bavaria
+DE,BE,Berlin
+DE,NW,North Rhine-Westphalia
+FR,IDF,Île-de-France
+FR,PAC,Provence-Alpes-Côte d'Azur
+FR,ARA,Auvergne-Rhône-Alpes
+FR,OCC,Occitanie
+IT,LAZ,Lazio
+IT,LOM,Lombardy
+IT,CAM,Campania
+IT,SIC,Sicily
+ES,MD,Madrid
+ES,CT,Catalonia
+ES,AN,Andalusia
+ES,VC,Valencian Community
+NL,NH,North Holland
+NL,ZH,South Holland
+NL,UT,Utrecht
+NL,NB,North Brabant
+SG,CEN,Central Region
+SG,EST,East Region
+SG,NOR,North Region
+SG,WES,West Region
+JP,TK,Tokyo
+JP,OS,Osaka
+JP,KN,Kanagawa
+JP,AI,Aichi
+CN,BJ,Beijing
+CN,SH,Shanghai
+CN,GD,Guangdong
+CN,ZJ,Zhejiang
+AE,DU,Dubai
+AE,AZ,Abu Dhabi
+AE,SH,Sharjah
+AE,AJ,Ajman
+SA,RD,Riyadh
+SA,MK,Makkah
+SA,EP,Eastern Province
+SA,MD,Al Madinah
+ZA,GP,Gauteng
+ZA,WC,Western Cape
+ZA,KZN,KwaZulu-Natal
+ZA,EC,Eastern Cape
+BR,SP,São Paulo
+BR,RJ,Rio de Janeiro
+BR,MG,Minas Gerais
+BR,BA,Bahia
+MX,CMX,Mexico City
+MX,JAL,Jalisco
+MX,NLE,Nuevo León
+MX,VER,Veracruz
+MY,SGR,Selangor
+MY,JHR,Johor
+MY,PNG,Penang
+MY,SBH,Sabah
+TH,BKK,Bangkok
+TH,CNX,Chiang Mai
+TH,PKT,Phuket
+TH,NMA,Nakhon Ratchasima

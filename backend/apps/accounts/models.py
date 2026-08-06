@@ -4,7 +4,9 @@ from apps.core.models import BaseModel
 from apps.core.mixins import ActivityLogMixin
 from django.core.exceptions import ValidationError
 
-# apps/accounts/models.py
+from apps.companies.models import Department
+from apps.organizations.models import OrgNode
+from apps import companies
 
 class User(ActivityLogMixin, AbstractUser):
     """
@@ -178,11 +180,13 @@ class UserRoleAssignment(ActivityLogMixin, BaseModel):
     )
 
 
-    org_node = models.CharField(
-        max_length=100,
-        blank=True,
+    org_node = models.ForeignKey(
+        OrgNode,
+        on_delete=models.CASCADE,
         null=True,
-        help_text="Temporary Org Node Name"
+        blank=True,
+        related_name="role_assignments",
+        help_text="Null means company-wide access"
     )
 
     module_code = models.CharField(
@@ -248,8 +252,10 @@ class UserDepartment(ActivityLogMixin, BaseModel):
         related_name="department_assignments"
     )
 
-    department = models.CharField(
-        max_length=100,
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.CASCADE,
+        related_name="user_assignments",
         db_index=True
     )
 

@@ -1,12 +1,12 @@
-import uuid
-
 from django.core.exceptions import ValidationError
 from django.db import models
 
 from apps.companies.models import Company, Country, State, City
+from apps.core.mixins import ActivityLogMixin
+from apps.core.models import BaseModel
 
 
-class OrgNode(models.Model):
+class OrgNode(ActivityLogMixin, BaseModel):
 
     NODE_TYPE_CHOICES = [
         ("LEGAL_ENTITY", "Legal Entity"),
@@ -21,8 +21,6 @@ class OrgNode(models.Model):
         ("PROPORTIONAL", "Proportional"),
         ("EQUITY", "Equity"),
     ]
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="org_nodes")
     parent = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="children",default=None)
@@ -56,9 +54,6 @@ class OrgNode(models.Model):
     decommissioned_on = models.DateField(blank=True, null=True)
 
     is_active = models.BooleanField(default=True)
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["company__company_name", "depth", "name"]
@@ -187,6 +182,18 @@ class OrgNode(models.Model):
             self.depth = 0
             self.path = f"/{self.code}/"
         super().save(*args, **kwargs)
+
+    def update_subtree_paths(self):
+        """
+        Recalculate path and depth for all descendants recursively.
+        """
+        for child in self.children.all():
+            child.depth = self.depth + 1
+            child.path = f"{self.path}{child.code}/"
+
+            # Save without triggering another subtree update
+            super(OrgNode, child).save(update_fields=["depth", "path"])
+            child.update_subtree_paths()    
 
     def __str__(self):
         return f"{self.company.company_code} - {self.name}"

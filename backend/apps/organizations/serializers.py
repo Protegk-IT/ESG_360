@@ -69,3 +69,28 @@ class OrgNodeSerializer(serializers.ModelSerializer):
             "updated_at",
             "children_count",
         ]
+
+
+class OrgTreeSerializer(serializers.ModelSerializer):
+    children = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrgNode
+        fields = [
+            "id",
+            "code",
+            "name",
+            "node_type",
+            "depth",
+            "is_active",
+            "children",
+        ]
+
+    def get_children(self, obj):
+        children = (
+            obj.children
+            .filter(is_active=True)
+            .order_by("name")
+        )
+
+        return OrgTreeSerializer(children, many=True).data

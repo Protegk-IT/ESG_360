@@ -1,8 +1,9 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-import uuid
-from django.utils import timezone
+
+from apps.core.mixins import ActivityLogMixin
+from apps.core.models import BaseModel
 
 
 class PeriodType(models.TextChoices):
@@ -18,7 +19,7 @@ class Status(models.TextChoices):
     CLOSED = "CLOSED", "Closed"
 
 
-class ReportingPeriod(models.Model):
+class ReportingPeriod(ActivityLogMixin, BaseModel):
     """
     ReportingPeriod model representing hierarchical reporting periods.
 
@@ -32,7 +33,6 @@ class ReportingPeriod(models.Model):
     The model calls full_clean() inside save() so database writes respect the validations.
     """
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     parent = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="children")
     name = models.CharField(max_length=255)
     period_type = models.CharField(max_length=20, choices=PeriodType.choices)
@@ -43,8 +43,6 @@ class ReportingPeriod(models.Model):
     locked_at = models.DateTimeField(null=True, blank=True)
     locked_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="locked_periods")
     is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-start_date"]

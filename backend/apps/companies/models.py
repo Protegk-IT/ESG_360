@@ -1,12 +1,12 @@
-from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-import uuid
+
+from apps.core.models import BaseModel
+from apps.core.mixins import ActivityLogMixin
 
 
 ##### COUNTRY MODEL ########
-class Country(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class Country(BaseModel):
     name = models.CharField(max_length=100, unique=True)
     iso_code = models.CharField(max_length=5, unique=True)  
     is_active = models.BooleanField(default=True)
@@ -23,8 +23,7 @@ class Country(models.Model):
 
 
 ######## STATE MODEL ########
-class State(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class State(BaseModel):
     country = models.ForeignKey(
         Country,
         on_delete=models.CASCADE,
@@ -50,8 +49,7 @@ class State(models.Model):
 
 
 ######## CITY MODEL ########
-class City(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class City(BaseModel):
     country = models.ForeignKey(
         Country,
         on_delete=models.CASCADE,
@@ -82,9 +80,7 @@ class City(models.Model):
 
 ######## COMPANY MODEL ########
 
-class Company(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-
+class Company(ActivityLogMixin, BaseModel):
     # Basic Information
     company_name = models.CharField(max_length=255)
     company_code = models.CharField(max_length=20, unique=True)
@@ -121,8 +117,6 @@ class Company(models.Model):
 
     # Common Fields
     is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["company_name"]
@@ -159,9 +153,7 @@ class Company(models.Model):
 
 ## DEPARTMENT MODEL 
 
-class Department(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-
+class Department(ActivityLogMixin, BaseModel):
     company = models.ForeignKey(
         Company,
         on_delete=models.CASCADE,
@@ -181,9 +173,6 @@ class Department(models.Model):
     description = models.TextField(blank=True, null=True)
 
     is_active = models.BooleanField(default=True)
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["company__company_name", "name"]

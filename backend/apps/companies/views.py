@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import City, Company, Country, Department, State
 from .serializers import CitySerializer, CompanySerializer, CountrySerializer, DepartmentSerializer, StateSerializer
-
+from django_filters.rest_framework import DjangoFilterBackend
 
 class CountryViewSet(viewsets.ModelViewSet):
     queryset = Country.objects.all()
@@ -13,6 +13,8 @@ class CountryViewSet(viewsets.ModelViewSet):
 class StateViewSet(viewsets.ModelViewSet):
     queryset = State.objects.select_related('country')
     serializer_class = StateSerializer
+    filter_backends = [DjangoFilterBackend]  ##frontend can do filtering GET /api/company/states/?country=<country_uuid>
+    filterset_fields = ["country"]
 
 
 class CityViewSet(viewsets.ModelViewSet):
@@ -21,7 +23,8 @@ class CityViewSet(viewsets.ModelViewSet):
         "state",
     )
     serializer_class = CitySerializer
-
+    filter_backends = [DjangoFilterBackend]  ##frontend  can do filtering GET /api/company/cities/?state=<state_uuid>
+    filterset_fileds = ["country","states"]  
 
 class CompanyViewSet(viewsets.GenericViewSet):
     queryset = Company.objects.select_related(
