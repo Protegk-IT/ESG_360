@@ -8,6 +8,7 @@ from .models import (
     UserRoleAssignment,
     UserDepartment,
 )
+from apps.organizations.serializers import OrgNodeSerializer
 
 class PermissionSerializer(serializers.ModelSerializer):
 
@@ -92,6 +93,10 @@ class UserRoleAssignmentSerializer(serializers.ModelSerializer):
         read_only=True,
     )
 
+    org_node_name = serializers.CharField(
+        source="org_node.name",
+        read_only=True,
+    )
     class Meta:
         model = UserRoleAssignment
         fields = (
@@ -101,6 +106,7 @@ class UserRoleAssignmentSerializer(serializers.ModelSerializer):
             "role",
             "role_name",
             "org_node",
+            "org_node_name",
             "module_code",
             "framework_code",
             "valid_from",
@@ -108,6 +114,7 @@ class UserRoleAssignmentSerializer(serializers.ModelSerializer):
             "is_active",
             "created_at",
             "updated_at",
+            
         )
         read_only_fields = (
             "id",
@@ -115,17 +122,18 @@ class UserRoleAssignmentSerializer(serializers.ModelSerializer):
             "updated_at",
             "user_name",
             "role_name",
+            "org_node_name",
         )
 
     def validate(self, attrs):
 
-        valid_from = attrs.get("valid_from")
-        valid_to = attrs.get("valid_to")
+        valid_from = attrs.get("valid_from",getattr(self.instance, "valid_from", None))
+        valid_to = attrs.get("valid_to",getattr(self.instance, "valid_to", None))
 
         if valid_from and valid_to:
             if valid_from > valid_to:
                 raise serializers.ValidationError(
-                    "Valid From cannot be after Valid To."
+                    {"valid_to": "Valid From cannot be after Valid To."}
                 )
 
         return attrs
@@ -136,6 +144,7 @@ class UserDepartmentSerializer(serializers.ModelSerializer):
         source="user.username",
         read_only=True,
     )
+
 
     class Meta:
         model = UserDepartment
@@ -237,14 +246,16 @@ class CurrentUserSerializer(UserSerializer):
 
     def get_scope_summary(self, obj):
 
-        assignments = obj.user_assignments.filter(
-            is_active=True
-        )
+        assignments = obj.user_assignments.filter(is_active=True)
 
         return [
             {
                 "role": assignment.role.role_name,
-                "org_node": assignment.org_node,
+                "org_node": (
+                    OrgNodeSerializer(assignment.org_node).data
+                    if assignment.org_node
+                    else None
+                ),
                 "module_code": assignment.module_code,
                 "framework_code": assignment.framework_code,
                 "valid_from": assignment.valid_from,
