@@ -1,0 +1,292 @@
+country_iso_code,state_code,city_name
+IN,MH,Mumbai
+IN,MH,Pune
+IN,MH,Nagpur
+IN,MH,Nashik
+IN,GJ,Ahmedabad
+IN,GJ,Surat
+IN,GJ,Vadodara
+IN,GJ,Rajkot
+IN,KA,Bengaluru
+IN,KA,Mysuru
+IN,KA,Hubballi
+IN,TN,Chennai
+IN,TN,Coimbatore
+IN,TN,Madurai
+IN,TS,Hyderabad
+IN,TS,Warangal
+IN,DL,New Delhi
+IN,RJ,Jaipur
+IN,RJ,Udaipur
+IN,RJ,Jodhpur
+IN,UP,Lucknow
+IN,UP,Noida
+IN,UP,Kanpur
+IN,UP,Varanasi
+IN,WB,Kolkata
+IN,WB,Siliguri
+IN,KL,Kochi
+IN,KL,Thiruvananthapuram
+IN,KL,Kozhikode
+IN,PB,Ludhiana
+IN,PB,Amritsar
+IN,HR,Gurugram
+IN,HR,Faridabad
+IN,MP,Bhopal
+IN,MP,Indore
+IN,MP,Jabalpur
+IN,BR,Patna
+IN,JH,Ranchi
+IN,OD,Bhubaneswar
+IN,OD,Cuttack
+IN,AS,Guwahati
+IN,GA,Panaji
+IN,CH,Chandigarh
+IN,JK,Srinagar
+IN,JK,Jammu
+US,CA,Los Angeles
+US,CA,San Francisco
+US,CA,San Diego
+US,TX,Houston
+US,TX,Dallas
+US,TX,Austin
+US,NY,New York City
+US,NY,Buffalo
+US,NY,Rochester
+US,FL,Miami
+US,FL,Orlando
+US,FL,Tampa
+
+GB,ENG,London
+GB,ENG,Manchester
+GB,ENG,Birmingham
+GB,SCT,Edinburgh
+GB,SCT,Glasgow
+GB,SCT,Aberdeen
+GB,WLS,Cardiff
+GB,WLS,Swansea
+GB,WLS,Newport
+GB,NIR,Belfast
+GB,NIR,Lisburn
+GB,NIR,Newry
+
+CA,ON,Toronto
+CA,ON,Ottawa
+CA,ON,Hamilton
+CA,QC,Montreal
+CA,QC,Quebec City
+CA,QC,Laval
+CA,BC,Vancouver
+CA,BC,Victoria
+CA,BC,Surrey
+CA,AB,Calgary
+CA,AB,Edmonton
+CA,AB,Red Deer
+
+AU,NSW,Sydney
+AU,NSW,Newcastle
+AU,NSW,Wollongong
+AU,VIC,Melbourne
+AU,VIC,Geelong
+AU,VIC,Bendigo
+AU,QLD,Brisbane
+AU,QLD,Gold Coast
+AU,QLD,Cairns
+AU,WA,Perth
+AU,WA,Fremantle
+AU,WA,Bunbury
+
+DE,BW,Stuttgart
+DE,BW,Heidelberg
+DE,BW,Karlsruhe
+DE,BY,Munich
+DE,BY,Nuremberg
+DE,BY,Augsburg
+DE,BE,Berlin
+DE,BE,Spandau
+DE,BE,Köpenick
+DE,NW,Cologne
+DE,NW,Düsseldorf
+DE,NW,Dortmund
+
+FR,IDF,Paris
+FR,IDF,Versailles
+FR,IDF,Boulogne-Billancourt
+FR,PAC,Marseille
+FR,PAC,Nice
+FR,PAC,Toulon
+FR,ARA,Lyon
+FR,ARA,Grenoble
+FR,ARA,Saint-Étienne
+FR,OCC,Toulouse
+FR,OCC,Montpellier
+FR,OCC,Nîmes
+
+IT,LAZ,Rome
+IT,LAZ,Latina
+IT,LAZ,Frosinone
+IT,LOM,Milan
+IT,LOM,Bergamo
+IT,LOM,Brescia
+IT,CAM,Naples
+IT,CAM,Salerno
+IT,CAM,Caserta
+IT,SIC,Palermo
+IT,SIC,Catania
+IT,SIC,Messina
+
+ES,MD,Madrid
+ES,MD,Alcalá de Henares
+ES,MD,Móstoles
+ES,CT,Barcelona
+ES,CT,Girona
+ES,CT,Tarragona
+ES,AN,Seville
+ES,AN,Málaga
+ES,AN,Córdoba
+ES,VC,Valencia
+ES,VC,Alicante
+ES,VC,Castellón
+
+NL,NH,Amsterdam
+NL,NH,Haarlem
+NL,NH,Alkmaar
+NL,ZH,Rotterdam
+NL,ZH,The Hague
+NL,ZH,Leiden
+NL,UT,Utrecht
+NL,UT,Amersfoort
+NL,UT,Nieuwegein
+NL,NB,Eindhoven
+NL,NB,Tilburg
+NL,NB,Breda
+
+SG,CEN,Orchard
+SG,CEN,Marina Bay
+SG,CEN,Bugis
+SG,EST,Tampines
+SG,EST,Pasir Ris
+SG,EST,Bedok
+SG,NOR,Woodlands
+SG,NOR,Yishun
+SG,NOR,Sembawang
+SG,WES,Jurong East
+SG,WES,Clementi
+SG,WES,Bukit Batok
+
+JP,TK,Shinjuku
+JP,TK,Shibuya
+JP,TK,Ginza
+JP,OS,Osaka
+JP,OS,Sakai
+JP,OS,Higashiosaka
+JP,KN,Yokohama
+JP,KN,Kawasaki
+JP,KN,Kamakura
+JP,AI,Nagoya
+JP,AI,Toyota
+JP,AI,Okazaki
+
+CN,BJ,Beijing
+CN,BJ,Changping
+CN,BJ,Haidian
+CN,SH,Shanghai
+CN,SH,Pudong
+CN,SH,Minhang
+CN,GD,Guangzhou
+CN,GD,Shenzhen
+CN,GD,Dongguan
+CN,ZJ,Hangzhou
+CN,ZJ,Ningbo
+CN,ZJ,Wenzhou
+
+AE,DU,Dubai
+AE,DU,Jebel Ali
+AE,DU,Deira
+AE,AZ,Abu Dhabi
+AE,AZ,Al Ain
+AE,AZ,Madinat Zayed
+AE,SH,Sharjah
+AE,SH,Khor Fakkan
+AE,SH,Kalba
+AE,AJ,Ajman
+AE,AJ,Masfout
+AE,AJ,Manama
+
+SA,RD,Riyadh
+SA,RD,Al Kharj
+SA,RD,Diriyah
+SA,MK,Jeddah
+SA,MK,Mecca
+SA,MK,Taif
+SA,EP,Dammam
+SA,EP,Khobar
+SA,EP,Dhahran
+SA,MD,Madinah
+SA,MD,Yanbu
+SA,MD,Al Ula
+
+ZA,GP,Johannesburg
+ZA,GP,Pretoria
+ZA,GP,Soweto
+ZA,WC,Cape Town
+ZA,WC,Stellenbosch
+ZA,WC,Paarl
+ZA,KZN,Durban
+ZA,KZN,Pietermaritzburg
+ZA,KZN,Richards Bay
+ZA,EC,Gqeberha
+ZA,EC,East London
+ZA,EC,Mthatha
+
+BR,SP,São Paulo
+BR,SP,Campinas
+BR,SP,Santos
+BR,RJ,Rio de Janeiro
+BR,RJ,Niterói
+BR,RJ,Petrópolis
+BR,MG,Belo Horizonte
+BR,MG,Uberlândia
+BR,MG,Contagem
+BR,BA,Salvador
+BR,BA,Feira de Santana
+BR,BA,Ilhéus
+
+MX,CMX,Mexico City
+MX,CMX,Coyoacán
+MX,CMX,Xochimilco
+MX,JAL,Guadalajara
+MX,JAL,Puerto Vallarta
+MX,JAL,Tlaquepaque
+MX,NLE,Monterrey
+MX,NLE,San Nicolás
+MX,NLE,Guadalupe
+MX,VER,Veracruz
+MX,VER,Xalapa
+MX,VER,Coatzacoalcos
+
+MY,SGR,Shah Alam
+MY,SGR,Petaling Jaya
+MY,SGR,Klang
+MY,JHR,Johor Bahru
+MY,JHR,Muar
+MY,JHR,Batu Pahat
+MY,PNG,George Town
+MY,PNG,Butterworth
+MY,PNG,Bukit Mertajam
+MY,SBH,Kota Kinabalu
+MY,SBH,Sandakan
+MY,SBH,Tawau
+
+TH,BKK,Bangkok
+TH,BKK,Thon Buri
+TH,BKK,Dusit
+TH,CNX,Chiang Mai
+TH,CNX,Hang Dong
+TH,CNX,San Sai
+TH,PKT,Phuket
+TH,PKT,Patong
+TH,PKT,Karon
+TH,NMA,Nakhon Ratchasima
+TH,NMA,Pak Chong
+TH,NMA,Sikhio

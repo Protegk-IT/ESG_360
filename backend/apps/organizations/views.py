@@ -13,7 +13,7 @@ from .serializers import OrgNodeSerializer, OrgTreeSerializer
 
 class OrgNodeViewSet(viewsets.ModelViewSet):
     serializer_class = OrgNodeSerializer
-    #permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     filter_backends = [
         DjangoFilterBackend,
