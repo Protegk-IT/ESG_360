@@ -1,128 +1,177 @@
-
+from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
-from .models import User, Permissions, Role,UserRole, UserRoleScope
-
-
-# ==========================
-# Permission Serializer
-# ==========================
+from .models import (
+    User,
+    Permission,
+    Role,
+    UserRoleAssignment,
+    UserDepartment,
+)
 
 class PermissionSerializer(serializers.ModelSerializer):
 
-    permission_type_display = serializers.CharField(
-        source="get_permission_type_display",
-        read_only=True
-    )
-
     class Meta:
-        model = Permissions
-        fields = [
+        model = Permission
+        fields = (
             "id",
             "code",
             "name",
-            "description",
-            "permission_type",
-            "permission_type_display",
+            "module_code",
+            "action",
             "display_order",
-            "is_module_access",
-        ]
-
-
-# ==========================
-# Role Serializer
-# ==========================
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "created_at",
+            "updated_at",
+        )
 
 class RoleSerializer(serializers.ModelSerializer):
 
     permissions = serializers.PrimaryKeyRelatedField(
-        queryset=Permissions.objects.all(),
-        many=True
+        many=True,
+        queryset=Permission.objects.all(),
+        required=False,
     )
 
     permission_details = PermissionSerializer(
         source="permissions",
         many=True,
-        read_only=True
+        read_only=True,
     )
 
     class Meta:
         model = Role
-        fields = [
+        fields = (
             "id",
             "role_code",
             "role_name",
             "description",
             "is_active",
+            "is_system",
             "permissions",
             "permission_details",
             "created_at",
             "updated_at",
-        ]
-
-        read_only_fields = [
+        )
+        read_only_fields = (
+            "id",
             "created_at",
             "updated_at",
-        ]
+        )
 
-class UserRoleScopeSerializer(serializers.ModelSerializer):
+    def validate(self, attrs):
+        if self.instance and self.instance.is_system:
+            protected = [
+                "role_code",
+                "role_name",
+                "is_system",
+            ]
+
+            for field in protected:
+                if field in attrs:
+                    raise serializers.ValidationError(
+                        f"{field} cannot be modified for a system role."
+                    )
+
+        return attrs
+
+
+class UserRoleAssignmentSerializer(serializers.ModelSerializer):
+
+    user_name = serializers.CharField(
+        source="user.username",
+        read_only=True,
+    )
+
+    role_name = serializers.CharField(
+        source="role.role_name",
+        read_only=True,
+    )
 
     class Meta:
-
-        model = UserRoleScope
-
-        fields = [
+        model = UserRoleAssignment
+        fields = (
             "id",
-            "user_role",
-            "scope_type",
-            "scope_id"
-        ]
+            "user",
+            "user_name",
+            "role",
+            "role_name",
+            "org_node",
+            "module_code",
+            "framework_code",
+            "valid_from",
+            "valid_to",
+            "is_active",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "created_at",
+            "updated_at",
+            "user_name",
+            "role_name",
+        )
 
-class UserRoleSerializer(serializers.ModelSerializer):
-    assigned_by = serializers.CharField(
-        source="assigned_by.username",
-        read_only=True
-    )
+    def validate(self, attrs):
 
-    scopes = UserRoleScopeSerializer(
-        many=True,
-        read_only=True
+        valid_from = attrs.get("valid_from")
+        valid_to = attrs.get("valid_to")
+
+        if valid_from and valid_to:
+            if valid_from > valid_to:
+                raise serializers.ValidationError(
+                    "Valid From cannot be after Valid To."
+                )
+
+        return attrs
+
+class UserDepartmentSerializer(serializers.ModelSerializer):
+
+    user_name = serializers.CharField(
+        source="user.username",
+        read_only=True,
     )
 
     class Meta:
-        model = UserRole
-        fields = [
-            "role",
-            "assigned_by",
-            "assigned_at",
-            "scopes",
-        ]
-
-
-# ==========================
-# User List Serializer
-# ==========================
+        model = UserDepartment
+        fields = (
+            "id",
+            "user",
+            "user_name",
+            "department",
+            "is_primary",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "created_at",
+            "updated_at",
+            "user_name",
+        )
 
 class UserSerializer(serializers.ModelSerializer):
 
-    company_name = serializers.CharField(
-        source="company.name",
-        read_only=True
-    )
-
-    user_roles = UserRoleSerializer(
+    role_assignments = UserRoleAssignmentSerializer(
+        source="user_assignments",
         many=True,
-        read_only=True
+        read_only=True,
     )
 
-    role = RoleSerializer(
+    department_assignments = UserDepartmentSerializer(
         many=True,
-        read_only=True
+        read_only=True,
     )
-
+    
     class Meta:
         model = User
-        fields = [
+
+        fields = (
             "id",
             "username",
             "email",
@@ -131,41 +180,91 @@ class UserSerializer(serializers.ModelSerializer):
             "full_name",
             "employee_code",
             "designation",
-            "about",
-            "company",
-            "company_name",
-            "role",
             "mobile_number",
             "profile_image",
-            "is_company_user",
             "last_seen",
-            "is_online",
             "is_active",
+            "is_staff",
+            "is_superuser",
             "date_joined",
-            "user_roles",
+            "role_assignments",
+            "department_assignments",
+        )
+
+        read_only_fields = fields
+
+    def validate_employee_code(self, value):
+        if value:
+            value = value.strip().upper()
+        return value
+
+class CurrentUserSerializer(UserSerializer):
+    roles = serializers.SerializerMethodField()
+    permissions = serializers.SerializerMethodField()
+    scope_summary = serializers.SerializerMethodField()
+
+    class Meta(UserSerializer.Meta):
+        fields = UserSerializer.Meta.fields + (
+            "roles",
+            "permissions",
+            "scope_summary",
+        )
+
+    def get_roles(self, obj):
+        return list(
+            obj.user_assignments.filter(
+                is_active=True
+            ).values_list(
+                "role__role_name",
+                flat=True,
+            ).distinct()
+        )
+
+    def get_permissions(self, obj):
+        permissions = set()
+
+        assignments = (
+            obj.user_assignments.filter(is_active=True)
+            .select_related("role")
+            .prefetch_related("role__permissions")
+        )
+
+        for assignment in assignments:
+            for permission in assignment.role.permissions.all():
+                permissions.add(permission.code)
+
+        return sorted(permissions)
+
+    def get_scope_summary(self, obj):
+
+        assignments = obj.user_assignments.filter(
+            is_active=True
+        )
+
+        return [
+            {
+                "role": assignment.role.role_name,
+                "org_node": assignment.org_node,
+                "module_code": assignment.module_code,
+                "framework_code": assignment.framework_code,
+                "valid_from": assignment.valid_from,
+                "valid_to": assignment.valid_to,
+            }
+            for assignment in assignments
         ]
-
-
-# ==========================
-# User Create / Update
-# ==========================
 
 class UserCreateUpdateSerializer(serializers.ModelSerializer):
 
     password = serializers.CharField(
         write_only=True,
-        required=False
-    )
-
-    role = serializers.PrimaryKeyRelatedField(
-        queryset=Role.objects.all(),
-        many=True,
-        required=False
+        required=False,
+        validators=[validate_password],
     )
 
     class Meta:
         model = User
-        fields = [
+
+        fields = (
             "username",
             "password",
             "email",
@@ -174,18 +273,13 @@ class UserCreateUpdateSerializer(serializers.ModelSerializer):
             "full_name",
             "employee_code",
             "designation",
-            "about",
-            "company",
-            "role",
             "mobile_number",
             "profile_image",
-            "is_company_user",
             "is_active",
-        ]
+            "is_staff",
+        )
 
     def create(self, validated_data):
-
-        roles = validated_data.pop("role", [])
 
         password = validated_data.pop("password", None)
 
@@ -196,13 +290,9 @@ class UserCreateUpdateSerializer(serializers.ModelSerializer):
 
         user.save()
 
-        user.role.set(roles)
-
         return user
 
     def update(self, instance, validated_data):
-
-        roles = validated_data.pop("role", None)
 
         password = validated_data.pop("password", None)
 
@@ -214,15 +304,7 @@ class UserCreateUpdateSerializer(serializers.ModelSerializer):
 
         instance.save()
 
-        if roles is not None:
-            instance.role.set(roles)
-
         return instance
-
-
-# ==========================
-# Login Serializer
-# ==========================
 
 class LoginSerializer(serializers.Serializer):
 
@@ -230,4 +312,14 @@ class LoginSerializer(serializers.Serializer):
 
     password = serializers.CharField(
         write_only=True
+    )
+class ChangePasswordSerializer(serializers.Serializer):
+
+    old_password = serializers.CharField(
+        write_only=True
+    )
+
+    new_password = serializers.CharField(
+        write_only=True,
+        validators=[validate_password],
     )
