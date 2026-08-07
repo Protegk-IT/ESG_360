@@ -146,10 +146,10 @@ notify(
 
 | Endpoint | Description |
 |----------|-------------|
-| POST /api/accounts/login/ | Login |
-| POST /api/accounts/logout/ | Logout |
-| GET /api/accounts/me/ | Current user, roles, permissions and scope |
-| POST /api/accounts/change-password/ | Change password |
+| POST /api/auth/login/ | Login |
+| POST /api/auth/logout/ | Logout |
+| GET /api/auth/me/ | Current user, roles, permissions and scope |
+| POST /api/auth/change-password/ | Change password |
 | GET /api/accounts/csrf/ | Get CSRF token |
 
 ---
@@ -178,7 +178,7 @@ with every write request.
 
 # 8. Current User
 
-The `/api/accounts/me/` endpoint returns:
+The `/api/auth/me/` endpoint returns:
 
 - User profile
 - Active roles

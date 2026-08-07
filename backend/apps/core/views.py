@@ -20,7 +20,7 @@ class ActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
 
 class NotificationListAPIView(generics.ListAPIView):
     serializer_class = NotificationSerializer
-    permission_classes = [IsAuthenticated,HasRolePermission]
+    #permission_classes = [IsAuthenticated,HasRolePermission]
 
     def get_queryset(self):
         return (
@@ -58,6 +58,25 @@ class NotificationReadAPIView(APIView):
             status=status.HTTP_200_OK
         )
 
+class NotificationReadAllAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        updated_count = Notification.objects.filter(
+            recipient=request.user,
+            is_read=False
+        ).update(
+            is_read=True,
+            read_at=timezone.now()
+        )
+
+        return Response(
+            {
+                "message": "All notifications marked as read",
+                "updated_count": updated_count
+            },
+            status=status.HTTP_200_OK
+        )
     
 class NotificationUnreadCountAPIView(APIView):
 

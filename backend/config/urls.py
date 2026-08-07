@@ -18,11 +18,22 @@ from django.contrib import admin
 from django.urls import path,include
 from django.conf import settings
 from django.conf.urls.static import static
+from apps.accounts.views import (
+    CurrentUserView,
+    LoginView,
+    LogoutView,
+    ChangePasswordView,
+)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path("api/auth/login/", LoginView.as_view(), name="login"),
+    path("api/auth/logout/", LogoutView.as_view(), name="logout"),
+    path("api/auth/change-password/", ChangePasswordView.as_view(), name="change-password"),
+    path("api/auth/me/", CurrentUserView.as_view(), name="me"),
+
     path('api/accounts/', include('apps.accounts.urls')),
-    path("api/core/", include("apps.core.urls")),
+    path("api/", include("apps.core.urls")),
     path('api/company/', include('apps.companies.urls')),
     path("api/org/", include("apps.organizations.urls")),
     path("api/periods/", include("apps.periods.urls"))

@@ -1,6 +1,8 @@
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
+from apps.accounts.services.rbac import RBACService
+
 from .models import (
     User,
     Permission,
@@ -208,6 +210,7 @@ class UserSerializer(serializers.ModelSerializer):
         return value
 
 class CurrentUserSerializer(UserSerializer):
+
     roles = serializers.SerializerMethodField()
     permissions = serializers.SerializerMethodField()
     scope_summary = serializers.SerializerMethodField()
@@ -220,20 +223,22 @@ class CurrentUserSerializer(UserSerializer):
         )
 
     def get_roles(self, obj):
+
+        assignments = RBACService.get_active_assignments(obj)
+
         return list(
-            obj.user_assignments.filter(
-                is_active=True
-            ).values_list(
+            assignments.values_list(
                 "role__role_name",
                 flat=True,
             ).distinct()
         )
 
     def get_permissions(self, obj):
+
         permissions = set()
 
         assignments = (
-            obj.user_assignments.filter(is_active=True)
+            RBACService.get_active_assignments(obj)
             .select_related("role")
             .prefetch_related("role__permissions")
         )
@@ -246,13 +251,15 @@ class CurrentUserSerializer(UserSerializer):
 
     def get_scope_summary(self, obj):
 
-        assignments = obj.user_assignments.filter(is_active=True)
+        assignments = RBACService.get_active_assignments(obj)
 
         return [
             {
                 "role": assignment.role.role_name,
                 "org_node": (
-                    OrgNodeSerializer(assignment.org_node).data
+                    OrgNodeSerializer(
+                        assignment.org_node
+                    ).data
                     if assignment.org_node
                     else None
                 ),

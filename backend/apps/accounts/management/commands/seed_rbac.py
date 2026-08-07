@@ -4,7 +4,7 @@ from apps.accounts.constants import (
     ROLES,
     ROLE_PERMISSIONS,
 )
-from apps.accounts.models import Permission, Role, Role
+from apps.accounts.models import Permission, Role
 
 class Command(BaseCommand):
 

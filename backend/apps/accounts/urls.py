@@ -33,14 +33,7 @@ router.register(
 )
 
 urlpatterns = [
-    # Authentication
-    path("login/", LoginView.as_view()),
-    path("logout/", LogoutView.as_view()),
-    path("me/", CurrentUserView.as_view()),
-    path(
-        "change-password/",
-        ChangePasswordView.as_view(),
-    ),
+    
     path("csrf/", CSRFTokenView.as_view(), name="csrf-token"),
 
     # CRUD APIs
