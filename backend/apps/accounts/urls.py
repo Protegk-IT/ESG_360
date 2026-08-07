@@ -6,6 +6,7 @@ from .views import (
     LogoutView,
     CurrentUserView,
     ChangePasswordView,
+    PlatformDashboardView,
     UserViewSet,
     RoleViewSet,
     PermissionViewSet,
@@ -42,6 +43,9 @@ urlpatterns = [
         ChangePasswordView.as_view(),
     ),
     path("csrf/", CSRFTokenView.as_view(), name="csrf-token"),
+
+     # Dashboard
+    path("dashboard/", PlatformDashboardView.as_view()),
 
     # CRUD APIs
     path("", include(router.urls)),

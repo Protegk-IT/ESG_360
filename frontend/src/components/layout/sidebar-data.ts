@@ -1,10 +1,11 @@
 import {
-  Building2,
+  FileBarChart2,
   FileText,
   FolderTree,
   LayoutDashboard,
   Leaf,
   Settings,
+  ShieldCheck,
 } from "lucide-react";
 
 export const navMain = [
@@ -15,17 +16,24 @@ export const navMain = [
   },
 
   {
-    title: "Company",
-    icon: Building2,
-
+    title: "Administration",
+    icon: ShieldCheck,
     items: [
       {
         title: "Company Management",
         url: "/companies",
       },
       {
+        title: "User Management",
+        url: "/accounts/users",
+      },
+      {
+        title: "Role Management",
+        url: "/accounts/roles",
+      },
+       {
         title: "Departments",
-        url: "/departments",
+        url: "/company/departments",
       },
     ],
   },
@@ -33,10 +41,9 @@ export const navMain = [
   {
     title: "Organization",
     icon: FolderTree,
-
     items: [
       {
-        title: "OrgNodes",
+        title: "Organization",
         url: "/organizations",
       },
     ],
@@ -45,29 +52,41 @@ export const navMain = [
   {
     title: "Frameworks",
     icon: FileText,
-
     items: [
       {
         title: "BRSR",
-        url: "",
+        url: "/frameworks/brsr",
       },
       {
         title: "GRI",
-        url: "",
+        url: "/frameworks/gri",
       },
     ],
   },
 
   {
     title: "Emissions",
-    url: "/emissions/",
     icon: Leaf,
+    items: [
+      {
+        title: "Scope 1",
+        url: "/emissions/scope-1",
+      },
+      {
+        title: "Scope 2",
+        url: "/emissions/scope-2",
+      },
+      {
+        title: "Scope 3",
+        url: "/emissions/scope-3",
+      },
+    ],
   },
 
   {
     title: "Reports",
     url: "/reports/",
-    icon: FileText,
+    icon: FileBarChart2,
   },
 
   {
