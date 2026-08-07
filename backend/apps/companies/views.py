@@ -24,7 +24,7 @@ class CityViewSet(viewsets.ModelViewSet):
     )
     serializer_class = CitySerializer
     filter_backends = [DjangoFilterBackend]  ##frontend  can do filtering GET /api/company/cities/?state=<state_uuid>
-    filterset_fileds = ["country","states"]  
+    filterset_fields = ["country","state"]  
 
 class CompanyViewSet(viewsets.GenericViewSet):
     queryset = Company.objects.select_related(

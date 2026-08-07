@@ -1,5 +1,10 @@
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
+from django.db import transaction
+
+from apps.companies.models import Department
+from apps.organizations.models import OrgNode
+
 
 from .models import (
     User,
@@ -167,45 +172,63 @@ class UserDepartmentSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
 
     role_assignments = UserRoleAssignmentSerializer(
-        source="user_assignments",
-        many=True,
-        read_only=True,
-    )
-
+           source="user_assignments",
+           many=True,
+           read_only=True,
+       )
+   
     department_assignments = UserDepartmentSerializer(
-        many=True,
-        read_only=True,
-    )
-    
+           many=True,
+           read_only=True,
+       )
+   
+    role_name = serializers.SerializerMethodField()
+    department_name = serializers.SerializerMethodField()
+       
     class Meta:
-        model = User
-
-        fields = (
-            "id",
-            "username",
-            "email",
-            "first_name",
-            "last_name",
-            "full_name",
-            "employee_code",
-            "designation",
-            "mobile_number",
-            "profile_image",
-            "last_seen",
-            "is_active",
-            "is_staff",
-            "is_superuser",
-            "date_joined",
-            "role_assignments",
-            "department_assignments",
-        )
-
-        read_only_fields = fields
-
+           model = User
+   
+           fields = (
+               "id",
+               "username",
+               "email",
+               "first_name",
+               "last_name",
+               "full_name",
+               "employee_code",
+               "designation",
+               "role_name",
+               "department_name",
+               "mobile_number",
+               "profile_image",
+               "last_seen",
+               "is_active",
+               "is_staff",
+               "is_superuser",
+               "date_joined",
+               "role_assignments",
+               "department_assignments",
+           )
+   
+           read_only_fields = fields
+   
     def validate_employee_code(self, value):
-        if value:
-            value = value.strip().upper()
-        return value
+           if value:
+               value = value.strip().upper()
+           return value
+   
+    def get_role_name(self, obj):
+           assignment = (
+               obj.user_assignments
+               .filter(is_active=True)
+               .select_related("role")
+               .first()
+           )
+           return assignment.role.role_name if assignment else None
+   
+    def get_department_name(self, obj):
+        assignment = obj.department_assignments.filter(is_primary=True).first()
+        return assignment.department.name if assignment else None
 
 class CurrentUserSerializer(UserSerializer):
     roles = serializers.SerializerMethodField()
@@ -265,19 +288,46 @@ class CurrentUserSerializer(UserSerializer):
         ]
 
 class UserCreateUpdateSerializer(serializers.ModelSerializer):
-
     password = serializers.CharField(
         write_only=True,
         required=False,
         validators=[validate_password],
     )
 
+    confirm_password = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+    )
+
+    role = serializers.PrimaryKeyRelatedField(
+        queryset=Role.objects.all(),
+        required=False,
+        allow_null=True,
+        write_only=True,
+    )
+
+    # Keep CharField and convert manually
+    org_node = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        write_only=True,
+    )
+
+    department = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        write_only=True,
+    )
+
     class Meta:
         model = User
-
         fields = (
             "username",
             "password",
+            "confirm_password",
             "email",
             "first_name",
             "last_name",
@@ -288,10 +338,32 @@ class UserCreateUpdateSerializer(serializers.ModelSerializer):
             "profile_image",
             "is_active",
             "is_staff",
+            "role",
+            "org_node",
+            "department",
         )
 
-    def create(self, validated_data):
+    def validate(self, attrs):
+        password = attrs.get("password")
+        confirm_password = attrs.pop("confirm_password", None)
 
+        if password:
+            if password != confirm_password:
+                raise serializers.ValidationError(
+                    {
+                        "confirm_password": [
+                            "Passwords do not match."
+                        ]
+                    }
+                )
+
+        return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        role = validated_data.pop("role", None)
+        org_node = validated_data.pop("org_node", None)
+        department = validated_data.pop("department", None)
         password = validated_data.pop("password", None)
 
         user = User(**validated_data)
@@ -301,10 +373,16 @@ class UserCreateUpdateSerializer(serializers.ModelSerializer):
 
         user.save()
 
+        self._sync_role_assignment(user, role, org_node)
+        self._sync_department(user, department)
+
         return user
 
+    @transaction.atomic
     def update(self, instance, validated_data):
-
+        role = validated_data.pop("role", None)
+        org_node = validated_data.pop("org_node", None)
+        department = validated_data.pop("department", None)
         password = validated_data.pop("password", None)
 
         for attr, value in validated_data.items():
@@ -315,7 +393,64 @@ class UserCreateUpdateSerializer(serializers.ModelSerializer):
 
         instance.save()
 
+        self._sync_role_assignment(instance, role, org_node)
+        self._sync_department(instance, department)
+
         return instance
+
+    def _sync_role_assignment(self, user, role, org_node):
+        if role is None:
+            return
+
+        if org_node:
+            try:
+                org_node = OrgNode.objects.get(pk=org_node)
+            except OrgNode.DoesNotExist:
+                raise serializers.ValidationError(
+                    {"org_node": "Invalid organization node."}
+                )
+        else:
+            org_node = None
+
+        UserRoleAssignment.objects.update_or_create(
+            user=user,
+            role=role,
+            defaults={
+                "org_node": org_node,
+                "is_active": True,
+            },
+        )
+
+        UserRoleAssignment.objects.filter(
+            user=user
+        ).exclude(
+            role=role
+        ).delete()
+
+    def _sync_department(self, user, department):
+        if not department:
+            return
+
+        try:
+            department = Department.objects.get(pk=department)
+        except Department.DoesNotExist:
+            raise serializers.ValidationError(
+                {"department": "Invalid department."}
+            )
+
+        UserDepartment.objects.update_or_create(
+            user=user,
+            department=department,
+            defaults={
+                "is_primary": True,
+            },
+        )
+
+        UserDepartment.objects.filter(
+            user=user
+        ).exclude(
+            department=department
+        ).delete()
 
 class LoginSerializer(serializers.Serializer):
 

@@ -1,0 +1,334 @@
+/* ==========================================================
+   ESG 360 DESIGN SYSTEM
+   Version : 1.0
+   Author  : ESG 360
+
+   PART 1
+   -----------------------------------------
+   Theme Tokens
+   Typography
+   Colors
+   Shadows
+   Radius
+   Global Styles
+==========================================================*/
+
+@import "tailwindcss";
+
+/* ==========================================================
+   FONT
+==========================================================*/
+
+@import "@fontsource/lato/300.css";
+@import "@fontsource/lato/400.css";
+@import "@fontsource/lato/700.css";
+
+/* ==========================================================
+   ESG COLORS
+==========================================================*/
+
+:root {
+
+  /* Brand */
+
+  --primary: #4A3FD6;
+  --primary-hover: #3F34C8;
+  --primary-light: #EEF0FF;
+
+  /* Sidebar */
+
+  --sidebar: #1E2130;
+  --sidebar-hover: #2B3043;
+  --sidebar-active: #343A52;
+
+  /* Background */
+
+  --background: #F5F5FB;
+
+  --card: #FFFFFF;
+
+  --surface: #F8F9FC;
+
+  /* Text */
+
+  --text-primary: #111827;
+
+  --text-secondary: #4B5563;
+
+  --text-muted: #6B7280;
+
+  /* Borders */
+
+  --border: #D9DEE8;
+
+  --divider: #ECEEF5;
+
+  /* Semantic */
+
+  --success: #16A34A;
+
+  --warning: #F59E0B;
+
+  --danger: #DC2626;
+
+  --info: #2563EB;
+
+}
+
+/* ==========================================================
+   TYPOGRAPHY
+==========================================================*/
+
+html {
+
+  scroll-behavior: smooth;
+
+}
+
+html,
+body,
+#root {
+
+  min-height: 100%;
+
+}
+
+body {
+
+  margin: 0;
+
+  background: var(--background);
+
+  color: var(--text-primary);
+
+  font-family:
+    "Lato",
+    sans-serif;
+
+  text-rendering: optimizeLegibility;
+
+  -webkit-font-smoothing: antialiased;
+
+}
+
+/* ==========================================================
+   GLOBAL RESET
+==========================================================*/
+
+*,
+*::before,
+*::after {
+
+  box-sizing: border-box;
+
+}
+
+img {
+
+  display: block;
+
+  max-width: 100%;
+
+}
+
+button {
+
+  cursor: pointer;
+
+  font-family: inherit;
+
+}
+
+input,
+textarea,
+select {
+
+  font-family: inherit;
+
+}
+
+/* ==========================================================
+   HEADINGS
+==========================================================*/
+
+h1{
+
+  font-size:30px;
+
+  font-weight:700;
+
+  margin:0;
+
+}
+
+h2{
+
+  font-size:24px;
+
+  font-weight:700;
+
+}
+
+h3{
+
+  font-size:20px;
+
+  font-weight:600;
+
+}
+
+h4{
+
+  font-size:18px;
+
+  font-weight:600;
+
+}
+
+p{
+
+  color:var(--text-secondary);
+
+  line-height:1.6;
+
+}
+
+/* ==========================================================
+   LINKS
+==========================================================*/
+
+a{
+
+  color:inherit;
+
+  text-decoration:none;
+
+}
+
+/* ==========================================================
+   FOCUS
+==========================================================*/
+
+:focus-visible{
+
+  outline:none;
+
+  box-shadow:
+      0 0 0 3px
+      rgba(74,63,214,.18);
+
+  border-radius:8px;
+
+}
+
+/* ==========================================================
+   SELECTION
+==========================================================*/
+
+::selection{
+
+  background:var(--primary);
+
+  color:white;
+
+}
+
+/* ==========================================================
+   SCROLLBAR
+==========================================================*/
+
+::-webkit-scrollbar{
+
+  width:8px;
+
+  height:8px;
+
+}
+
+::-webkit-scrollbar-track{
+
+  background:transparent;
+
+}
+
+::-webkit-scrollbar-thumb{
+
+  background:#CBD5E1;
+
+  border-radius:999px;
+
+}
+
+::-webkit-scrollbar-thumb:hover{
+
+  background:#94A3B8;
+
+}
+
+*{
+
+  scrollbar-width:thin;
+
+  scrollbar-color:#CBD5E1 transparent;
+
+}
+
+/* ==========================================================
+   ANIMATIONS
+==========================================================*/
+
+*{
+
+  transition:
+
+    background-color .18s ease,
+
+    color .18s ease,
+
+    border-color .18s ease,
+
+    box-shadow .18s ease;
+
+}
+
+/* ==========================================================
+   UTILITIES
+==========================================================*/
+
+.esg-page{
+
+  background:var(--background);
+
+  min-height:100vh;
+
+  padding:24px;
+
+}
+
+.esg-section{
+
+  margin-bottom:24px;
+
+}
+
+.esg-hidden{
+
+  display:none;
+
+}
+
+.esg-flex{
+
+  display:flex;
+
+}
+
+.esg-center{
+
+  display:flex;
+
+  align-items:center;
+
+  justify-content:center;
+
+}
