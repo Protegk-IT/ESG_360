@@ -129,7 +129,7 @@ class OrgNodeViewSet(viewsets.ModelViewSet):
             try:
                 node.parent = new_parent
                 node.save()
-                node.update_subtree_paths()
+                # node.update_subtree_paths()
             except ValidationError as e:
                 return Response(
                     e.message_dict,

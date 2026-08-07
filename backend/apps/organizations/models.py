@@ -175,6 +175,14 @@ class OrgNode(ActivityLogMixin, BaseModel):
 
     def save(self, *args, **kwargs):
         self.full_clean()
+        update_subtree = False
+        if self.pk:
+            previous = OrgNode.objects.get(pk=self.pk)
+            if (
+                previous.parent_id != self.parent_id
+                or previous.code != self.code
+            ):
+                update_subtree = True
         if self.parent:
             self.depth = self.parent.depth + 1
             self.path = f"{self.parent.path}{self.code}/"
@@ -182,6 +190,9 @@ class OrgNode(ActivityLogMixin, BaseModel):
             self.depth = 0
             self.path = f"/{self.code}/"
         super().save(*args, **kwargs)
+
+        if update_subtree:
+            self.update_subtree_paths()
 
     def update_subtree_paths(self):
         """

@@ -7,7 +7,9 @@ from rest_framework.permissions import IsAdminUser
 from .models import ReportingPeriod, Status
 from .serializers import ReportingPeriodSerializer
 from rest_framework.decorators import action
-
+from django.core.exceptions import ValidationError
+from rest_framework import status
+from .services import generate_subperiods
 
 class ReportingPeriodViewSet(viewsets.ModelViewSet):
     queryset = ReportingPeriod.objects.select_related(
@@ -84,7 +86,7 @@ class ReportingPeriodViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], url_path="generate-subperiods")
     def generate_subperiods(self, request, pk=None):
 
         period = self.get_object()
