@@ -13,39 +13,106 @@ PERMISSIONS = [
     ("permission.create", "Create Permission", "permission", "CREATE"),
     ("permission.edit", "Edit Permission", "permission", "EDIT"),
     ("permission.delete", "Delete Permission", "permission", "DELETE"),
+
+    # §7.2 Capability permissions
+
+    ("org.manage", "Manage org structure", "organization", "MANAGE"),
+
+    ("user.manage", "Manage users and scopes", "user", "MANAGE"),
+
+    ("period.manage", "Manage reporting periods", "reporting_period", "MANAGE"),
+
+    ("datapoint.manage", "Manage datapoint catalog", "datapoint", "MANAGE"),
+
+    ("emission_factor.manage", "Manage emission factors", "emission_factor", "MANAGE"),
+
+    ("framework_mapping.manage", "Manage framework mappings", "framework", "MANAGE"),
+
+    ("data.enter", "Enter data", "data", "EDIT"),
+
+    ("evidence.upload", "Upload evidence", "evidence", "CREATE"),
+
+    ("data.submit", "Submit for review", "data", "APPROVE"),
+
+    ("data.approve", "Approve or reject data", "data", "APPROVE"),
+
+    ("period.reopen", "Reopen a locked period", "reporting_period", "EDIT"),
+
+    ("materiality.run", "Run materiality assessment", "materiality", "CREATE"),
+
+    ("materiality.approve", "Approve materiality", "materiality", "APPROVE"),
+
+    ("report.create_run", "Create report run", "report", "CREATE"),
+
+    ("disclosure.assign", "Assign disclosures", "disclosure", "MANAGE"),
+
+    ("disclosure.answer", "Answer assigned disclosure", "disclosure", "EDIT"),
+
+    ("disclosure.approve", "Approve disclosure response", "disclosure", "APPROVE"),
+
+    ("report.finalise", "Finalise report", "report", "CLOSE"),
+
+    ("report.export", "Export report", "report", "EXPORT"),
+
+    ("target.set", "Set targets", "target", "EDIT"),
+
+    ("dashboard.view", "View dashboards", "dashboard", "VIEW"),
+
+    ("evidence.view", "View evidence", "evidence", "VIEW"),
+
+    ("audit.raise_query", "Raise audit query", "audit", "CREATE"),
+
+    ("audit.respond_query", "Respond to audit query", "audit", "EDIT"),
+
+    ("activity_log.view", "View activity log", "activity_log", "VIEW"),
 ]
 
 
 ROLES = [
     (
-        "PLATFORM_ADMIN",
+        "platform_admin",
         "Platform Admin",
         "Full system access",
     ),
     (
-        "COMPANY_ADMIN",
+        "company_admin",
         "Company Admin",
-        "Company administrator",
+        "Manages company organization, users, scopes, reporting configuration and other administrative capabilities.",
     ),
     (
-        "DATA_ENTRY",
-        "Data Entry",
-        "Can enter ESG data",
+        "esg_manager",
+        "ESG Manager",
+        "Manages ESG reporting, reviews data, materiality, disclosures and report finalisation.",
     ),
     (
-        "REVIEWER",
+        "reviewer",
         "Reviewer",
-        "Can review and approve",
+        "Reviews and approves or rejects submitted data and responds to audit queries.",
     ),
     (
-        "VIEWER",
-        "Viewer",
-        "Read only",
+        "data_entry",
+        "Data Entry",
+        "Enters reporting data, uploads evidence and submits data for review.",
+    ),
+    (
+        "contributor",
+        "Contributor",
+        "Uploads evidence and answers assigned disclosures.",
+    ),
+    (
+        "auditor",
+        "Auditor",
+        "Performs audit activities, raises audit queries and reviews evidence and activity logs.",
+    ),
+    (
+        "exec",
+        "Executive",
+        "Views dashboards and exports reports.",
     ),
 ]
 
 ROLE_PERMISSIONS = {
-    "PLATFORM_ADMIN": [
+    "platform_admin": [
         "user.view",
         "user.create",
         "user.edit",
@@ -61,28 +128,89 @@ ROLE_PERMISSIONS = {
         "permission.edit",
         "permission.delete",
     ],
+    "company_admin": [
+        "org.manage",
+        "user.manage",
+        "period.manage",
+        "datapoint.manage",
+        "emission_factor.manage",
+        "framework_mapping.manage",
+        "evidence.upload",
+        "period.reopen",
+        "report.export",
+        "target.set",
+        "dashboard.view",
+        "evidence.view",
+        "activity_log.view",
 
-    "COMPANY_ADMIN": [
         "user.view",
         "user.create",
         "user.edit",
-
+        
         "role.view",
-
+        
         "permission.view",
     ],
 
-    "DATA_ENTRY": [
+    "esg_manager": [
+        "period.manage",
+        "datapoint.manage",
+        "emission_factor.manage",
+        "framework_mapping.manage",
+        "evidence.upload",
+        "data.approve",
+        "materiality.run",
+        "materiality.approve",
+        "report.create_run",
+        "disclosure.assign",
+        "disclosure.answer",
+        "disclosure.approve",
+        "report.finalise",
+        "report.export",
+        "target.set",
+        "dashboard.view",
+        "evidence.view",
+        "audit.respond_query",
+        "activity_log.view",
+    ],
+
+    "reviewer": [
+        "evidence.upload",
+        "data.approve",
+        "report.export",
+        "dashboard.view",
+        "evidence.view",
+        "audit.respond_query",
         "user.view",
     ],
 
-    "REVIEWER": [
+    "data_entry": [
+        "data.enter",
+        "evidence.upload",
+        "data.submit",
+        "dashboard.view",
+        "evidence.view",
         "user.view",
+        "user.edit",
+        "user.create",
+        "user.delete",
     ],
 
-    "VIEWER": [
-        "user.view",
-        "role.view",
-        "permission.view",
+    "contributor": [
+        "evidence.upload",
+        "disclosure.answer",
+    ],
+
+    "auditor": [
+        "report.export",
+        "dashboard.view",
+        "evidence.view",
+        "audit.raise_query",
+        "activity_log.view",
+    ],
+
+    "exec": [
+        "report.export",
+        "dashboard.view",
     ],
 }
