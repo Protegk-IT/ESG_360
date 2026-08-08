@@ -176,7 +176,8 @@ class OrgNode(ActivityLogMixin, BaseModel):
     def save(self, *args, **kwargs):
         self.full_clean()
         update_subtree = False
-        if self.pk:
+        previous = None
+        if not self._state.adding:
             previous = OrgNode.objects.get(pk=self.pk)
             if (
                 previous.parent_id != self.parent_id
