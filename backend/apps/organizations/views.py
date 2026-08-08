@@ -1,19 +1,20 @@
 from django.db.models import Count
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db import transaction
 from django.core.exceptions import ValidationError
+from apps.accounts.viewsets import RBACModelViewSet
 
 from .models import OrgNode
 from .serializers import OrgNodeSerializer, OrgTreeSerializer
 
 
-class OrgNodeViewSet(viewsets.ModelViewSet):
+class OrgNodeViewSet(RBACModelViewSet):
+    module_code = "org"
     serializer_class = OrgNodeSerializer
-    permission_classes = [IsAuthenticated]
 
     filter_backends = [
         DjangoFilterBackend,
@@ -57,6 +58,14 @@ class OrgNodeViewSet(viewsets.ModelViewSet):
                 children_count=Count("children")
             )
         )
+
+    def get_required_permission(self):
+        # Map custom actions to permissions
+        if self.action in ("tree", "subtree", "ancestors"):
+            return f"{self.module_code}.view"
+        if self.action == "move":
+            return f"{self.module_code}.edit"
+        return super().get_required_permission()
 
     @action(detail=False, methods=["get"])
     def tree(self, request):

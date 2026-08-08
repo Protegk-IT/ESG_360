@@ -5,19 +5,23 @@ from .models import City, Company, Country, Department, State
 from .serializers import CitySerializer, CompanySerializer, CountrySerializer, DepartmentSerializer, StateSerializer
 from django_filters.rest_framework import DjangoFilterBackend
 
-class CountryViewSet(viewsets.ModelViewSet):
+from apps.accounts.viewsets import RBACModelViewSet
+
+class CountryViewSet(RBACModelViewSet):
+    module_code = "country"
     queryset = Country.objects.all()
     serializer_class = CountrySerializer
 
 
-class StateViewSet(viewsets.ModelViewSet):
+class StateViewSet(RBACModelViewSet):
+    module_code = "state"
     queryset = State.objects.select_related('country')
     serializer_class = StateSerializer
     filter_backends = [DjangoFilterBackend]  ##frontend can do filtering GET /api/company/states/?country=<country_uuid>
     filterset_fields = ["country"]
 
 
-class CityViewSet(viewsets.ModelViewSet):
+class CityViewSet(RBACModelViewSet):
     queryset = City.objects.select_related(
         "country",
         "state",
@@ -26,13 +30,24 @@ class CityViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]  ##frontend  can do filtering GET /api/company/cities/?state=<state_uuid>
     filterset_fields = ["country","state"]  
 
-class CompanyViewSet(viewsets.GenericViewSet):
+class CompanyViewSet(RBACModelViewSet):
+    module_code = "company"
     queryset = Company.objects.select_related(
         "country",
         "state",
         "city",
     )
     serializer_class = CompanySerializer
+
+    def get_required_permission(self):
+        # Map custom 'profile' action to view/edit depending on HTTP method
+        if self.action == "profile":
+            # GET -> view, PATCH/PUT -> edit
+            method = getattr(self, 'request', None).method if hasattr(self, 'request') else None
+            if method in ("PATCH", "PUT"):
+                return f"{self.module_code}.edit"
+            return f"{self.module_code}.view"
+        return super().get_required_permission()
 
     @action(detail=False, methods=["get", "patch"], url_path="profile")
     def profile(self, request):
@@ -60,7 +75,8 @@ class CompanyViewSet(viewsets.GenericViewSet):
         return Response(serializer.data)
 
 
-class DepartmentViewSet(viewsets.ModelViewSet):
+class DepartmentViewSet(RBACModelViewSet):
+    module_code = "department"
     queryset = Department.objects.select_related(
         "company",
         "parent_department",
