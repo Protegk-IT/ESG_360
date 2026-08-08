@@ -22,6 +22,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -99,21 +100,31 @@ export default function AppShell({
               </Button>
             </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="end" className="w-60 rounded-xl">
-              <div className="border-b px-4 py-3">
-                <p className="truncate font-semibold text-[#22243A]">
-                  {user?.full_name || user?.username || "Loading..."}
-                </p>
-              </div>
+           <DropdownMenuContent align="end" className="w-56">
 
-              <DropdownMenuItem
-                onClick={handleLogout}
-                className="cursor-pointer text-red-600 focus:text-red-600"
-              >
-                <LogOut className="mr-2 h-4 w-4" />
-                Logout
-              </DropdownMenuItem>
-            </DropdownMenuContent>
+  {/* User Role */}
+  <div className="px-3 py-2">
+    <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+      Role
+    </p>
+
+    <p className="mt-1 truncate text-sm font-semibold text-[#4A3FD6]">
+      {user?.role_name ?? "User"}
+    </p>
+  </div>
+
+  <DropdownMenuSeparator />
+
+  {/* Logout */}
+  <DropdownMenuItem
+    onClick={handleLogout}
+    className="cursor-pointer text-red-600 focus:text-red-600"
+  >
+    <LogOut className="mr-2 h-4 w-4" />
+    Logout
+  </DropdownMenuItem>
+
+</DropdownMenuContent>
           </DropdownMenu>
         </header>
 

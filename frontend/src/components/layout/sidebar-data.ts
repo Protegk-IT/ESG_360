@@ -85,8 +85,17 @@ export const navMain = [
 
   {
     title: "Reports",
-    url: "/reports/",
     icon: FileBarChart2,
+    items: [
+      {
+        title: "Reporting Periods",
+        url: "/periods",
+      },
+      {
+        title: "Reporting Forms",
+        url: "/periods/create",
+      },
+    ],
   },
 
   {

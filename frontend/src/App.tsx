@@ -5,6 +5,8 @@ import Orgtree from "./pages/organizations/OrgTree";
 import OrganizationForm from "./pages/organizations/OrganizationsForm";
 import Departmentlist from "./pages/departments/DepartmentList";
 import DepartmentsForm from "./pages/departments/DepartmentsForm";
+import ReportingPeriodForm from "./pages/reporting_periods/ReportingPeriodForm";
+
 import { Toaster } from "@/components/ui/sonner";
 
 // User Management
@@ -19,6 +21,7 @@ import RoleForm from "./pages/roles/RoleForm";
 import PlatformAdminDashboard from "./pages/platform_admin/Dashboard";
 import CompanyList from "./pages/companies/CompanyView";
 import CompanyForm from "./pages/companies/CompanyForm";
+import ReportingPeriodList from "./pages/reporting_periods/ReportingPeriodList";
 
 export default function App() {
   return (
@@ -175,6 +178,38 @@ export default function App() {
       </ProtectedRoute>
     }
   />
+
+  {/* Reporting Periods */}
+
+  <Route
+    path="/periods"
+    element={
+      <ProtectedRoute permission="reporting_period.view">
+        <ReportingPeriodList />
+      </ProtectedRoute>
+    }
+  />
+
+  <Route
+    path="/periods/create"
+    element={
+      <ProtectedRoute permission="reporting_period.create">
+        <ReportingPeriodForm />
+      </ProtectedRoute>
+    }
+  />
+
+  <Route
+    path="/periods/:id/edit"
+    element={
+      <ProtectedRoute permission="reporting_period.edit">
+        <ReportingPeriodForm />
+      </ProtectedRoute>
+    }
+  />
+
+
+
 
   <Route path="*" element={<Navigate to="/" replace />} />
 </Routes>

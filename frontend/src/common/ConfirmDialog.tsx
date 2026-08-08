@@ -14,7 +14,7 @@ import { AlertTriangle } from "lucide-react";
 interface ConfirmDialogProps {
   open: boolean;
   title: string;
-  description: string;
+  description: React.ReactNode;
   confirmText?: string;
   cancelText?: string;
   loading?: boolean;

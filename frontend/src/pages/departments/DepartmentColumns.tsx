@@ -131,7 +131,7 @@ export const getDepartmentColumns = ({
 
               <DropdownMenuItem
                 onClick={() =>
-                  onEdit(department.id)
+                  onEdit(Number(department.id))
                 }
               >
                 <Pencil className="mr-2 h-4 w-4" />

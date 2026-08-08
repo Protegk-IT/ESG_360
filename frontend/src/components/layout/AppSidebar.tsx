@@ -3,12 +3,17 @@ import {
   SidebarContent,
   SidebarHeader,
 } from "@/components/ui/sidebar";
+import { useAuth } from "@/context/AuthContext";
 
 import { navMain } from "./sidebar-data";
 import { NavMain } from "./NavMain";
 import { NavUser } from "./NavUser";
 
+
+
+
 export function AppSidebar() {
+  const { user } = useAuth();
   return (
     <Sidebar
       collapsible="icon"
@@ -27,7 +32,9 @@ export function AppSidebar() {
             <h1 className="truncate text-sm font-semibold text-slate-900">
               ESG<span className="text-blue-600">360</span>
             </h1>
-            <p className="truncate text-xs text-gray-500">Platform Admin</p>
+           <p className="truncate text-xs text-gray-500">
+              {user?.role_name ?? "User"}
+            </p>
           </div>
         </div>
       </SidebarHeader>
