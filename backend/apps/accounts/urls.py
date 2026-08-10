@@ -1,30 +1,52 @@
-from django.urls import path,include
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
+
 from .views import (
-    UserListCreateView,
-    UserDetailView,
-    MeView,
     LoginView,
     LogoutView,
+    CurrentUserView,
+    ChangePasswordView,
     PlatformDashboardView,
+    UserViewSet,
     RoleViewSet,
-    PermissionViewSet
+    PermissionViewSet,
+    CSRFTokenView,
 )
 
-app_name = 'accounts'
 router = DefaultRouter()
 
-router.register(r"roles",RoleViewSet,basename="roles")
+router.register(
+    "users",
+    UserViewSet,
+    basename="users",
+)
 
-router.register(r"permissions",PermissionViewSet,basename="permissions")
+router.register(
+    "roles",
+    RoleViewSet,
+    basename="roles",
+)
 
+router.register(
+    "permissions",
+    PermissionViewSet,
+    basename="permissions",
+)
 
 urlpatterns = [
-    path("users/", UserListCreateView.as_view()),
-    path("users/<int:pk>/", UserDetailView.as_view()),
-    path("me/", MeView.as_view()),
-    path("login/", LoginView.as_view(), name="login"),
-    path("logout/", LogoutView.as_view(), name="logout"),
-    path("dashboard/", PlatformDashboardView.as_view(),name="platform-dashboard"),
+    # Authentication
+    path("login/", LoginView.as_view()),
+    path("logout/", LogoutView.as_view()),
+    path("me/", CurrentUserView.as_view()),
+    path(
+        "change-password/",
+        ChangePasswordView.as_view(),
+    ),
+    path("csrf/", CSRFTokenView.as_view(), name="csrf-token"),
+
+     # Dashboard
+    path("dashboard/", PlatformDashboardView.as_view()),
+
+    # CRUD APIs
     path("", include(router.urls)),
 ]

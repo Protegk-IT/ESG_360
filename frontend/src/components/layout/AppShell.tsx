@@ -1,59 +1,137 @@
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+
+import { LogOut } from "lucide-react";
+
+import { toast } from "sonner";
+
+import { useAuth } from "@/context/AuthContext";
+import { logoutUser } from "@/services/authService";
+
 import { AppSidebar } from "./AppSidebar";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import api from "../../services/api";
+
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+
+import { Button } from "@/components/ui/button";
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface AppShellProps {
   title: string;
   description: string;
   children: ReactNode;
-  showLogoutButton?: boolean;
 }
 
 export default function AppShell({
   title,
   description,
   children,
-  showLogoutButton = false,
 }: AppShellProps) {
   const navigate = useNavigate();
+  const { logout } = useAuth();
+
+  const user = JSON.parse(localStorage.getItem("user") ?? "{}");
 
   const handleLogout = async () => {
     try {
-      await api.post("/accounts/logout/");
-    } catch {
-      // Keep navigation simple even if the logout call fails.
+      await logoutUser();
+      toast.success("Logout successful.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to contact server. Logging out locally.");
     } finally {
-      navigate("/");
+      logout();
+      navigate("/login", { replace: true });
     }
   };
 
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-16 items-center justify-between border-b bg-white px-6">
-          <div className="flex items-center gap-4">
-            <SidebarTrigger />
-            <div>
-              <h1 className="text-2xl font-semibold text-gray-900">{title}</h1>
-              <p className="text-sm text-gray-500">{description}</p>
+
+      <SidebarInset className="min-w-0 bg-[#F5F5FB]">
+        {/* ================= Header ================= */}
+        <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-[#8891A3] bg-white px-3 shadow-sm sm:h-16 sm:px-6">
+          {/* Left */}
+          <div className="flex min-w-0 items-center gap-2 sm:gap-4">
+            <SidebarTrigger className="shrink-0 rounded-lg hover:bg-[#ECE9FB]" />
+
+            <div className="min-w-0">
+              <h1 className="truncate text-base font-extrabold tracking-tight text-[#22243A] sm:text-2xl">
+                {title}
+              </h1>
+
+              <p className="mt-0.5 hidden truncate text-sm text-[#6B7280] sm:block">
+                {description}
+              </p>
             </div>
           </div>
 
-          {showLogoutButton && (
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="rounded-md bg-orange-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-orange-600"
-            >
-              Logout
-            </button>
-          )}
+          {/* Right */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                className="h-10 shrink-0 gap-2 rounded-lg px-2 hover:bg-[#EEF2FF] sm:gap-3 sm:px-3"
+              >
+                {/* Avatar */}
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#4A3FD6] text-xs font-semibold text-white">
+                  {(user?.full_name || user?.username || "Loading...")
+                    .charAt(0)
+                    .toUpperCase()}
+                </div>
+
+                {/* Name — hidden on narrow screens to save header space */}
+                <div className="hidden flex-col items-start leading-tight sm:flex">
+                  <span className="max-w-[140px] truncate text-sm font-semibold text-[#22243A]">
+                    {user?.full_name || user?.username || "Loading..."}
+                  </span>
+                </div>
+              </Button>
+            </DropdownMenuTrigger>
+
+           <DropdownMenuContent align="end" className="w-56">
+
+  {/* User Role */}
+  <div className="px-3 py-2">
+    <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+      Role
+    </p>
+
+    <p className="mt-1 truncate text-sm font-semibold text-[#4A3FD6]">
+      {user?.role_name ?? "User"}
+    </p>
+  </div>
+
+  <DropdownMenuSeparator />
+
+  {/* Logout */}
+  <DropdownMenuItem
+    onClick={handleLogout}
+    className="cursor-pointer text-red-600 focus:text-red-600"
+  >
+    <LogOut className="mr-2 h-4 w-4" />
+    Logout
+  </DropdownMenuItem>
+
+</DropdownMenuContent>
+          </DropdownMenu>
         </header>
 
-        <main className="min-h-[calc(100vh-64px)] bg-gray-100 p-6">{children}</main>
+        {/* ================= Page ================= */}
+       <main className="min-h-[calc(100vh-56px)] min-w-0 bg-[#F5F5FB] p-3 sm:min-h-[calc(100vh-64px)] sm:p-6">
+  {children}
+</main>
       </SidebarInset>
     </SidebarProvider>
   );

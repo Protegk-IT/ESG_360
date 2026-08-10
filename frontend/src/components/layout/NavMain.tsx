@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/sidebar";
 
 import type { LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export interface SidebarSubItem {
   title: string;
@@ -32,81 +33,137 @@ export interface SidebarItem {
   url?: string;
   items?: SidebarSubItem[];
 }
-export function NavMain({
-  items,
-}: {
-  items: any[];
-}) {
+
+interface NavMainProps {
+  items: SidebarItem[];
+}
+
+// Explicit JS-driven color states (no dependency on data-* variant support).
+const baseItem =
+  "h-11 w-full rounded-xl px-4 text-sm font-medium transition-colors duration-150";
+const restState = "text-gray-600 hover:bg-blue-50 hover:text-blue-700";
+const activeState = "bg-blue-50 text-blue-700 font-semibold";
+
+const baseSubItem =
+  "h-9 w-full rounded-lg px-3 text-sm transition-colors duration-150";
+const restSubState = "text-gray-500 hover:bg-blue-50 hover:text-blue-700";
+const activeSubState = "bg-blue-50 text-blue-700 font-medium";
+
+export function NavMain({ items }: NavMainProps) {
   const location = useLocation();
 
+  // Accordion-style: only one section open at a time.
+  // Swap to a Set<string> if you want multiple sections open together.
+  const [openTitle, setOpenTitle] = useState<string | null>(() => {
+    const match = items.find((item) =>
+      item.items?.some((sub) => sub.url === location.pathname)
+    );
+    return match?.title ?? null;
+  });
+
   return (
-    <SidebarGroup>
+    <SidebarGroup className="px-2 py-2">
       <SidebarGroupContent>
-        <SidebarMenu>
+        <SidebarMenu className="space-y-2">
           {items.map((item) => {
             if (!item.items) {
+              const isActive = location.pathname === item.url;
+
               return (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
-                    isActive={location.pathname === item.url}
+                    isActive={isActive}
+                    className={cn(baseItem, isActive ? activeState : restState)}
                   >
-                    <Link to={item.url}>
-                      <item.icon />
-                      <span>{item.title}</span>
+                    <Link to={item.url!} className="flex items-center gap-3">
+                      <item.icon className="h-[18px] w-[18px] shrink-0" />
+
+                      <span className="flex-1 truncate text-left">
+                        {item.title}
+                      </span>
+
+                      {isActive && (
+                        <ChevronRight className="h-4 w-4 shrink-0 text-blue-600" />
+                      )}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               );
             }
 
+            const isParentActive = item.items.some(
+              (sub) => location.pathname === sub.url
+            );
+            const isOpen = openTitle === item.title;
+
             return (
               <Collapsible
                 key={item.title}
-                defaultOpen
+                open={isOpen}
+                onOpenChange={(open) => setOpenTitle(open ? item.title : null)}
                 className="group/collapsible"
               >
                 <SidebarMenuItem>
-
                   <CollapsibleTrigger asChild>
+                    <SidebarMenuButton
+                      type="button"
+                      isActive={isParentActive}
+                      className={cn(
+                        baseItem,
+                        isParentActive || isOpen ? activeState : restState
+                      )}
+                    >
+                      <item.icon className="h-[18px] w-[18px] shrink-0" />
 
-                    <SidebarMenuButton>
+                      <span className="flex-1 truncate text-left">
+                        {item.title}
+                      </span>
 
-                      <item.icon />
-
-                      <span>{item.title}</span>
-
-                      <ChevronRight className="ml-auto transition-transform group-data-[collapsible=icon]:hidden group-data-[state=open]/collapsible:rotate-90" />
-
+                      <ChevronRight
+                        className={cn(
+                          "h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200",
+                          isOpen && "rotate-90"
+                        )}
+                      />
                     </SidebarMenuButton>
-
                   </CollapsibleTrigger>
 
-                  <CollapsibleContent className="group-data-[collapsible=icon]:hidden">
+                  {/* forceMount + explicit hidden/block guarantees this renders
+                      even if tailwindcss-animate isn't set up in the project */}
+                  <CollapsibleContent
+                    forceMount
+                    className={isOpen ? "block" : "hidden"}
+                  >
+                    {/* Tree structure: one vertical guide line down the group,
+                        each child gets a short horizontal branch to the line */}
+                    <SidebarMenuSub className="relative ml-5 mt-1 space-y-1 border-l border-gray-200 pl-4">
+                      {item.items.map((sub) => {
+                        const isSubActive = location.pathname === sub.url;
 
-                    <SidebarMenuSub>
-
-                      {item.items.map((sub: any) => (
-                        <SidebarMenuSubItem key={sub.title}>
-
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={
-                              location.pathname === sub.url
-                            }
-                          >
-                            <Link to={sub.url}>
-                              <span>{sub.title}</span>
-                            </Link>
-                          </SidebarMenuSubButton>
-
-                        </SidebarMenuSubItem>
-                      ))}
-
+                        return (
+                          <SidebarMenuSubItem key={sub.title} className="relative">
+                            <span
+                              aria-hidden="true"
+                              className="pointer-events-none absolute -left-4 top-1/2 h-px w-3 -translate-y-1/2 bg-gray-200"
+                            />
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={isSubActive}
+                              className={cn(
+                                baseSubItem,
+                                isSubActive ? activeSubState : restSubState
+                              )}
+                            >
+                              <Link to={sub.url}>
+                                <span>{sub.title}</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        );
+                      })}
                     </SidebarMenuSub>
-
                   </CollapsibleContent>
-
                 </SidebarMenuItem>
               </Collapsible>
             );
