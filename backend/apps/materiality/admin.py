@@ -1,3 +1,7 @@
 from django.contrib import admin
 
-# Register your models here.
+from apps.materiality.models import MaterialSubTopic, MaterialTopic, TopicCategory
+
+admin.site.register(TopicCategory)
+admin.site.register(MaterialTopic)
+admin.site.register(MaterialSubTopic)
