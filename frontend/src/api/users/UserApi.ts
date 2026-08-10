@@ -73,10 +73,6 @@ getRoles() {
 getOrganizationUnits() {
   return api.get("/org/nodes/");
 },
-
-getFacilities() {
-  return api.get("/organizations/facilities/");
-},
 };
 
 export default UserApi;
