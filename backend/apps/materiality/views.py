@@ -1,15 +1,20 @@
 from django.db import models
 
 from rest_framework import generics
+from rest_framework import permissions
 from rest_framework.permissions import IsAuthenticated
 
+from apps.accounts.viewsets import RBACModelViewSet
+
 from .models import (
+    MaterialityAssessment,
     TopicCategory,
     MaterialTopic,
     MaterialSubTopic,
 )
 
 from .serializers import (
+    MaterialityAssessmentSerializer,
     TopicCategorySerializer,
     MaterialTopicSerializer,
     MaterialSubTopicSerializer,
@@ -185,4 +190,64 @@ class MaterialSubTopicListCreateView(
             "topic__display_order",
             "display_order",
             "name",
+        )
+
+
+from rest_framework.exceptions import PermissionDenied
+
+from apps.accounts.viewsets import RBACModelViewSet
+
+from .models import MaterialityAssessment
+from .serializers import MaterialityAssessmentSerializer
+
+
+class MaterialityAssessmentViewSet(RBACModelViewSet):
+
+    serializer_class = MaterialityAssessmentSerializer
+
+    module_code = "materiality"
+
+    def get_user_company(self):
+        """
+        Get the company associated with the
+        authenticated user's primary department.
+        """
+
+        assignment = (
+            self.request.user.department_assignments
+            .select_related("department__company")
+            .filter(
+                is_primary=True,
+                department__is_active=True,
+                department__company__is_active=True,
+            )
+            .first()
+        )
+
+        if not assignment:
+            return None
+
+        return assignment.department.company
+
+    def get_queryset(self):
+        company = self.get_user_company()
+
+        if not company:
+            return MaterialityAssessment.objects.none()
+
+        return MaterialityAssessment.objects.filter(
+            company=company
+        )
+
+    def perform_create(self, serializer):
+        company = self.get_user_company()
+
+        if not company:
+            raise PermissionDenied(
+                "User is not associated with a company."
+            )
+
+        serializer.save(
+            company=company,
+            created_by=self.request.user,
         )
