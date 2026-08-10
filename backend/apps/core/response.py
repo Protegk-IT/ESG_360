@@ -31,11 +31,11 @@ def created_response(
 def no_content_response(
     message="Deleted successfully"
 ):
-    return Response(
-        {
-            "success": True,
-            "message": message,
-            "data": None
-        },
-        status=status.HTTP_204_NO_CONTENT
-    )
+    """Return a standards-compliant successful response with no body.
+
+    HTTP 204 responses cannot contain the message/data envelope. Keep the
+    optional argument for backwards-compatible call sites, but use
+    ``success_response`` with a 200 status when a client must receive a
+    confirmation message.
+    """
+    return Response(status=status.HTTP_204_NO_CONTENT)
