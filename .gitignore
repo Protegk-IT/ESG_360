@@ -50,14 +50,6 @@ Thumbs.db
 htmlcov/
 
 # =========================
-# Django Migrations
-# Ignore all migration files except __init__.py
-# =========================
-Migrations (Optional)
-**/migrations/*
-!**/migrations/__init__.py
-
-# =========================
 # PostgreSQL Dumps
 # =========================
 *.sql
