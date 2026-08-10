@@ -146,7 +146,7 @@ class Company(ActivityLogMixin, BaseModel):
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
-        
+
     def __str__(self):
         return f"{self.company_code} - {self.company_name}"
 
@@ -212,6 +212,9 @@ class Department(ActivityLogMixin, BaseModel):
                 "parent_department": "Parent department must belong to the same company."
             })
 
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.company.company_code} - {self.name}"
-    

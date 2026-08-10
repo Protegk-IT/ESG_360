@@ -1,6 +1,8 @@
 from django.contrib.auth.hashers import make_password
 from rest_framework import serializers
 
+from apps.core.serializers import ValidatedModelSerializer
+
 from .models import City, Company, Country, Department, State
 
 
@@ -22,7 +24,7 @@ class CitySerializer(serializers.ModelSerializer):
         fields = ['id', 'country', 'state', 'name', 'is_active']
 
 
-class CompanySerializer(serializers.ModelSerializer):
+class CompanySerializer(ValidatedModelSerializer):
     class Meta:
         model = Company
         fields = [
@@ -66,7 +68,7 @@ class CompanySerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
-class DepartmentSerializer(serializers.ModelSerializer):
+class DepartmentSerializer(ValidatedModelSerializer):
     company_name = serializers.CharField(source="company.company_name", read_only=True)
     parent_department_name = serializers.CharField(source="parent_department.name", read_only=True)
 

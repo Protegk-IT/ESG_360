@@ -1,9 +1,11 @@
 from rest_framework import serializers
 
+from apps.core.serializers import ValidatedModelSerializer
+
 from .models import ReportingPeriod
 
 
-class ReportingPeriodSerializer(serializers.ModelSerializer):
+class ReportingPeriodSerializer(ValidatedModelSerializer):
     class Meta:
         model = ReportingPeriod
         fields = [
