@@ -44,7 +44,7 @@ interface LoginForm {
       try {
  const response = await api.post("/accounts/login/", formData);
 
-setCsrfToken(response.data.csrf_token ?? "");
+setCsrfToken(response.data.csrfToken ?? "");
 
 login(response.data.user);
 

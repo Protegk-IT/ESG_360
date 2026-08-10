@@ -7,7 +7,7 @@ let csrfToken = "";
 let logoutHandler: (() => void) | null = null;
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api",
   withCredentials: true,
   headers: {
     "Content-Type": "application/json",
@@ -57,9 +57,13 @@ api.interceptors.response.use(
 
   (error) => {
     const status = error.response?.status;
+    const isAuthBootstrapRequest = ["/accounts/login/", "/accounts/me/"].includes(
+      error.config?.url ?? ""
+    );
 
     switch (status) {
       case 401:
+        if (isAuthBootstrapRequest) break;
         clearCsrfToken();
 
         // Clear auth state through AuthContext
@@ -75,6 +79,7 @@ api.interceptors.response.use(
         break;
 
       case 403:
+        if (isAuthBootstrapRequest) break;
         toast.error("You don't have permission to perform this action.");
         break;
 

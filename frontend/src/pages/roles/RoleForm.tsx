@@ -42,7 +42,7 @@ import axios from "axios";
 ========================================================== */
 
 interface Permission {
-  id: number;
+  id: string;
   name: string;
   code: string;
   description: string;
@@ -57,7 +57,7 @@ interface RoleFormData {
   role_name: string;
   role_code: string;
   description: string;
-  permissions: number[];
+  permissions: string[];
 }
 
 /* ==========================================================
@@ -203,7 +203,7 @@ useEffect(() => {
   ========================================================== */
 
   const togglePermission = (
-    permissionId: number
+    permissionId: string
   ) => {
     setFormData((prev) => ({
       ...prev,

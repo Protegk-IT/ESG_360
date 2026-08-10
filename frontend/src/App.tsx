@@ -36,7 +36,7 @@ export default function App() {
 
   <Route
     path="/accounts/dashboard/"
-    element={<PlatformAdminDashboard />}
+    element={<ProtectedRoute permission="dashboard.view"><PlatformAdminDashboard /></ProtectedRoute>}
   />
 
   {/* Company */}
@@ -164,7 +164,7 @@ export default function App() {
   <Route
     path="/accounts/roles/create"
     element={
-      <ProtectedRoute permission="role.create">
+      <ProtectedRoute permission="role.create" superuserOnly>
         <RoleForm />
       </ProtectedRoute>
     }
@@ -173,7 +173,7 @@ export default function App() {
   <Route
     path="/accounts/roles/:id/edit"
     element={
-      <ProtectedRoute permission="role.edit">
+      <ProtectedRoute permission="role.edit" superuserOnly>
         <RoleForm />
       </ProtectedRoute>
     }

@@ -17,10 +17,11 @@ class ActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ActivityLog.objects.select_related("user").order_by("-created_at")
     serializer_class = ActivityLogSerializer
     permission_classes = [IsAuthenticated,HasRolePermission]
+    permission_code = "activity_log.view"
 
 class NotificationListAPIView(generics.ListAPIView):
     serializer_class = NotificationSerializer
-    permission_classes = [IsAuthenticated,HasRolePermission]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return (

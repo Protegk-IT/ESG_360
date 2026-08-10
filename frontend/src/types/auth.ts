@@ -35,8 +35,6 @@ export interface AuthUser {
 
 // Login Response
 export interface LoginResponse {
-  success: boolean;
-  message: string;
-  csrf_token: string;
+  csrfToken: string;
   user: AuthUser;
 }

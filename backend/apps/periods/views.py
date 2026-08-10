@@ -23,7 +23,7 @@ class GenerateSubperiodsSerializer(serializers.Serializer):
 
 
 class ReportingPeriodViewSet(RBACModelViewSet):
-    module_code = "period"
+    module_code = "reporting_period"
     queryset = ReportingPeriod.objects.select_related(
         "parent",
         "locked_by",
@@ -149,4 +149,3 @@ class ReportingPeriodViewSet(RBACModelViewSet):
             {"detail": "Sub-periods generated successfully."},
             status=status.HTTP_201_CREATED,
         )
-

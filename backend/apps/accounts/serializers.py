@@ -65,6 +65,7 @@ class RoleSerializer(serializers.ModelSerializer):
         )
         read_only_fields = (
             "id",
+            "is_system",
             "created_at",
             "updated_at",
         )
@@ -414,17 +415,13 @@ class UserCreateUpdateSerializer(serializers.ModelSerializer):
         UserRoleAssignment.objects.update_or_create(
             user=user,
             role=role,
+            org_node=org_node,
+            module_code=None,
+            framework_code=None,
             defaults={
-                "org_node": org_node,
                 "is_active": True,
             },
         )
-
-        UserRoleAssignment.objects.filter(
-            user=user
-        ).exclude(
-            role=role
-        ).delete()
 
     def _sync_department(self, user, department):
         if not department:
@@ -444,12 +441,9 @@ class UserCreateUpdateSerializer(serializers.ModelSerializer):
                 "is_primary": True,
             },
         )
-
-        UserDepartment.objects.filter(
-            user=user
-        ).exclude(
+        UserDepartment.objects.filter(user=user).exclude(
             department=department
-        ).delete()
+        ).update(is_primary=False)
 
 class LoginSerializer(serializers.Serializer):
 
