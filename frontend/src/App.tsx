@@ -1,122 +1,222 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import Login from "./pages/auth/Login";
+import Orgtree from "./pages/organizations/OrgTree";
+import OrganizationForm from "./pages/organizations/OrganizationsForm";
+import Departmentlist from "./pages/departments/DepartmentList";
+import DepartmentsForm from "./pages/departments/DepartmentsForm";
+import ReportingPeriodForm from "./pages/reporting_periods/ReportingPeriodForm";
 
-function App() {
-  const [count, setCount] = useState(0)
+import { Toaster } from "@/components/ui/sonner";
 
+// User Management
+import UserList from "./pages/users/UserList";
+import UserCreate from "./pages/users/UserCreate";
+
+//Role Management
+import RoleList from "./pages/roles/RoleList";
+import RoleForm from "./pages/roles/RoleForm";
+
+// Platform Admin
+import PlatformAdminDashboard from "./pages/platform_admin/Dashboard";
+import CompanyList from "./pages/companies/CompanyView";
+import CompanyForm from "./pages/companies/CompanyForm";
+import ReportingPeriodList from "./pages/reporting_periods/ReportingPeriodList";
+
+export default function App() {
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <BrowserRouter>
+     <Routes>
+  <Route path="/" element={<Login />} />
 
-      <div className="ticks"></div>
+  <Route
+    path="/dashboard"
+    element={<Navigate to="/accounts/dashboard/" replace />}
+  />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+  <Route
+    path="/accounts/dashboard/"
+    element={<PlatformAdminDashboard />}
+  />
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+  {/* Company */}
+  <Route
+    path="/companies"
+    element={
+      <ProtectedRoute permission="company.view">
+        <CompanyList />
+      </ProtectedRoute>
+    }
+  />
+
+  <Route
+  path="/companies/profile/create"
+  element={
+    <ProtectedRoute permission="company.create">
+      <CompanyForm />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/company/profile/edit"
+  element={
+    <ProtectedRoute permission="company.edit">
+      <CompanyForm />
+    </ProtectedRoute>
+  }
+/>
+
+  {/* Organization */}
+  <Route
+    path="/organizations"
+    element={
+      <ProtectedRoute permission="organization.view">
+        <Orgtree />
+      </ProtectedRoute>
+    }
+  />
+   <Route
+    path="/org/nodes"
+    element={
+      <ProtectedRoute permission="organization.create">
+        <OrganizationForm />
+      </ProtectedRoute>
+    }
+  />
+
+  <Route
+    path="/org/nodes/:id/edit"
+    element={
+      <ProtectedRoute permission="organization.edit">
+        <OrganizationForm />
+      </ProtectedRoute>
+    }
+  />
+
+  {/* Department */}
+  <Route
+    path="/company/departments"
+    element={
+      <ProtectedRoute permission="department.view">
+        <Departmentlist />
+      </ProtectedRoute>
+    }
+  />
+
+   <Route
+    path="/company/departments/create"
+    element={
+      <ProtectedRoute permission="department.create">
+        <DepartmentsForm />
+      </ProtectedRoute>
+    }
+  />
+
+  <Route
+    path="/company/departments/:id/edit"
+    element={
+      <ProtectedRoute permission="department.edit">
+        <DepartmentsForm />
+      </ProtectedRoute>
+    }
+  />
+
+ 
+
+  {/* Users */}
+  <Route
+    path="/accounts/users"
+    element={
+      <ProtectedRoute permission="user.view">
+        <UserList />
+      </ProtectedRoute>
+    }
+  />
+
+  <Route
+  path="/accounts/users/edit/:id"
+  element={<ProtectedRoute permission="user.edit">
+        <UserCreate />
+      </ProtectedRoute>
+  }
+/>
+
+  <Route
+    path="/accounts/users/create"
+    element={
+      <ProtectedRoute permission="user.create">
+        <UserCreate />
+      </ProtectedRoute>
+    }
+  />
+
+  {/* Roles */}
+  <Route
+    path="/accounts/roles"
+    element={
+      <ProtectedRoute permission="role.view">
+        <RoleList />
+      </ProtectedRoute>
+    }
+  />
+
+  <Route
+    path="/accounts/roles/create"
+    element={
+      <ProtectedRoute permission="role.create">
+        <RoleForm />
+      </ProtectedRoute>
+    }
+  />
+
+  <Route
+    path="/accounts/roles/:id/edit"
+    element={
+      <ProtectedRoute permission="role.edit">
+        <RoleForm />
+      </ProtectedRoute>
+    }
+  />
+
+  {/* Reporting Periods */}
+
+  <Route
+    path="/periods"
+    element={
+      <ProtectedRoute permission="reporting_period.view">
+        <ReportingPeriodList />
+      </ProtectedRoute>
+    }
+  />
+
+  <Route
+    path="/periods/create"
+    element={
+      <ProtectedRoute permission="reporting_period.create">
+        <ReportingPeriodForm />
+      </ProtectedRoute>
+    }
+  />
+
+  <Route
+    path="/periods/:id/edit"
+    element={
+      <ProtectedRoute permission="reporting_period.edit">
+        <ReportingPeriodForm />
+      </ProtectedRoute>
+    }
+  />
+
+
+
+
+  <Route path="*" element={<Navigate to="/" replace />} />
+</Routes>
+<Toaster
+        position="top-center"
+        richColors
+      />
+    </BrowserRouter>
+  );
 }
-
-export default App
