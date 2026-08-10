@@ -171,3 +171,181 @@ class MaterialSubTopic(models.Model):
     class Meta:
         db_table = "material_subtopic"
         ordering = ["display_order", "name"]              
+
+
+# Materiality Assesment models 
+# 
+
+from django.conf import settings
+from django.db import models
+
+from apps.companies.models import Company
+from apps.core.models import BaseModel
+
+
+class MaterialityAssessment(BaseModel):
+
+    MODE_CHOICES = [
+        ("SINGLE", "Single Materiality"),
+        ("DOUBLE", "Double Materiality"),
+    ]
+
+    STATUS_CHOICES = [
+        ("DRAFT", "Draft"),
+        ("IN_PROGRESS", "In Progress"),
+        ("COMPLETED", "Completed"),
+        ("APPROVED", "Approved"),
+    ]
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="materiality_assessments",
+    )
+
+    name = models.CharField(
+        max_length=200,
+    )
+
+    financial_year = models.CharField(
+        max_length=20,
+    )
+
+    period_start = models.DateField()
+
+    period_end = models.DateField()
+
+    mode = models.CharField(
+        max_length=20,
+        choices=MODE_CHOICES,
+        default="DOUBLE",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="DRAFT",
+    )
+
+    primary_threshold = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+    )
+
+    secondary_threshold = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+    )
+
+    scale_min = models.IntegerField(
+        default=1,
+    )
+
+    scale_max = models.IntegerField(
+        default=5,
+    )
+
+    internal_blend_weight = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0.50,
+    )
+
+    is_locked = models.BooleanField(
+        default=False,
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_materiality_assessments",
+    )
+
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="approved_materiality_assessments",
+    )
+
+    approved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        db_table = "materiality_assessment"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.name} - {self.financial_year}"
+
+
+
+# Another model to store     
+class AssessmentTopic(BaseModel):
+
+    assessment = models.ForeignKey(
+        MaterialityAssessment,
+        on_delete=models.CASCADE,
+        related_name="assessment_topics",
+    )
+
+    subtopic = models.ForeignKey(
+        MaterialSubTopic,
+        on_delete=models.CASCADE,
+        related_name="assessment_topics",
+    )
+
+    is_included = models.BooleanField(
+        default=True,
+    )
+
+    display_order = models.IntegerField(
+        default=0,
+    )
+
+    primary_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+
+    secondary_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+
+    classification = models.CharField(
+        max_length=50,
+        blank=True,
+    )
+
+    is_override = models.BooleanField(
+        default=False,
+    )
+
+    override_reason = models.TextField(
+        blank=True,
+    )
+
+    override_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="materiality_topic_overrides",
+    )
+
+    class Meta:
+        db_table = "assessment_topic"
+        ordering = ["display_order"]
+
+    def __str__(self):
+        return f"{self.assessment} - {self.subtopic}"

@@ -140,3 +140,11 @@ class MaterialSubTopicSerializer(serializers.ModelSerializer):
             )
 
         return value.strip()
+
+
+
+# Serilizer for Materilaity Assesmnet  total 3 serilizers
+# CURD for Materiality Assesment but only C,R for  assesment topic
+# we have one special serilizer for bulk-read and create assesment material topic
+
+    
