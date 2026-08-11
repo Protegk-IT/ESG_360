@@ -5,8 +5,10 @@ from rest_framework import permissions
 from rest_framework.permissions import IsAuthenticated
 
 from apps.accounts.viewsets import RBACModelViewSet
+from apps.accounts import viewsets
 
 from .models import (
+    AssessmentTopic,
     MaterialityAssessment,
     TopicCategory,
     MaterialTopic,
@@ -14,6 +16,7 @@ from .models import (
 )
 
 from .serializers import (
+    
     MaterialityAssessmentSerializer,
     TopicCategorySerializer,
     MaterialTopicSerializer,
@@ -194,16 +197,16 @@ class MaterialSubTopicListCreateView(
 
 
 from rest_framework.exceptions import PermissionDenied
-
-from apps.accounts.viewsets import RBACModelViewSet
+from rest_framework import viewsets
 
 from .models import MaterialityAssessment
 from .serializers import MaterialityAssessmentSerializer
 
 
-class MaterialityAssessmentViewSet(RBACModelViewSet):
+class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
 
     serializer_class = MaterialityAssessmentSerializer
+    permission_classes = [IsAuthenticated]
 
     module_code = "materiality"
 
