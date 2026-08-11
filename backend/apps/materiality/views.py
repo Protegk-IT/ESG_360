@@ -6,6 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from apps.accounts.viewsets import RBACModelViewSet
 from apps.accounts import viewsets
+from apps.companies.models import Company
 
 from .models import (
     AssessmentTopic,
@@ -208,29 +209,10 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
     serializer_class = MaterialityAssessmentSerializer
     permission_classes = [IsAuthenticated]
 
-    module_code = "materiality"
-
     def get_user_company(self):
-        """
-        Get the company associated with the
-        authenticated user's primary department.
-        """
-
-        assignment = (
-            self.request.user.department_assignments
-            .select_related("department__company")
-            .filter(
-                is_primary=True,
-                department__is_active=True,
-                department__company__is_active=True,
-            )
-            .first()
-        )
-
-        if not assignment:
-            return None
-
-        return assignment.department.company
+        return Company.objects.filter(
+            is_active=True
+        ).first()
 
     def get_queryset(self):
         company = self.get_user_company()
@@ -247,7 +229,7 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
 
         if not company:
             raise PermissionDenied(
-                "User is not associated with a company."
+                "No active company is configured."
             )
 
         serializer.save(
