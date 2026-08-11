@@ -3,6 +3,7 @@ from django.db import models
 from rest_framework import generics
 from rest_framework import permissions
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import action
 
 from apps.accounts.viewsets import RBACModelViewSet
 from apps.accounts import viewsets
@@ -22,6 +23,7 @@ from .serializers import (
     TopicCategorySerializer,
     MaterialTopicSerializer,
     MaterialSubTopicSerializer,
+    SelectAssessmentTopicsSerializer
 )
 
 
@@ -202,10 +204,11 @@ from rest_framework import viewsets
 
 from .models import MaterialityAssessment
 from .serializers import MaterialityAssessmentSerializer
+from django.db import transaction
 
 
 class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
-
+    queryset = MaterialityAssessment.objects.all()
     serializer_class = MaterialityAssessmentSerializer
     permission_classes = [IsAuthenticated]
 
@@ -236,3 +239,56 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
             company=company,
             created_by=self.request.user,
         )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="select-topics",
+    )
+    @transaction.atomic
+    def select_topics(self, request, pk=None):
+
+        assessment = self.get_object()
+
+        serializer = SelectAssessmentTopicsSerializer(
+            data=request.data
+        )
+        serializer.is_valid(raise_exception=True)
+
+        subtopic_ids = serializer.validated_data["subtopic_ids"]
+
+        subtopics = MaterialSubTopic.objects.filter(
+            id__in=subtopic_ids,
+            is_active=True,
+        )
+
+        if subtopics.count() != len(set(subtopic_ids)):
+            raise ValidationError({
+                "subtopic_ids": "One or more subtopics are invalid."
+            })
+
+        # Remove previous selections
+        AssessmentTopic.objects.filter(
+            assessment=assessment
+        ).update(
+            is_included=False
+        )
+
+        # Create/update selected subtopics
+        for index, subtopic in enumerate(subtopics):
+            AssessmentTopic.objects.update_or_create(
+                assessment=assessment,
+                subtopic=subtopic,
+                defaults={
+                    "is_included": True,
+                    "display_order": index,
+                },
+            )
+
+        return Response(
+            {
+                "success": True,
+                "message": "Subtopics selected successfully.",
+            },
+            status=status.HTTP_200_OK,
+        )    

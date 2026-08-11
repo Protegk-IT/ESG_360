@@ -348,5 +348,11 @@ class AssessmentTopic(BaseModel):
         db_table = "assessment_topic"
         ordering = ["display_order"]
 
+        constraints = [
+            models.UniqueConstraint(
+                fields=["assessment", "subtopic"],
+                name="unique_assessment_subtopic",
+            ),
+        ]
     def __str__(self):
         return f"{self.assessment} - {self.subtopic}"
