@@ -186,7 +186,8 @@ from apps.core.models import BaseModel
 class MaterialityAssessment(BaseModel):
 
     MODE_CHOICES = [
-        ("SINGLE", "Single Materiality"),
+        ("IMPACT", "Impact Materiality"),
+        ("FINANCIAL", "Financial Materiality"),
         ("DOUBLE", "Double Materiality"),
     ]
 
