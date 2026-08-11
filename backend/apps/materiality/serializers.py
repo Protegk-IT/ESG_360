@@ -298,3 +298,31 @@ class SelectAssessmentTopicsSerializer(serializers.Serializer):
         child=serializers.UUIDField(),
         allow_empty=False,
     )
+
+class AssessmentTopicSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = AssessmentTopic
+
+        fields = [
+            "id",
+            "assessment",
+            "subtopic",
+            "is_included",
+            "display_order",
+            "primary_score",
+            "secondary_score",
+            "classification",
+            "is_override",
+            "override_reason",
+            "override_by",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "override_by",
+            "created_at",
+            "updated_at",
+        ]

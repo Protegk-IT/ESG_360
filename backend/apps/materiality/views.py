@@ -206,28 +206,73 @@ from .models import MaterialityAssessment
 from .serializers import MaterialityAssessmentSerializer
 from django.db import transaction
 
+from django.db import transaction
+
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from apps.companies.models import Company
+
+from .models import (
+    MaterialityAssessment,
+    AssessmentTopic,
+    MaterialSubTopic,
+)
+
+from .serializers import (
+    MaterialityAssessmentSerializer,
+    AssessmentTopicSerializer,
+    SelectAssessmentTopicsSerializer,
+)
+
 
 class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
+
     queryset = MaterialityAssessment.objects.all()
+
     serializer_class = MaterialityAssessmentSerializer
+
     permission_classes = [IsAuthenticated]
+
+    # =========================================================
+    # GET USER COMPANY
+    # =========================================================
 
     def get_user_company(self):
         return Company.objects.filter(
             is_active=True
         ).first()
 
+    # =========================================================
+    # QUERYSET
+    # =========================================================
+
     def get_queryset(self):
+
         company = self.get_user_company()
 
         if not company:
             return MaterialityAssessment.objects.none()
 
-        return MaterialityAssessment.objects.filter(
-            company=company
+        return (
+            MaterialityAssessment.objects
+            .filter(company=company)
+            .select_related(
+                "company",
+                "created_by",
+                "approved_by",
+            )
         )
 
+    # =========================================================
+    # CREATE ASSESSMENT
+    # =========================================================
+
     def perform_create(self, serializer):
+
         company = self.get_user_company()
 
         if not company:
@@ -239,6 +284,65 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
             company=company,
             created_by=self.request.user,
         )
+
+    # =========================================================
+    # GET SELECTED TOPICS FOR ASSESSMENT
+    #
+    # GET:
+    # /api/materiality/assessments/<id>/topics/
+    # =========================================================
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="topics",
+    )
+    def topics(self, request, pk=None):
+
+        assessment = self.get_object()
+
+        assessment_topics = (
+            AssessmentTopic.objects
+            .select_related(
+                "assessment",
+                "subtopic",
+                "subtopic__topic",
+                "subtopic__topic__category",
+            )
+            .filter(
+                assessment=assessment,
+                is_included=True,
+            )
+            .order_by(
+                "display_order",
+            )
+        )
+
+        serializer = AssessmentTopicSerializer(
+            assessment_topics,
+            many=True,
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
+
+    # =========================================================
+    # BULK SELECT SUBTOPICS
+    #
+    # POST:
+    # /api/materiality/assessments/<id>/select-topics/
+    #
+    # Body:
+    # {
+    #     "subtopic_ids": [
+    #         "uuid1",
+    #         "uuid2",
+    #         "uuid3"
+    #     ]
+    # }
+    # =========================================================
 
     @action(
         detail=True,
@@ -253,29 +357,65 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
         serializer = SelectAssessmentTopicsSerializer(
             data=request.data
         )
-        serializer.is_valid(raise_exception=True)
 
-        subtopic_ids = serializer.validated_data["subtopic_ids"]
-
-        subtopics = MaterialSubTopic.objects.filter(
-            id__in=subtopic_ids,
-            is_active=True,
+        serializer.is_valid(
+            raise_exception=True
         )
 
-        if subtopics.count() != len(set(subtopic_ids)):
+        subtopic_ids = (
+            serializer.validated_data[
+                "subtopic_ids"
+            ]
+        )
+
+        # =====================================================
+        # GET VALID ACTIVE SUBTOPICS
+        # =====================================================
+
+        subtopics = (
+            MaterialSubTopic.objects
+            .select_related(
+                "topic",
+                "topic__category",
+            )
+            .filter(
+                id__in=subtopic_ids,
+                is_active=True,
+            )
+        )
+
+        # =====================================================
+        # VALIDATE ALL SUBTOPICS
+        # =====================================================
+
+        if (
+            subtopics.count()
+            != len(set(subtopic_ids))
+        ):
             raise ValidationError({
-                "subtopic_ids": "One or more subtopics are invalid."
+                "subtopic_ids": (
+                    "One or more subtopics are invalid."
+                )
             })
 
-        # Remove previous selections
+        # =====================================================
+        # REMOVE PREVIOUS SELECTIONS
+        # =====================================================
+
         AssessmentTopic.objects.filter(
             assessment=assessment
         ).update(
             is_included=False
         )
 
-        # Create/update selected subtopics
-        for index, subtopic in enumerate(subtopics):
+        # =====================================================
+        # CREATE / UPDATE SELECTED SUBTOPICS
+        # =====================================================
+
+        for index, subtopic in enumerate(
+            subtopics
+        ):
+
             AssessmentTopic.objects.update_or_create(
                 assessment=assessment,
                 subtopic=subtopic,
@@ -285,10 +425,16 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
                 },
             )
 
+        # =====================================================
+        # RESPONSE
+        # =====================================================
+
         return Response(
             {
                 "success": True,
-                "message": "Subtopics selected successfully.",
+                "message": (
+                    "Subtopics selected successfully."
+                ),
             },
             status=status.HTTP_200_OK,
-        )    
+        )

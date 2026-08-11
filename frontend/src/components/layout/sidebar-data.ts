@@ -50,17 +50,19 @@ export const navMain = [
   },
 
   {
-    title: "Frameworks",
+    title: "Materiality Assessment",
     icon: FileText,
     items: [
       {
-        title: "BRSR",
-        url: "/frameworks/brsr",
+        title: "Topic Library",
+        url: "/materiality/topics",
       },
-      {
-        title: "GRI",
-        url: "/frameworks/gri",
+       {
+        title: "Assessment",
+        url: "/materiality/assessments",
       },
+    
+
     ],
   },
 

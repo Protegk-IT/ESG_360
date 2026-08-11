@@ -1,0 +1,430 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
+import AppShell from "@/components/layout/AppShell";
+import { DataTable } from "@/common/DataTable";
+import { DataTableToolbar } from "@/common/DataTableToolbar";
+import ConfirmDialog from "@/common/ConfirmDialog";
+
+import AssessmentApi from "@/api/materiality/AssessmentApi";
+import AssessmentCreateDialog from "./AssessmentCreateDialog";
+
+import type {
+  MaterialityAssessment,
+  AssessmentStatus,
+  AssessmentMode,
+} from "@/types/materiality/assessment";
+
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { type ColumnDef } from "@tanstack/react-table";
+import { Eye, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+/* ==========================================================
+   STATUS LABELS
+========================================================== */
+
+const STATUS_LABELS: Record<AssessmentStatus, string> = {
+  DRAFT: "Draft",
+  IN_PROGRESS: "In Progress",
+  COMPLETED: "Completed",
+  APPROVED: "Approved",
+};
+
+/* ==========================================================
+   MODE LABELS
+========================================================== */
+
+const MODE_LABELS: Record<AssessmentMode, string> = {
+  IMPACT: "Impact Materiality",
+  FINANCIAL:"Financial Materiality",
+  DOUBLE: "Double Materiality",
+};
+
+/* ==========================================================
+   STATUS BADGE
+========================================================== */
+
+const getStatusBadge = (status: AssessmentStatus) => {
+  switch (status) {
+    case "DRAFT":
+      return (
+        <Badge className="border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-100">
+          Draft
+        </Badge>
+      );
+
+    case "IN_PROGRESS":
+      return (
+        <Badge className="border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-50">
+          In Progress
+        </Badge>
+      );
+
+    case "COMPLETED":
+      return (
+        <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
+          Completed
+        </Badge>
+      );
+
+    case "APPROVED":
+      return (
+        <Badge className="border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-50">
+          Approved
+        </Badge>
+      );
+
+    default:
+      return <Badge variant="outline">{STATUS_LABELS[status]}</Badge>;
+  }
+};
+
+/* ==========================================================
+   TABLE COLUMNS
+========================================================== */
+
+const getAssessmentColumns = ({
+  onView,
+  onDelete,
+}: {
+  onView: (id: string) => void;
+  onEdit: (id: string) => void;
+  onDelete: (assessment: MaterialityAssessment) => void;
+}): ColumnDef<MaterialityAssessment>[] => [
+  /* ASSESSMENT NAME */
+  {
+    accessorKey: "name",
+    header: "Assessment",
+    cell: ({ row }) => {
+      const assessment = row.original;
+      return (
+        <button
+          type="button"
+          onClick={() => onView(assessment.id)}
+          className="text-left font-medium text-[#22243A] hover:text-[#4A3FD6] hover:underline"
+        >
+          {assessment.name}
+        </button>
+      );
+    },
+  },
+
+  /* FINANCIAL YEAR */
+  {
+    accessorKey: "financial_year",
+    header: "Financial Year",
+    cell: ({ row }) => (
+      <span className="text-sm text-[#4B5563]">{row.original.financial_year}</span>
+    ),
+  },
+
+  /* PERIOD */
+  {
+    id: "period",
+    header: "Period",
+    cell: ({ row }) => {
+      const assessment = row.original;
+      return (
+        <div className="text-sm">
+          <div className="text-[#22243A]">{assessment.period_start}</div>
+          <div className="text-xs text-[#6B7280]">to {assessment.period_end}</div>
+        </div>
+      );
+    },
+  },
+
+  /* MODE */
+  {
+    accessorKey: "mode",
+    header: "Mode",
+    cell: ({ row }) => (
+      <span className="text-sm text-[#4B5563]">{MODE_LABELS[row.original.mode]}</span>
+    ),
+  },
+
+  /* STATUS */
+  {
+    accessorKey: "status",
+    header: "Status",
+    cell: ({ row }) => getStatusBadge(row.original.status),
+  },
+
+  /* ACTIONS */
+  {
+    id: "actions",
+    header: "Actions",
+    cell: ({ row }) => {
+      const assessment = row.original;
+      return (
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            title="View assessment"
+            onClick={() => onView(assessment.id)}
+          >
+            <Eye className="h-4 w-4" />
+            <span className="sr-only">View assessment</span>
+          </Button>
+
+         
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            title="Delete assessment"
+            onClick={() => onDelete(assessment)}
+          >
+            <Trash2 className="h-4 w-4 text-red-500" />
+            <span className="sr-only">Delete assessment</span>
+          </Button>
+        </div>
+      );
+    },
+  },
+];
+
+/* ==========================================================
+   COMPONENT
+========================================================== */
+
+export default function AssessmentList() {
+  const navigate = useNavigate();
+
+  /* --------------------------- navigation --------------------------- */
+
+  const handleAssessmentClick = useCallback(
+    (id: string) => {
+      navigate(`/materiality/assessments/${id}/select-topics/`);
+    },
+    [navigate]
+  );
+
+  const handleEdit = useCallback(
+    (id: string) => {
+      navigate(`/materiality/assessments/${id}/edit`);
+    },
+    [navigate]
+  );
+
+  /* --------------------------- states --------------------------- */
+
+  const [assessments, setAssessments] = useState<MaterialityAssessment[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [modeFilter, setModeFilter] = useState("All");
+
+  const [selectedAssessment, setSelectedAssessment] =
+    useState<MaterialityAssessment | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+
+  /* --------------------------- load assessments --------------------------- */
+
+  const loadAssessments = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await AssessmentApi.getAll();
+      setAssessments(response.data);
+    } catch (error) {
+      console.error("Failed to load materiality assessments:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAssessments();
+  }, [loadAssessments]);
+
+  /* --------------------------- filter assessments --------------------------- */
+
+  const filteredAssessments = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+
+    return assessments.filter((assessment) => {
+      const matchesSearch =
+        !keyword ||
+        assessment.name.toLowerCase().includes(keyword) ||
+        assessment.financial_year.toLowerCase().includes(keyword);
+
+      const matchesStatus = statusFilter === "All" || assessment.status === statusFilter;
+      const matchesMode = modeFilter === "All" || assessment.mode === modeFilter;
+
+      return matchesSearch && matchesStatus && matchesMode;
+    });
+  }, [assessments, search, statusFilter, modeFilter]);
+
+  /* --------------------------- delete --------------------------- */
+
+  const handleDelete = (assessment: MaterialityAssessment) => {
+    setSelectedAssessment(assessment);
+  };
+
+  const confirmDelete = async () => {
+    if (!selectedAssessment) return;
+
+    try {
+      setDeleting(true);
+      await AssessmentApi.delete(selectedAssessment.id);
+      await loadAssessments();
+      setSelectedAssessment(null);
+    } catch (error) {
+      console.error("Failed to delete assessment:", error);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  /* --------------------------- table columns --------------------------- */
+
+  const columns = useMemo(
+    () =>
+      getAssessmentColumns({
+        onView: handleAssessmentClick,
+        onEdit: handleEdit,
+        onDelete: handleDelete,
+      }),
+    [handleAssessmentClick, handleEdit]
+  );
+
+  /* --------------------------- export csv --------------------------- */
+
+  const exportAssessments = useCallback(() => {
+    const header = [
+      "Assessment",
+      "Financial Year",
+      "Period Start",
+      "Period End",
+      "Mode",
+      "Status",
+      "Locked",
+    ];
+
+    const rows = filteredAssessments.map((assessment) => [
+      assessment.name,
+      assessment.financial_year,
+      assessment.period_start,
+      assessment.period_end,
+      MODE_LABELS[assessment.mode],
+      STATUS_LABELS[assessment.status],
+      assessment.is_locked ? "Yes" : "No",
+    ]);
+
+    const csv = [header, ...rows]
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "materiality-assessments.csv";
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+
+    URL.revokeObjectURL(url);
+  }, [filteredAssessments]);
+
+  /* --------------------------- return --------------------------- */
+
+  return (
+    <AppShell
+      title="Materiality Assessments"
+      description="Create and manage materiality assessments for your organization."
+    >
+      <div className="space-y-6">
+        {/* PAGE HEADER */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-[#22243A]">
+              Materiality Assessments
+            </h1>
+            <p className="mt-1 text-sm text-[#6B7280]">
+              Manage your materiality assessments and continue to topic selection.
+            </p>
+          </div>
+        </div>
+
+        {/* DATA TABLE */}
+        <DataTable
+          columns={columns}
+          data={filteredAssessments}
+          loading={loading}
+          emptyMessage="No materiality assessments found."
+          toolbar={
+            <DataTableToolbar
+              search={search}
+              onSearchChange={setSearch}
+              addLabel="Create Assessment"
+              onAdd={() => setCreateDialogOpen(true)}
+              onExport={exportAssessments}
+            >
+              {/* MODE FILTER */}
+              <Select value={modeFilter} onValueChange={setModeFilter}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Assessment Mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All Modes</SelectItem>
+                  <SelectItem value="SINGLE">Single Materiality</SelectItem>
+                  <SelectItem value="DOUBLE">Double Materiality</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* STATUS FILTER */}
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All Status</SelectItem>
+                  <SelectItem value="DRAFT">Draft</SelectItem>
+                  <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                  <SelectItem value="COMPLETED">Completed</SelectItem>
+                  <SelectItem value="APPROVED">Approved</SelectItem>
+                </SelectContent>
+              </Select>
+            </DataTableToolbar>
+          }
+        />
+
+        {/* CREATE ASSESSMENT DIALOG */}
+        <AssessmentCreateDialog
+          open={createDialogOpen}
+          onClose={() => setCreateDialogOpen(false)}
+          onSaved={loadAssessments}
+        />
+
+        {/* DELETE CONFIRMATION */}
+        <ConfirmDialog
+          open={selectedAssessment !== null}
+          title="Delete Assessment"
+          description={
+            selectedAssessment
+              ? `Are you sure you want to delete "${selectedAssessment.name}"? This action cannot be undone.`
+              : ""
+          }
+          confirmText="Delete Assessment"
+          loading={deleting}
+          onConfirm={confirmDelete}
+          onCancel={() => setSelectedAssessment(null)}
+        />
+      </div>
+    </AppShell>
+  );
+}

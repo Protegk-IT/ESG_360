@@ -23,6 +23,13 @@ import CompanyList from "./pages/companies/CompanyView";
 import CompanyForm from "./pages/companies/CompanyForm";
 import ReportingPeriodList from "./pages/reporting_periods/ReportingPeriodList";
 
+
+
+//Materiality
+import TopicLibrary from "./pages/materiality/TopicLibrary";
+import AssessmentList from "./pages/materiality/AssessmentList";
+import AssessmentDetail from "./pages/materiality/AssessmentDetail";
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -207,6 +214,36 @@ export default function App() {
       </ProtectedRoute>
     }
   />
+
+  {/*Materiality */}
+
+<Route
+    path="/materiality/topics"
+    element={
+      <ProtectedRoute permission="reporting_period.edit">
+        <TopicLibrary />
+      </ProtectedRoute>
+    }
+  />
+
+  <Route
+  path="/materiality/assessments"
+  element={
+    <ProtectedRoute permission="materiality.assessment.view">
+      <AssessmentList />
+    </ProtectedRoute>
+  }
+/>
+
+ <Route
+  path="/materiality/assessments/:id/select-topics"
+  element={
+    <ProtectedRoute permission="materiality.assessment.view">
+      <AssessmentDetail />
+    </ProtectedRoute>
+  }
+/>
+
 
 
 
