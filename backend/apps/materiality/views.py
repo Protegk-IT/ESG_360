@@ -12,6 +12,8 @@ from apps.companies.models import Company
 from .models import (
     AssessmentTopic,
     MaterialityAssessment,
+    Stakeholder,
+    StakeholderGroup,
     TopicCategory,
     MaterialTopic,
     MaterialSubTopic,
@@ -20,6 +22,8 @@ from .models import (
 from .serializers import (
     
     MaterialityAssessmentSerializer,
+    StakeholderGroupSerializer,
+    StakeholderSerializer,
     TopicCategorySerializer,
     MaterialTopicSerializer,
     MaterialSubTopicSerializer,
@@ -237,6 +241,21 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
 
     permission_classes = [IsAuthenticated]
 
+    def get_serializer_class(self):
+        if self.action == "groups":
+            return StakeholderGroupSerializer
+
+        if self.action == "stakeholders":
+            return StakeholderSerializer
+
+        if self.action == "topics":
+            return AssessmentTopicSerializer
+
+        if self.action == "select_topics":
+            return SelectAssessmentTopicsSerializer
+
+        return MaterialityAssessmentSerializer
+
     # =========================================================
     # GET USER COMPANY
     # =========================================================
@@ -438,3 +457,283 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
             },
             status=status.HTTP_200_OK,
         )
+    
+
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        url_path="groups",
+    )
+    def groups(self, request, pk=None):
+        assessment = self.get_object()
+
+        if request.method == "GET":
+            groups = StakeholderGroup.objects.filter(
+                assessment=assessment
+            )
+
+            serializer = StakeholderGroupSerializer(
+                groups,
+                many=True,
+            )
+
+            return Response(serializer.data)
+
+        serializer = StakeholderGroupSerializer(
+            data=request.data
+        )
+
+        serializer.is_valid(raise_exception=True)
+
+        serializer.save(
+            assessment=assessment
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+    detail=True,
+    methods=["get", "post"],
+    url_path="stakeholders",
+)
+    def stakeholders(self, request, pk=None):
+
+        assessment = self.get_object()
+
+        if request.method == "GET":
+
+            stakeholders = Stakeholder.objects.filter(
+                group__assessment=assessment
+            ).select_related("group")
+
+            serializer = StakeholderSerializer(
+                stakeholders,
+                many=True,
+            )
+
+            return Response(serializer.data)
+
+        serializer = StakeholderSerializer(
+            data=request.data,
+            context={
+                "assessment": assessment,
+            },
+        )
+
+        serializer.is_valid(raise_exception=True)
+
+        serializer.save()
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED,
+    )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="stakeholders/import",
+    )
+    def import_stakeholders(self, request, pk=None):
+
+        # -----------------------------------------
+        # 1. Get assessment
+        # -----------------------------------------
+
+        assessment = self.get_object()
+
+        # -----------------------------------------
+        # 2. Get uploaded file
+        # -----------------------------------------
+
+        uploaded_file = request.FILES.get("file")
+
+        if not uploaded_file:
+            raise ValidationError({
+                "file": "Please upload a CSV file."
+            })
+
+        if not uploaded_file.name.lower().endswith(".csv"):
+            raise ValidationError({
+                "file": "Only CSV files are supported."
+            })
+
+        # -----------------------------------------
+        # 3. Read CSV
+        # -----------------------------------------
+
+        try:
+            decoded_file = uploaded_file.read().decode(
+                "utf-8-sig"
+            )
+        except UnicodeDecodeError:
+            raise ValidationError({
+                "file": "CSV file must be UTF-8 encoded."
+            })
+
+        reader = csv.DictReader(
+            io.StringIO(decoded_file)
+        )
+
+        if not reader.fieldnames:
+            raise ValidationError({
+                "file": "CSV file must contain headers."
+            })
+
+        # -----------------------------------------
+        # 4. Validate required columns
+        # -----------------------------------------
+
+        required_columns = {
+            "group",
+            "name",
+            "email",
+        }
+
+        csv_columns = {
+            column.strip().lower()
+            for column in reader.fieldnames
+            if column
+        }
+
+        missing_columns = required_columns - csv_columns
+
+        if missing_columns:
+            raise ValidationError({
+                "file": (
+                    "Missing required columns: "
+                    + ", ".join(sorted(missing_columns))
+                )
+            })
+
+        rows = list(reader)
+
+        if not rows:
+            raise ValidationError({
+                "file": "CSV file does not contain any data."
+            })
+
+        # -----------------------------------------
+        # 5. Create stakeholders
+        # -----------------------------------------
+
+        created_stakeholders = []
+
+        with transaction.atomic():
+
+            for row_number, row in enumerate(
+                rows,
+                start=2,
+            ):
+
+                # Normalize column names
+                row = {
+                    key.strip().lower(): value
+                    for key, value in row.items()
+                    if key
+                }
+
+                group_id = row.get("group")
+                name = row.get("name")
+                email = row.get("email")
+
+                organisation = (
+                    row.get("organisation") or ""
+                )
+
+                designation = (
+                    row.get("designation") or ""
+                )
+
+                # ---------------------------------
+                # Basic row validation
+                # ---------------------------------
+
+                if not group_id:
+                    raise ValidationError({
+                        "row": row_number,
+                        "group": "Group is required."
+                    })
+
+                if not name:
+                    raise ValidationError({
+                        "row": row_number,
+                        "name": "Name is required."
+                    })
+
+                if not email:
+                    raise ValidationError({
+                        "row": row_number,
+                        "email": "Email is required."
+                    })
+
+                email = str(email).strip()
+
+                # ---------------------------------
+                # Duplicate check
+                # ---------------------------------
+
+                if Stakeholder.objects.filter(
+                    group_id=group_id,
+                    email__iexact=email,
+                ).exists():
+
+                    raise ValidationError({
+                        "row": row_number,
+                        "email": (
+                            "A stakeholder with this email "
+                            "already exists in this group."
+                        )
+                    })
+
+                # ---------------------------------
+                # Serializer validation
+                # ---------------------------------
+
+                serializer = StakeholderSerializer(
+                    data={
+                        "group": group_id,
+                        "name": str(name).strip(),
+                        "email": email,
+                        "organisation": str(
+                            organisation
+                        ).strip(),
+                        "designation": str(
+                            designation
+                        ).strip(),
+                    },
+                    context={
+                        "assessment": assessment,
+                    },
+                )
+
+                if not serializer.is_valid():
+
+                    raise ValidationError({
+                        "row": row_number,
+                        "errors": serializer.errors,
+                    })
+
+                stakeholder = serializer.save()
+
+                created_stakeholders.append(
+                    stakeholder
+                )
+
+        # -----------------------------------------
+        # 6. Response
+        # -----------------------------------------
+
+        return Response(
+            {
+                "message": (
+                    f"{len(created_stakeholders)} "
+                    "stakeholders imported successfully."
+                ),
+                "count": len(created_stakeholders),
+            },
+            status=status.HTTP_201_CREATED,
+        )      

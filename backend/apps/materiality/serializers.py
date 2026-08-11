@@ -3,6 +3,8 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
+    Stakeholder,
+    StakeholderGroup,
     TopicCategory,
     MaterialTopic,
     MaterialSubTopic,
@@ -326,3 +328,77 @@ class AssessmentTopicSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+class StakeholderGroupSerializer(serializers.ModelSerializer):
+
+    assessment = serializers.PrimaryKeyRelatedField(
+        read_only=True
+    )
+
+    class Meta:
+        model = StakeholderGroup
+
+        fields = [
+            "id",
+            "assessment",
+            "name",
+            "description",
+            "weight",
+            "is_internal",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "assessment",
+            "created_at",
+        ]
+
+    def validate_weight(self, value):
+        if value < 0:
+            raise serializers.ValidationError(
+                "Weight cannot be negative."
+            )
+
+        if value > 100:
+            raise serializers.ValidationError(
+                "Weight cannot be greater than 100."
+            )
+
+        return value
+    
+
+class StakeholderSerializer(serializers.ModelSerializer):
+
+    group = serializers.PrimaryKeyRelatedField(
+        queryset=StakeholderGroup.objects.all()
+    )
+
+    class Meta:
+        model = Stakeholder
+
+        fields = [
+            "id",
+            "group",
+            "name",
+            "email",
+            "organisation",
+            "designation",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "created_at",
+        ]
+
+    def validate_group(self, group):
+        assessment = self.context.get("assessment")
+
+        if assessment and group.assessment_id != assessment.id:
+            raise serializers.ValidationError(
+                "Stakeholder group does not belong to this assessment."
+            )
+
+        return group    

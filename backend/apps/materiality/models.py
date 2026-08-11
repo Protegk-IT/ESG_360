@@ -4,7 +4,7 @@ from django.db import models
 
 
 from apps.companies.models import Company
-
+from django.core.exceptions import ValidationError
 
 class TopicCategory(models.Model):
 
@@ -356,3 +356,103 @@ class AssessmentTopic(BaseModel):
         ]
     def __str__(self):
         return f"{self.assessment} - {self.subtopic}"
+    
+
+
+
+### STAKEHOLDER GROUP 
+class StakeholderGroup(BaseModel):
+
+    assessment = models.ForeignKey(
+        MaterialityAssessment,
+        on_delete=models.CASCADE,
+        related_name="stakeholder_groups",
+    )
+
+    name = models.CharField(
+        max_length=255,
+    )
+
+    description = models.TextField(
+        blank=True,
+    )
+
+    weight = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+    )
+
+    is_internal = models.BooleanField(
+        default=False,
+    )
+
+    def clean(self):
+        """
+        Validate the individual stakeholder group's weight.
+
+        This validates:
+        - weight cannot be negative
+        - weight cannot exceed 100
+        """
+
+        if self.weight < 0:
+            raise ValidationError({
+                "weight": "Weight cannot be negative."
+            })
+
+        if self.weight > 100:
+            raise ValidationError({
+                "weight": "Weight cannot be greater than 100."
+            })
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        db_table = "stakeholder_group"
+        ordering = ["name"]
+
+
+# ============================================================
+# PHASE 3
+# STAKEHOLDER
+# ============================================================
+
+class Stakeholder(BaseModel):
+
+    group = models.ForeignKey(
+        StakeholderGroup,
+        on_delete=models.CASCADE,
+        related_name="stakeholders",
+    )
+
+    name = models.CharField(
+        max_length=255,
+    )
+
+    email = models.EmailField()
+
+    organisation = models.CharField(
+        max_length=255,
+        blank=True,
+    )
+
+    designation = models.CharField(
+        max_length=255,
+        blank=True,
+    )
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        db_table = "stakeholder"
+        ordering = ["name"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["group", "email"],
+                name="unique_stakeholder_email_per_group",
+            ),
+        ]
