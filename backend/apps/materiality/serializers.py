@@ -309,14 +309,30 @@ class SelectAssessmentTopicsSerializer(serializers.Serializer):
     )
 
 class AssessmentTopicSerializer(serializers.ModelSerializer):
+    subtopic_name = serializers.CharField(
+        source="subtopic.name",
+        read_only=True,
+    )
+
+    topic_name = serializers.CharField(
+        source="subtopic.topic.name",
+        read_only=True,
+    )
+
+    category_name = serializers.CharField(
+        source="subtopic.topic.category.name",
+        read_only=True,
+    )
 
     class Meta:
         model = AssessmentTopic
-
         fields = [
             "id",
             "assessment",
             "subtopic",
+            "subtopic_name",
+            "topic_name",
+            "category_name",
             "is_included",
             "display_order",
             "primary_score",
@@ -518,9 +534,18 @@ class ScaleOptionSerializer(serializers.ModelSerializer):
 
     
 class SurveyQuestionSerializer(serializers.ModelSerializer):
-
     survey = serializers.PrimaryKeyRelatedField(
         read_only=True
+    )
+
+    assessment_topic_name = serializers.CharField(
+        source="assessment_topic.subtopic.name",
+        read_only=True,
+    )
+
+    scale_name = serializers.CharField(
+        source="scale.name",
+        read_only=True,
     )
 
     class Meta:
@@ -530,7 +555,9 @@ class SurveyQuestionSerializer(serializers.ModelSerializer):
             "id",
             "survey",
             "assessment_topic",
+            "assessment_topic_name",
             "scale",
+            "scale_name",
             "dimension",
             "question_text",
             "help_text",
@@ -542,25 +569,22 @@ class SurveyQuestionSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "survey",
+            "assessment_topic_name",
+            "scale_name",
             "created_at",
         ]
 
     def validate(self, attrs):
         survey = self.context.get("survey")
 
-        assessment_topic = attrs.get(
-            "assessment_topic"
-        )
-
+        assessment_topic = attrs.get("assessment_topic")
         scale = attrs.get("scale")
 
         # ---------------------------------------------
         # AssessmentTopic must belong to this survey's
         # assessment.
         # ---------------------------------------------
-
         if survey and assessment_topic:
-
             if (
                 assessment_topic.assessment_id
                 != survey.assessment_id
@@ -579,9 +603,7 @@ class SurveyQuestionSerializer(serializers.ModelSerializer):
         # OR
         # 2. A scale belonging to this assessment.
         # ---------------------------------------------
-
         if survey and scale:
-
             if (
                 scale.assessment_id is not None
                 and scale.assessment_id
@@ -603,7 +625,7 @@ class SurveyQuestionSerializer(serializers.ModelSerializer):
                     )
                 })
 
-        return attrs   
+        return attrs  
 
 
 class SurveyInvitationSerializer(serializers.ModelSerializer):
