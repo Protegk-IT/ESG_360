@@ -261,6 +261,21 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
 
         if self.action == "select_topics":
             return SelectAssessmentTopicsSerializer
+        
+        if self.action == "survey":
+            return SurveySerializer
+        
+        if self.action == "scales":
+            return ScaleDefinitionSerializer
+        
+        if self.action == "scale_options":
+            return ScaleOptionSerializer
+        
+        if self.action == "survey_questions":
+            return SurveyQuestionSerializer
+        
+        if self.action == "generate_survey":
+            return SurveySerializer
 
         return MaterialityAssessmentSerializer
 
@@ -869,8 +884,17 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
         )
 
 
-    @action(detail=True, methods=["get", "post"], url_path="survey/questions",)
-    def survey_questions(self,request,pk=None,):
+##### survey questions endpoint #######
+    @action(
+        detail=True,
+        methods=["get","patch"],
+        url_path="survey/questions",
+    )
+    def survey_questions(
+        self,
+        request,
+        pk=None,
+    ):
 
         assessment = self.get_object()
 
@@ -883,45 +907,70 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
                 "Survey has not been created for this assessment."
             )
 
-        if request.method == "GET":
-
-            questions = (
-                SurveyQuestion.objects
-                .filter(survey=survey)
-                .select_related(
-                    "assessment_topic",
-                    "scale",
-                )
-                .order_by("display_order")
+        questions = (
+            SurveyQuestion.objects
+            .filter(survey=survey)
+            .select_related(
+                "assessment_topic",
+                "scale",
             )
+            .order_by("display_order")
+        )
+
+        # -----------------------------------------
+        # GET
+        # -----------------------------------------
+
+        if request.method == "GET":
 
             serializer = SurveyQuestionSerializer(
                 questions,
                 many=True,
             )
 
-            return Response(serializer.data)
+            return Response(
+                serializer.data,
+                status=status.HTTP_200_OK,
+            )
+
+        # -----------------------------------------
+        # PATCH
+        # -----------------------------------------
+
+        question_id = request.data.get("id")
+
+        if not question_id:
+            raise ValidationError({
+                "id": "Question id is required."
+            })
+
+        question = questions.filter(
+            id=question_id
+        ).first()
+
+        if not question:
+            raise ValidationError({
+                "id": "Question does not belong to this survey."
+            })
 
         serializer = SurveyQuestionSerializer(
+            question,
             data=request.data,
-            context={
-                "survey": survey,
-            },
+            partial=True,
         )
 
         serializer.is_valid(
             raise_exception=True
         )
 
-        question = serializer.save(
-            survey=survey
-        )
+        serializer.save()
 
         return Response(
-            SurveyQuestionSerializer(question).data,
-            status=status.HTTP_201_CREATED,
+            serializer.data,
+            status=status.HTTP_200_OK,
         )
 
+#### generate survey endpoint #######
     @action(
         detail=True,
         methods=["post"],
@@ -1079,7 +1128,7 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
         # 7. GENERATE QUESTIONS
         # =========================================================
 
-        company_name = assessment.company.name
+        company_name = assessment.company.company_name if assessment.company else "the company"
 
         questions = []
 
