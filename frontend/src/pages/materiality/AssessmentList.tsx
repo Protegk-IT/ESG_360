@@ -9,6 +9,10 @@ import ConfirmDialog from "@/common/ConfirmDialog";
 import AssessmentApi from "@/api/materiality/AssessmentApi";
 import AssessmentCreateDialog from "./AssessmentCreateDialog";
 
+import {
+  UsersRound,
+} from "lucide-react";
+
 import type {
   MaterialityAssessment,
   AssessmentStatus,
@@ -44,7 +48,7 @@ const STATUS_LABELS: Record<AssessmentStatus, string> = {
 
 const MODE_LABELS: Record<AssessmentMode, string> = {
   IMPACT: "Impact Materiality",
-  FINANCIAL:"Financial Materiality",
+  FINANCIAL: "Financial Materiality",
   DOUBLE: "Double Materiality",
 };
 
@@ -94,10 +98,12 @@ const getStatusBadge = (status: AssessmentStatus) => {
 const getAssessmentColumns = ({
   onView,
   onDelete,
+  onAddStakeholderGroup,
 }: {
   onView: (id: string) => void;
   onEdit: (id: string) => void;
   onDelete: (assessment: MaterialityAssessment) => void;
+  onAddStakeholderGroup: (id: string) => void;
 }): ColumnDef<MaterialityAssessment>[] => [
   /* ASSESSMENT NAME */
   {
@@ -163,8 +169,10 @@ const getAssessmentColumns = ({
     header: "Actions",
     cell: ({ row }) => {
       const assessment = row.original;
+
       return (
         <div className="flex items-center gap-1">
+          {/* View Assessment */}
           <Button
             type="button"
             variant="ghost"
@@ -176,7 +184,19 @@ const getAssessmentColumns = ({
             <span className="sr-only">View assessment</span>
           </Button>
 
-         
+          {/* Add Stakeholder Group */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            title="Add stakeholder group"
+            onClick={() => onAddStakeholderGroup(assessment.id)}
+          >
+            <UsersRound className="h-4 w-4" />
+            <span className="sr-only">Add stakeholder group</span>
+          </Button>
+
+          {/* Delete Assessment */}
           <Button
             type="button"
             variant="ghost"
@@ -269,9 +289,16 @@ export default function AssessmentList() {
 
   /* --------------------------- delete --------------------------- */
 
-  const handleDelete = (assessment: MaterialityAssessment) => {
+  const handleDelete = useCallback((assessment: MaterialityAssessment) => {
     setSelectedAssessment(assessment);
-  };
+  }, []);
+
+  const handleAddStakeholderGroup = useCallback(
+    (id: string) => {
+      navigate(`/materiality/assessments/${id}/stakeholders/`);
+    },
+    [navigate]
+  );
 
   const confirmDelete = async () => {
     if (!selectedAssessment) return;
@@ -296,8 +323,9 @@ export default function AssessmentList() {
         onView: handleAssessmentClick,
         onEdit: handleEdit,
         onDelete: handleDelete,
+        onAddStakeholderGroup: handleAddStakeholderGroup,
       }),
-    [handleAssessmentClick, handleEdit]
+    [handleAssessmentClick, handleEdit, handleDelete, handleAddStakeholderGroup]
   );
 
   /* --------------------------- export csv --------------------------- */
@@ -348,18 +376,6 @@ export default function AssessmentList() {
       description="Create and manage materiality assessments for your organization."
     >
       <div className="space-y-6">
-        {/* PAGE HEADER */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-[#22243A]">
-              Materiality Assessments
-            </h1>
-            <p className="mt-1 text-sm text-[#6B7280]">
-              Manage your materiality assessments and continue to topic selection.
-            </p>
-          </div>
-        </div>
-
         {/* DATA TABLE */}
         <DataTable
           columns={columns}
@@ -381,7 +397,8 @@ export default function AssessmentList() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All">All Modes</SelectItem>
-                  <SelectItem value="SINGLE">Single Materiality</SelectItem>
+                  <SelectItem value="IMPACT">Impact Materiality</SelectItem>
+                  <SelectItem value="FINANCIAL">Financial Materiality</SelectItem>
                   <SelectItem value="DOUBLE">Double Materiality</SelectItem>
                 </SelectContent>
               </Select>

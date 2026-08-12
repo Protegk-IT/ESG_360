@@ -29,6 +29,8 @@ import ReportingPeriodList from "./pages/reporting_periods/ReportingPeriodList";
 import TopicLibrary from "./pages/materiality/TopicLibrary";
 import AssessmentList from "./pages/materiality/AssessmentList";
 import AssessmentDetail from "./pages/materiality/AssessmentDetail";
+import StakeholderGroups from "@/pages/materiality/StakeholderGroups";
+import AssessmentStakeholders from "./pages/materiality/AssessmentStakeholders";
 
 export default function App() {
   return (
@@ -244,6 +246,28 @@ export default function App() {
   }
 />
 
+ <Route
+  path="/materiality/assessments/:id/select-topics"
+  element={
+    <ProtectedRoute permission="materiality.assessment.view">
+      <AssessmentDetail />
+    </ProtectedRoute>
+  }
+/>
+
+ <Route
+  path="/materiality/assessments/:id/groups"
+  element={
+    // <ProtectedRoute permission="materiality.assessment.view">
+      <StakeholderGroups />
+    // </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/materiality/assessments/:id/stakeholders"
+  element={<AssessmentStakeholders />}
+/>
 
 
 
