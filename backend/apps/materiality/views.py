@@ -261,6 +261,21 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
 
         if self.action == "select_topics":
             return SelectAssessmentTopicsSerializer
+        
+        if self.action == "survey":
+            return SurveySerializer
+        
+        if self.action == "scales":
+            return ScaleDefinitionSerializer
+        
+        if self.action == "scale_options":
+            return ScaleOptionSerializer
+        
+        if self.action == "survey_questions":
+            return SurveyQuestionSerializer
+        
+        if self.action == "generate_survey":
+            return SurveySerializer
 
         return MaterialityAssessmentSerializer
 
@@ -1079,7 +1094,7 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
         # 7. GENERATE QUESTIONS
         # =========================================================
 
-        company_name = assessment.company.name
+        company_name = assessment.company.company_name if assessment.company else "the company"
 
         questions = []
 
