@@ -17,6 +17,10 @@ from .models import (
     TopicCategory,
     MaterialTopic,
     MaterialSubTopic,
+    Survey,
+    ScaleDefinition,
+    ScaleOption,
+    SurveyQuestion,
 )
 
 from .serializers import (
@@ -27,7 +31,11 @@ from .serializers import (
     TopicCategorySerializer,
     MaterialTopicSerializer,
     MaterialSubTopicSerializer,
-    SelectAssessmentTopicsSerializer
+    SelectAssessmentTopicsSerializer,
+    SurveySerializer,
+    ScaleDefinitionSerializer,
+    ScaleOptionSerializer,
+    SurveyQuestionSerializer,
 )
 
 
@@ -735,5 +743,208 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
                 ),
                 "count": len(created_stakeholders),
             },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+    @action(
+    detail=True,
+    methods=["get", "post"],
+    url_path="survey",
+)
+    def survey(self, request, pk=None):
+
+        assessment = self.get_object()
+
+        if request.method == "GET":
+
+            survey = Survey.objects.filter(
+                assessment=assessment
+            ).first()
+
+            if not survey:
+                return Response(
+                    {
+                        "detail": (
+                            "Survey has not been created "
+                            "for this assessment."
+                        )
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            serializer = SurveySerializer(survey)
+
+            return Response(serializer.data)
+
+        # POST
+
+        if hasattr(assessment, "survey"):
+            raise ValidationError(
+                "A survey already exists for this assessment."
+            )
+
+        serializer = SurveySerializer(
+            data=request.data
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        survey = serializer.save(
+            assessment=assessment
+        )
+
+        return Response(
+            SurveySerializer(survey).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True,methods=["get", "post"],url_path="scales",)
+    def scales(self, request, pk=None):
+        assessment = self.get_object()
+        if request.method == "GET":
+            scales = ScaleDefinition.objects.filter(
+                models.Q(assessment=assessment)
+                | models.Q(assessment__isnull=True)
+            ).prefetch_related("options")
+
+            serializer = ScaleDefinitionSerializer(
+                scales,
+                many=True,
+            )
+
+            return Response(serializer.data)
+
+        serializer = ScaleDefinitionSerializer(
+            data=request.data
+        )
+        serializer.is_valid(
+            raise_exception=True
+        )
+        scale = serializer.save(
+            assessment=assessment
+        )
+        return Response(
+            ScaleDefinitionSerializer(scale).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+    detail=True,
+    methods=["get", "post"],
+    url_path=r"scales/(?P<scale_id>[^/.]+)/options",
+)
+    def scale_options(
+        self,
+        request,
+        pk=None,
+        scale_id=None,
+    ):
+
+        assessment = self.get_object()
+
+        scale = ScaleDefinition.objects.filter(
+            pk=scale_id
+        ).filter(
+            models.Q(assessment=assessment)
+            | models.Q(assessment__isnull=True)
+        ).first()
+
+        if not scale:
+            raise ValidationError(
+                "Scale does not belong to this assessment."
+            )
+
+        if request.method == "GET":
+
+            options = ScaleOption.objects.filter(
+                scale=scale
+            )
+
+            serializer = ScaleOptionSerializer(
+                options,
+                many=True,
+            )
+
+            return Response(serializer.data)
+
+        serializer = ScaleOptionSerializer(
+            data=request.data
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        option = serializer.save(
+            scale=scale
+        )
+
+        return Response(
+            ScaleOptionSerializer(option).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+    @action(
+    detail=True,
+    methods=["get", "post"],
+    url_path="survey/questions",
+)
+    def survey_questions(
+        self,
+        request,
+        pk=None,
+    ):
+
+        assessment = self.get_object()
+
+        survey = Survey.objects.filter(
+            assessment=assessment
+        ).first()
+
+        if not survey:
+            raise ValidationError(
+                "Survey has not been created for this assessment."
+            )
+
+        if request.method == "GET":
+
+            questions = (
+                SurveyQuestion.objects
+                .filter(survey=survey)
+                .select_related(
+                    "assessment_topic",
+                    "scale",
+                )
+                .order_by("display_order")
+            )
+
+            serializer = SurveyQuestionSerializer(
+                questions,
+                many=True,
+            )
+
+            return Response(serializer.data)
+
+        serializer = SurveyQuestionSerializer(
+            data=request.data,
+            context={
+                "survey": survey,
+            },
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        question = serializer.save(
+            survey=survey
+        )
+
+        return Response(
+            SurveyQuestionSerializer(question).data,
             status=status.HTTP_201_CREATED,
         )      

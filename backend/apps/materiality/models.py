@@ -456,3 +456,212 @@ class Stakeholder(BaseModel):
                 name="unique_stakeholder_email_per_group",
             ),
         ]
+
+
+##### SURVEY MODELS #######
+
+class Survey(BaseModel):
+    """
+    Stores the survey configuration for a materiality assessment.
+    One assessment can have one survey.
+    """
+
+    STATUS_CHOICES = [
+        ("DRAFT", "Draft"),
+        ("READY", "Ready"),
+        ("OPEN", "Open"),
+        ("CLOSED", "Closed"),
+    ]
+
+    # Survey belongs to exactly one materiality assessment.
+    assessment = models.OneToOneField(
+        MaterialityAssessment,
+        on_delete=models.CASCADE,
+        related_name="survey",
+    )
+
+    # Content displayed to stakeholders.
+    title = models.CharField(
+        max_length=255,
+    )
+
+    intro_text = models.TextField(
+        blank=True,
+    )
+
+    closing_text = models.TextField(
+        blank=True,
+    )
+
+    # Controls when the survey is available.
+    opens_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    closes_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    # Controls the survey lifecycle.
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="DRAFT",
+    )
+
+    class Meta:
+        db_table = "survey"
+
+    def __str__(self):
+        return self.title
+    
+
+
+class ScaleDefinition(BaseModel):
+    """
+    Defines a scoring scale for a materiality dimension.
+    The actual values/options of the scale are stored in ScaleOption.
+    """
+
+    DIMENSION_CHOICES = [
+        ("IMPACT", "Impact"),
+        ("STAKEHOLDER_IMPORTANCE", "Stakeholder Importance"),
+        ("FINANCIAL", "Financial"),
+    ]
+
+    # Optional assessment-specific scale.
+    # NULL represents a reusable/default scale.
+    assessment = models.ForeignKey(
+        MaterialityAssessment,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="scale_definitions",
+    )
+
+    # Defines what the scale measures.
+    dimension = models.CharField(
+        max_length=50,
+        choices=DIMENSION_CHOICES,
+    )
+
+    # Name of the scale.
+    name = models.CharField(
+        max_length=255,
+    )
+
+    class Meta:
+        db_table = "scale_definition"
+
+    def __str__(self):
+        return self.name
+
+
+
+class ScaleOption(BaseModel):
+    """
+    Stores the individual values/options belonging to a scale.
+    Example: 1 = Very Low, 2 = Low, ..., 5 = Very High.
+    """
+
+    # Scale to which this option belongs.
+    scale = models.ForeignKey(
+        ScaleDefinition,
+        on_delete=models.CASCADE,
+        related_name="options",
+    )
+
+    # Actual numeric value used for scoring.
+    value = models.IntegerField()
+
+    # Display label for the value.
+    label = models.CharField(
+        max_length=255,
+    )
+
+    # Optional explanation of the option.
+    description = models.TextField(
+        blank=True,
+    )
+
+    class Meta:
+        db_table = "scale_option"
+        ordering = ["value"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["scale", "value"],
+                name="unique_scale_option_value",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.scale.name} - {self.value}: {self.label}"
+
+
+class SurveyQuestion(BaseModel):
+    """
+    Stores an individual question in a survey.
+    Each question is linked to a selected assessment topic
+    and the scale used to answer that question.
+    """
+
+    DIMENSION_CHOICES = [
+        ("IMPACT", "Impact"),
+        ("STAKEHOLDER_IMPORTANCE", "Stakeholder Importance"),
+        ("FINANCIAL", "Financial"),
+    ]
+
+    # Survey containing this question.
+    survey = models.ForeignKey(
+        Survey,
+        on_delete=models.CASCADE,
+        related_name="questions",
+    )
+
+    # Selected topic/subtopic being evaluated.
+    assessment_topic = models.ForeignKey(
+        AssessmentTopic,
+        on_delete=models.CASCADE,
+        related_name="survey_questions",
+    )
+
+    # Scale used for answering this question.
+    scale = models.ForeignKey(
+        ScaleDefinition,
+        on_delete=models.PROTECT,
+        related_name="survey_questions",
+    )
+
+    # Dimension being evaluated by this question.
+    dimension = models.CharField(
+        max_length=50,
+        choices=DIMENSION_CHOICES,
+    )
+
+    # Actual question shown to the stakeholder.
+    question_text = models.TextField()
+
+    # Optional explanation/instructions for the question.
+    help_text = models.TextField(
+        blank=True,
+    )
+
+    # Controls question order in the survey.
+    display_order = models.IntegerField(
+        default=0,
+    )
+
+    # Whether the stakeholder must answer the question.
+    is_required = models.BooleanField(
+        default=True,
+    )
+
+    class Meta:
+        db_table = "survey_question"
+        ordering = ["display_order"]
+
+    def __str__(self):
+        return self.question_text

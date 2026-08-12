@@ -10,6 +10,10 @@ from .models import (
     MaterialSubTopic,
     MaterialityAssessment,
     AssessmentTopic,
+    Survey,
+    ScaleDefinition,
+    ScaleOption,
+    SurveyQuestion,
 )
 
 
@@ -402,3 +406,198 @@ class StakeholderSerializer(serializers.ModelSerializer):
             )
 
         return group    
+
+
+
+
+class SurveySerializer(serializers.ModelSerializer):
+
+    assessment = serializers.PrimaryKeyRelatedField(
+        read_only=True
+    )
+
+    class Meta:
+        model = Survey
+
+        fields = [
+            "id",
+            "assessment",
+            "title",
+            "intro_text",
+            "closing_text",
+            "opens_at",
+            "closes_at",
+            "status",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "assessment",
+            "status",
+            "created_at",
+        ]
+
+    def validate(self, attrs):
+        opens_at = attrs.get("opens_at")
+        closes_at = attrs.get("closes_at")
+
+        if opens_at and closes_at:
+            if opens_at >= closes_at:
+                raise serializers.ValidationError({
+                    "closes_at": (
+                        "Closing time must be greater than "
+                        "opening time."
+                    )
+                })
+
+        return attrs
+
+
+
+class ScaleDefinitionSerializer(serializers.ModelSerializer):
+
+    assessment = serializers.PrimaryKeyRelatedField(
+        read_only=True
+    )
+
+    class Meta:
+        model = ScaleDefinition
+
+        fields = [
+            "id",
+            "assessment",
+            "dimension",
+            "name",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "assessment",
+            "created_at",
+        ]
+
+
+
+class ScaleOptionSerializer(serializers.ModelSerializer):
+
+    scale = serializers.PrimaryKeyRelatedField(
+        read_only=True
+    )
+
+    class Meta:
+        model = ScaleOption
+
+        fields = [
+            "id",
+            "scale",
+            "value",
+            "label",
+            "description",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "scale",
+            "created_at",
+        ]
+
+    def validate_value(self, value):
+        if value < 0:
+            raise serializers.ValidationError(
+                "Scale value cannot be negative."
+            )
+
+        return value
+    
+
+    
+class SurveyQuestionSerializer(serializers.ModelSerializer):
+
+    survey = serializers.PrimaryKeyRelatedField(
+        read_only=True
+    )
+
+    class Meta:
+        model = SurveyQuestion
+
+        fields = [
+            "id",
+            "survey",
+            "assessment_topic",
+            "scale",
+            "dimension",
+            "question_text",
+            "help_text",
+            "display_order",
+            "is_required",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "survey",
+            "created_at",
+        ]
+
+    def validate(self, attrs):
+        survey = self.context.get("survey")
+
+        assessment_topic = attrs.get(
+            "assessment_topic"
+        )
+
+        scale = attrs.get("scale")
+
+        # ---------------------------------------------
+        # AssessmentTopic must belong to this survey's
+        # assessment.
+        # ---------------------------------------------
+
+        if survey and assessment_topic:
+
+            if (
+                assessment_topic.assessment_id
+                != survey.assessment_id
+            ):
+                raise serializers.ValidationError({
+                    "assessment_topic": (
+                        "Assessment topic does not belong "
+                        "to this survey's assessment."
+                    )
+                })
+
+        # ---------------------------------------------
+        # Scale must either be:
+        #
+        # 1. A global scale
+        # OR
+        # 2. A scale belonging to this assessment.
+        # ---------------------------------------------
+
+        if survey and scale:
+
+            if (
+                scale.assessment_id is not None
+                and scale.assessment_id
+                != survey.assessment_id
+            ):
+                raise serializers.ValidationError({
+                    "scale": (
+                        "Scale does not belong to this "
+                        "assessment."
+                    )
+                })
+
+            # Make sure dimension matches scale dimension.
+            if scale.dimension != attrs.get("dimension"):
+                raise serializers.ValidationError({
+                    "dimension": (
+                        "Question dimension must match "
+                        "the selected scale dimension."
+                    )
+                })
+
+        return attrs    
