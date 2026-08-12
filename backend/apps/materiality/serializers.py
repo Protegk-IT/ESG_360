@@ -5,6 +5,7 @@ from rest_framework import serializers
 from .models import (
     Stakeholder,
     StakeholderGroup,
+    SurveyResponse,
     TopicCategory,
     MaterialTopic,
     MaterialSubTopic,
@@ -14,6 +15,8 @@ from .models import (
     ScaleDefinition,
     ScaleOption,
     SurveyQuestion,
+    SurveyInvitation,
+    SurveyResponse,
 )
 
 
@@ -597,6 +600,87 @@ class SurveyQuestionSerializer(serializers.ModelSerializer):
                     "dimension": (
                         "Question dimension must match "
                         "the selected scale dimension."
+                    )
+                })
+
+        return attrs   
+
+
+class SurveyInvitationSerializer(serializers.ModelSerializer):
+    stakeholder_name = serializers.CharField(
+        source="stakeholder.name",
+        read_only=True,
+    )
+
+    stakeholder_email = serializers.EmailField(
+        source="stakeholder.email",
+        read_only=True,
+    )
+
+    status_display = serializers.CharField(
+        source="get_status_display",
+        read_only=True,
+    )
+
+    class Meta:
+        model = SurveyInvitation
+
+        fields = [
+            "id",
+            "survey",
+            "stakeholder",
+            "stakeholder_name",
+            "stakeholder_email",
+            "token",
+            "sent_at",
+            "first_opened_at",
+            "submitted_at",
+            "status",
+            "status_display",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "token",
+            "sent_at",
+            "first_opened_at",
+            "submitted_at",
+            "status",
+            "created_at",
+        ]
+
+
+class SurveyResponseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SurveyResponse
+
+        fields = [
+            "id",
+            "invitation",
+            "question",
+            "value",
+            "comment",
+            "answered_at",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "answered_at",
+            "created_at",
+        ]
+
+    def validate(self, attrs):
+        invitation = attrs.get("invitation")
+        question = attrs.get("question")
+
+        if invitation and question:
+            if question.survey_id != invitation.survey_id:
+                raise serializers.ValidationError({
+                    "question": (
+                        "This question does not belong to "
+                        "the invitation's survey."
                     )
                 })
 

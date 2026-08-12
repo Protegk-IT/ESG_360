@@ -664,3 +664,114 @@ class SurveyQuestion(BaseModel):
 
     def __str__(self):
         return self.question_text
+
+# ============================================================
+# PHASE 5
+# SURVEY INVITATION
+# ============================================================
+
+class SurveyInvitation(BaseModel):
+
+    STATUS_CHOICES = [
+        ("NOT_SENT", "Not Sent"),
+        ("SENT", "Sent"),
+        ("OPENED", "Opened"),
+        ("SUBMITTED", "Submitted"),
+    ]
+
+    survey = models.ForeignKey(
+        Survey,
+        on_delete=models.CASCADE,
+        related_name="invitations",
+    )
+
+    stakeholder = models.ForeignKey(
+        Stakeholder,
+        on_delete=models.CASCADE,
+        related_name="survey_invitations",
+    )
+
+    token = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+        db_index=True,
+    )
+
+    sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    first_opened_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    submitted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="NOT_SENT",
+    )
+
+    class Meta:
+        db_table = "survey_invitation"
+        ordering = ["-created_at"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["survey", "stakeholder"],
+                name="unique_survey_stakeholder_invitation",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.survey.title} - {self.stakeholder.name}"
+# ============================================================
+# PHASE 5
+# SURVEY RESPONSE
+# ============================================================
+
+class SurveyResponse(BaseModel):
+
+    invitation = models.ForeignKey(
+        SurveyInvitation,
+        on_delete=models.CASCADE,
+        related_name="responses",
+    )
+
+    question = models.ForeignKey(
+        SurveyQuestion,
+        on_delete=models.CASCADE,
+        related_name="responses",
+    )
+
+    value = models.IntegerField()
+
+    comment = models.TextField(
+        blank=True,
+    )
+
+    answered_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        db_table = "survey_response"
+        ordering = ["created_at"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["invitation", "question"],
+                name="unique_invitation_question_response",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.invitation} - {self.question}"           
