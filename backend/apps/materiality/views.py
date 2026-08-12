@@ -747,58 +747,43 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
         )
 
 
-    @action(
-    detail=True,
-    methods=["get", "post"],
-    url_path="survey",
-)
+    @action(detail=True,methods=["get", "patch"],url_path="survey",)
     def survey(self, request, pk=None):
 
         assessment = self.get_object()
 
-        if request.method == "GET":
+        survey = Survey.objects.filter(
+            assessment=assessment
+        ).first()
 
-            survey = Survey.objects.filter(
-                assessment=assessment
-            ).first()
-
-            if not survey:
-                return Response(
-                    {
-                        "detail": (
-                            "Survey has not been created "
-                            "for this assessment."
-                        )
-                    },
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            serializer = SurveySerializer(survey)
-
-            return Response(serializer.data)
-
-        # POST
-
-        if hasattr(assessment, "survey"):
+        if not survey:
             raise ValidationError(
-                "A survey already exists for this assessment."
+                "Survey has not been generated for this assessment."
             )
 
+        if request.method == "GET":
+            serializer = SurveySerializer(survey)
+            return Response(
+                serializer.data,
+                status=status.HTTP_200_OK,
+            )
+
+        # PATCH
         serializer = SurveySerializer(
-            data=request.data
+            survey,
+            data=request.data,
+            partial=True,
         )
 
         serializer.is_valid(
             raise_exception=True
         )
 
-        survey = serializer.save(
-            assessment=assessment
-        )
+        serializer.save()
 
         return Response(
-            SurveySerializer(survey).data,
-            status=status.HTTP_201_CREATED,
+            serializer.data,
+            status=status.HTTP_200_OK,
         )
 
     @action(detail=True,methods=["get", "post"],url_path="scales",)
@@ -831,11 +816,7 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
-    @action(
-    detail=True,
-    methods=["get", "post"],
-    url_path=r"scales/(?P<scale_id>[^/.]+)/options",
-)
+    @action(detail=True,methods=["get", "post"],url_path=r"scales/(?P<scale_id>[^/.]+)/options",)
     def scale_options(
         self,
         request,
@@ -888,16 +869,8 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
         )
 
 
-    @action(
-    detail=True,
-    methods=["get", "post"],
-    url_path="survey/questions",
-)
-    def survey_questions(
-        self,
-        request,
-        pk=None,
-    ):
+    @action(detail=True, methods=["get", "post"], url_path="survey/questions",)
+    def survey_questions(self,request,pk=None,):
 
         assessment = self.get_object()
 
@@ -947,4 +920,276 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
         return Response(
             SurveyQuestionSerializer(question).data,
             status=status.HTTP_201_CREATED,
-        )      
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="survey/generate",
+    )
+    @transaction.atomic
+    def generate_survey(self, request, pk=None):
+        """
+        Generate the survey for an assessment.
+
+        The survey is generated from:
+        1. The sub-topics selected in AssessmentTopic.
+        2. The assessment mode.
+        3. The predefined question templates from the project document.
+        4. The already configured/seeded scale definitions.
+
+        SINGLE mode:
+            - IMPACT
+            - STAKEHOLDER_IMPORTANCE
+
+        DOUBLE mode:
+            - IMPACT
+            - FINANCIAL
+
+        Questions are created in SurveyQuestion so that they can
+        later be edited by the ESG manager.
+        """
+
+        # =========================================================
+        # 1. GET ASSESSMENT
+        # =========================================================
+
+        assessment = self.get_object()
+
+        # =========================================================
+        # 2. CHECK WHETHER SURVEY ALREADY EXISTS
+        # =========================================================
+
+        if Survey.objects.filter(
+            assessment=assessment
+        ).exists():
+
+            raise ValidationError(
+                "A survey has already been generated "
+                "for this assessment."
+            )
+
+        # =========================================================
+        # 3. GET INCLUDED SUB-TOPICS
+        # =========================================================
+
+        assessment_topics = (
+            AssessmentTopic.objects
+            .filter(
+                assessment=assessment,
+                is_included=True,
+            )
+            .select_related(
+                "subtopic",
+                "subtopic__topic",
+                "subtopic__topic__category",
+            )
+            .order_by(
+                "display_order",
+            )
+        )
+
+        if not assessment_topics.exists():
+
+            raise ValidationError(
+                "Cannot generate survey because no "
+                "sub-topics have been selected."
+            )
+
+        # =========================================================
+        # 4. DETERMINE QUESTIONS FROM ASSESSMENT MODE
+        # =========================================================
+
+        if assessment.mode == "SINGLE":
+
+            dimensions = [
+                "IMPACT",
+                "STAKEHOLDER_IMPORTANCE",
+            ]
+
+        elif assessment.mode == "DOUBLE":
+
+            dimensions = [
+                "IMPACT",
+                "FINANCIAL",
+            ]
+
+        else:
+
+            raise ValidationError(
+                "Invalid assessment mode."
+            )
+
+        # =========================================================
+        # 5. GET SCALES
+        # =========================================================
+        #
+        # Scales/options must already exist.
+        #
+        # The generation endpoint does NOT create scale options.
+        #
+        # First look for an assessment-specific scale.
+        # If none exists, use the seeded global scale.
+        # =========================================================
+
+        scales = {}
+
+        for dimension in dimensions:
+
+            scale = (
+                ScaleDefinition.objects
+                .filter(
+                    assessment=assessment,
+                    dimension=dimension,
+                )
+                .first()
+            )
+
+            if not scale:
+
+                scale = (
+                    ScaleDefinition.objects
+                    .filter(
+                        assessment__isnull=True,
+                        dimension=dimension,
+                    )
+                    .first()
+                )
+
+            if not scale:
+
+                raise ValidationError(
+                    f"No scale has been configured "
+                    f"for {dimension}."
+                )
+
+            scales[dimension] = scale
+
+        # =========================================================
+        # 6. CREATE SURVEY
+        # =========================================================
+
+        survey = Survey.objects.create(
+            assessment=assessment,
+            title=f"{assessment.name} Survey",
+            status="DRAFT",
+        )
+
+        # =========================================================
+        # 7. GENERATE QUESTIONS
+        # =========================================================
+
+        company_name = assessment.company.name
+
+        questions = []
+
+        display_order = 1
+
+        for assessment_topic in assessment_topics:
+
+            subtopic_name = (
+                assessment_topic.subtopic.name
+            )
+
+            for dimension in dimensions:
+
+                # -------------------------------------------------
+                # IMPACT
+                # -------------------------------------------------
+
+                if dimension == "IMPACT":
+
+                    question_text = (
+                        f"How significantly does "
+                        f"{company_name} affect "
+                        f"{subtopic_name} through its operations?"
+                    )
+
+                # -------------------------------------------------
+                # STAKEHOLDER IMPORTANCE
+                # -------------------------------------------------
+
+                elif dimension == "STAKEHOLDER_IMPORTANCE":
+
+                    question_text = (
+                        f"How important is "
+                        f"{subtopic_name} to you in your "
+                        f"relationship with {company_name}?"
+                    )
+
+                # -------------------------------------------------
+                # FINANCIAL
+                # -------------------------------------------------
+
+                elif dimension == "FINANCIAL":
+
+                    question_text = (
+                        f"How much could "
+                        f"{subtopic_name} affect "
+                        f"{company_name}'s costs, revenue "
+                        f"or ability to operate?"
+                    )
+
+                questions.append(
+                    SurveyQuestion(
+                        survey=survey,
+                        assessment_topic=assessment_topic,
+                        scale=scales[dimension],
+                        dimension=dimension,
+                        question_text=question_text,
+                        display_order=display_order,
+                        is_required=True,
+                    )
+                )
+
+                display_order += 1
+
+        # =========================================================
+        # 8. SAVE ALL GENERATED QUESTIONS
+        # =========================================================
+
+        SurveyQuestion.objects.bulk_create(
+            questions
+        )
+
+        # =========================================================
+        # 9. SURVEY LENGTH WARNING
+        # =========================================================
+
+        subtopic_count = assessment_topics.count()
+        question_count = len(questions)
+
+        warning = None
+
+        if subtopic_count > 20:
+
+            estimated_minutes = (
+                question_count * 15 + 59
+            ) // 60
+
+            warning = (
+                f"{subtopic_count} sub-topics will produce "
+                f"{question_count} questions and an estimated "
+                f"{estimated_minutes} minute survey. "
+                f"Consider reducing the shortlist."
+            )
+
+        # =========================================================
+        # 10. RESPONSE
+        # =========================================================
+
+        response_data = {
+            "message": "Survey generated successfully.",
+            "survey_id": survey.id,
+            "mode": assessment.mode,
+            "subtopic_count": subtopic_count,
+            "question_count": question_count,
+        }
+
+        if warning:
+            response_data["warning"] = warning
+
+        return Response(
+            response_data,
+            status=status.HTTP_201_CREATED,
+        )
