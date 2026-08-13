@@ -26,23 +26,23 @@ urlpatterns = [
                path("topics/subtopics/",MaterialSubTopicListCreateView.as_view(),name="material-subtopic-list-create",),
                ]
 
-urlpatterns = [
+public_urlpatterns = [
 
     # Public survey
     path(
-        "public/materiality/survey/<str:token>/",
+        "survey/<str:token>/",
         PublicSurveyView.as_view(),
         name="public-survey",
     ),
 
     path(
-        "public/materiality/survey/<str:token>/answer/",
+        "survey/<str:token>/answer/",
         PublicSurveyAnswerView.as_view(),
         name="public-survey-answer",
     ),
 
     path(
-        "public/materiality/survey/<str:token>/submit/",
+        "survey/<str:token>/submit/",
         PublicSurveySubmitView.as_view(),
         name="public-survey-submit",
     ),
