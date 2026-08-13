@@ -43,9 +43,9 @@ The following module codes are seeded by the current implementation:
 | Code           | Name              | Pillar   | Core |
 | -------------- | ----------------- | -------- | ---- |
 | `company`      | Company           | PLATFORM | Yes  |
-| `organization` | Organization      | PLATFORM | Yes  |
-| `users`        | Users & Access    | PLATFORM | Yes  |
-| `periods`      | Reporting Periods | PLATFORM | Yes  |
+| `org`          | Organization      | PLATFORM | Yes  |
+| `user`         | Users & Access    | PLATFORM | Yes  |
+| `period`      | Reporting Periods | PLATFORM | Yes  |
 | `energy`       | Energy            | E        | No   |
 | `emissions`    | Emissions         | E        | No   |
 | `water`        | Water             | E        | No   |
