@@ -32,5 +32,10 @@ Generate example:
 {"period_type":"QUARTERLY"}
 ```
 
+List/detail responses include `children_count`. Offer generation only when
+`period_type` is `ANNUAL`, `status` is `OPEN`, and `children_count` is zero.
+The service still rejects duplicate requests; that means children already
+exist and should not be regenerated automatically.
+
 Future ESG data modules should attach reporting data to ReportingPeriod and use
 the status to decide whether normal editing is permitted.

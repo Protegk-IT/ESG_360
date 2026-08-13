@@ -28,6 +28,11 @@ All endpoints are under `/api/company/` and use UUID identifiers.
 | `GET,PATCH /profile/` | Read/update configured company profile |
 | `/departments/` | Department CRUD |
 
+Company profile responses retain UUID fields (`country`, `state`, `city`) for
+edits and also include `country_name`, `state_name`, and `city_name` for
+read-only displays. Consumers submit the UUID fields and render the matching
+`*_name` fields without extra location lookups.
+
 Example profile patch:
 
 ```json

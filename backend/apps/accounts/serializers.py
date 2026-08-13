@@ -79,7 +79,9 @@ class RoleSerializer(serializers.ModelSerializer):
             ]
 
             for field in protected:
-                if field in attrs:
+                # PUT includes unchanged read-only identity fields. Block a
+                # real rename, not a normal permission-only update.
+                if field in attrs and attrs[field] != getattr(self.instance, field):
                     raise serializers.ValidationError(
                         f"{field} cannot be modified for a system role."
                     )
@@ -185,6 +187,11 @@ class UserSerializer(serializers.ModelSerializer):
    
     role_name = serializers.SerializerMethodField()
     department_name = serializers.SerializerMethodField()
+    # Compatibility projection for the existing single-role editor. The full
+    # scoped assignment contract remains available in role_assignments.
+    role = serializers.SerializerMethodField()
+    org_node = serializers.SerializerMethodField()
+    department = serializers.SerializerMethodField()
        
     class Meta:
            model = User
@@ -199,7 +206,10 @@ class UserSerializer(serializers.ModelSerializer):
                "employee_code",
                "designation",
                "role_name",
+               "role",
+               "org_node",
                "department_name",
+               "mobile_number",
                "mobile_number",
                "profile_image",
                "last_seen",
@@ -209,6 +219,7 @@ class UserSerializer(serializers.ModelSerializer):
                "date_joined",
                "role_assignments",
                "department_assignments",
+               "department",
            )
    
            read_only_fields = fields
@@ -219,17 +230,32 @@ class UserSerializer(serializers.ModelSerializer):
            return value
    
     def get_role_name(self, obj):
-           assignment = (
-               obj.user_assignments
-               .filter(is_active=True)
-               .select_related("role")
-               .first()
-           )
+           assignment = self._get_editor_assignment(obj)
            return assignment.role.role_name if assignment else None
+
+    def _get_editor_assignment(self, obj):
+        return (
+            obj.user_assignments.filter(is_active=True)
+            .select_related("role")
+            .order_by("created_at", "id")
+            .first()
+        )
+
+    def get_role(self, obj):
+        assignment = self._get_editor_assignment(obj)
+        return assignment.role_id if assignment else None
+
+    def get_org_node(self, obj):
+        assignment = self._get_editor_assignment(obj)
+        return assignment.org_node_id if assignment else None
    
     def get_department_name(self, obj):
         assignment = obj.department_assignments.filter(is_primary=True).first()
         return assignment.department.name if assignment else None
+
+    def get_department(self, obj):
+        assignment = obj.department_assignments.filter(is_primary=True).first()
+        return assignment.department_id if assignment else None
 
 class CurrentUserSerializer(UserSerializer):
     roles = serializers.SerializerMethodField()

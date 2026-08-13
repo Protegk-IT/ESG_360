@@ -25,6 +25,11 @@ class CitySerializer(serializers.ModelSerializer):
 
 
 class CompanySerializer(ValidatedModelSerializer):
+    # Keep foreign-key ids writable while exposing display labels for views.
+    country_name = serializers.CharField(source="country.name", read_only=True)
+    state_name = serializers.CharField(source="state.name", read_only=True)
+    city_name = serializers.CharField(source="city.name", read_only=True)
+
     class Meta:
         model = Company
         fields = [
@@ -47,8 +52,11 @@ class CompanySerializer(ValidatedModelSerializer):
             "corporate_address",
 
             "country",
+            "country_name",
             "state",
+            "state_name",
             "city",
+            "city_name",
 
             "contact_person",
             "email",

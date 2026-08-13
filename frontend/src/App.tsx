@@ -28,6 +28,7 @@ export default function App() {
     <BrowserRouter>
      <Routes>
   <Route path="/" element={<Login />} />
+  <Route path="/login" element={<Navigate to="/" replace />} />
 
   <Route
     path="/dashboard"
@@ -48,15 +49,6 @@ export default function App() {
       </ProtectedRoute>
     }
   />
-
-  <Route
-  path="/companies/profile/create"
-  element={
-    <ProtectedRoute permission="company.create">
-      <CompanyForm />
-    </ProtectedRoute>
-  }
-/>
 
 <Route
   path="/company/profile/edit"

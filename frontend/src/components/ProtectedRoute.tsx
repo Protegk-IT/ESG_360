@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Navigate } from "react-router-dom";
 import AccessDenied from "@/components/AccessDenied";
 import { useAuth } from "@/context/AuthContext";
 
@@ -17,7 +18,11 @@ export default function ProtectedRoute({
 
   if (isLoading) return null;
 
-  if (user?.is_superuser) {
+  if (!user) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (user.is_superuser) {
     return <>{children}</>;
   }
   if (superuserOnly) {

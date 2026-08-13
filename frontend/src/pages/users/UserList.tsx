@@ -42,6 +42,9 @@ export default function UserList() {
   const [deleting, setDeleting] =
     useState(false);
 
+  const getRoleLabel = (user: UserData) =>
+    user.role_name || (user.is_superuser ? "Platform administrator" : "-");
+
   /* =====================================================
      LOAD USERS
   ===================================================== */
@@ -96,7 +99,7 @@ export default function UserList() {
 
       const matchesRole =
         roleFilter === "All" ||
-        user.role_name === roleFilter;
+        getRoleLabel(user) === roleFilter;
 
       return (
         matchesSearch &&
@@ -129,7 +132,7 @@ export default function UserList() {
       ...filteredUsers.map((u) => [
         u.full_name,
         u.employee_code,
-        u.role_name,
+        getRoleLabel(u),
         u.mobile_number,
         u.email,
         u.is_active
@@ -257,7 +260,7 @@ export default function UserList() {
 
   {[...new Set(
     users
-      .map((u) => u.role_name)
+      .map(getRoleLabel)
       .filter(Boolean)
   )]
     .sort()

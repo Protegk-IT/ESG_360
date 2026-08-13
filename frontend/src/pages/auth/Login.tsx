@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Eye, EyeOff, Lock, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import api, { setCsrfToken } from "../../services/api";
+import api, { ensureCsrfToken, setCsrfToken } from "../../services/api";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 
@@ -42,6 +42,9 @@ interface LoginForm {
       setError("");
 
       try {
+ // A retained session cookie makes Django enforce CSRF on this otherwise
+ // public endpoint, so bootstrap the token before posting credentials.
+ await ensureCsrfToken();
  const response = await api.post("/accounts/login/", formData);
 
 setCsrfToken(response.data.csrfToken ?? "");
@@ -71,6 +74,8 @@ navigate("/accounts/dashboard/");
     console.log(error);
     setError("Unknown error");
   }
+} finally {
+  setLoading(false);
 }
   };
 
@@ -107,7 +112,7 @@ navigate("/accounts/dashboard/");
 
         <div>
 
-          <label className="mb-2 block text-sm font-semibold text-[#22243A]">
+          <label htmlFor="username" className="mb-2 block text-sm font-semibold text-[#22243A]">
             Username
           </label>
 
@@ -119,8 +124,10 @@ navigate("/accounts/dashboard/");
             />
 
             <input
+              id="username"
               type="text"
               name="username"
+              autoComplete="username"
               placeholder="Enter username"
               value={formData.username}
               onChange={handleChange}
@@ -156,7 +163,7 @@ navigate("/accounts/dashboard/");
 
         <div>
 
-          <label className="mb-2 block text-sm font-semibold text-[#22243A]">
+          <label htmlFor="password" className="mb-2 block text-sm font-semibold text-[#22243A]">
             Password
           </label>
 
@@ -168,8 +175,10 @@ navigate("/accounts/dashboard/");
             />
 
             <input
+              id="password"
               type={showPassword ? "text" : "password"}
               name="password"
+              autoComplete="current-password"
               placeholder="Enter password"
               value={formData.password}
               onChange={handleChange}
@@ -199,6 +208,7 @@ navigate("/accounts/dashboard/");
 
             <button
               type="button"
+              aria-label={showPassword ? "Hide password" : "Show password"}
               onClick={() => setShowPassword(!showPassword)}
               className="absolute right-4 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#4A3FD6]"
             >

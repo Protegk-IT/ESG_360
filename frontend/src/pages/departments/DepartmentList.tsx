@@ -268,7 +268,7 @@ useEffect(() => {
   ========================================================== */
 
   const handleEdit =
-    (id: number) => {
+    (id: string) => {
 
       navigate(
         `/company/departments/${id}/edit`

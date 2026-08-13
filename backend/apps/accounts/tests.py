@@ -5,10 +5,11 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.accounts.models import Permission, Role, User, UserRoleAssignment
+from apps.accounts.models import Permission, Role, User, UserDepartment, UserRoleAssignment
+from apps.accounts.serializers import RoleSerializer, UserSerializer
 from apps.accounts.services.rbac import RBACService
 from apps.accounts.constants import PERMISSIONS, ROLE_PERMISSIONS
-from apps.companies.models import Company
+from apps.companies.models import Company, Department
 from apps.organizations.models import OrgNode
 
 
@@ -212,3 +213,48 @@ class AuthenticationAndAdministrationTests(TestCase):
         token = csrf_response.json()["csrfToken"]
         response = client.post("/api/accounts/logout/", HTTP_X_CSRFTOKEN=token)
         self.assertEqual(response.status_code, 200)
+
+
+class CompatibilityAndDashboardTests(TestCase):
+    def setUp(self):
+        self.company = Company.objects.create(
+            company_name="Compatibility Co", company_code="COMPAT",
+            contact_person="Owner", email="owner@example.com", mobile_number="9999999999",
+        )
+        self.root = OrgNode.objects.get(company=self.company, parent__isnull=True)
+        self.facility = OrgNode.objects.create(
+            company=self.company, parent=self.root, node_type="FACILITY",
+            code="FACILITY", name="Facility",
+        )
+        self.department = Department.objects.create(company=self.company, name="Operations", code="OPS")
+        self.user = User.objects.create_user(username="editor", password="safe-password-123")
+        self.role = Role.objects.create(role_code="editor", role_name="Editor")
+        UserRoleAssignment.objects.create(user=self.user, role=self.role, org_node=self.facility)
+        UserDepartment.objects.create(user=self.user, department=self.department, is_primary=True)
+
+    def test_user_detail_includes_editor_hydration_fields(self):
+        data = UserSerializer(self.user).data
+        self.assertEqual(str(data["role"]), str(self.role.id))
+        self.assertEqual(str(data["org_node"]), str(self.facility.id))
+        self.assertEqual(str(data["department"]), str(self.department.id))
+
+    def test_system_role_can_update_permissions_without_renaming(self):
+        permission = Permission.objects.create(
+            code="compat.view", name="View compatibility", module_code="compat", action="VIEW"
+        )
+        system_role = Role.objects.create(role_code="system", role_name="System", is_system=True)
+        serializer = RoleSerializer(system_role, data={
+            "role_code": "system", "role_name": "System", "description": "Updated",
+            "permissions": [str(permission.id)],
+        })
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        serializer.save()
+        self.assertEqual(list(system_role.permissions.values_list("id", flat=True)), [permission.id])
+
+    def test_dashboard_includes_facility_count(self):
+        superuser = User.objects.create_superuser(username="dashboard-admin", password="safe-password-123")
+        client = APIClient(HTTP_HOST="localhost")
+        client.force_login(superuser)
+        response = client.get("/api/accounts/dashboard/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["facility"], 1)

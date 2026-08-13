@@ -88,3 +88,10 @@ class CompanySerializerValidationTests(TestCase):
         full.save()
         self.company.refresh_from_db()
         self.assertEqual(self.company.company_name, "Full Update")
+
+    def test_serializer_exposes_location_labels_with_writable_ids(self):
+        data = CompanySerializer(self.company).data
+        self.assertEqual(str(data["country"]), str(self.country_one.id))
+        self.assertEqual(data["country_name"], "India")
+        self.assertEqual(data["state_name"], "Maharashtra")
+        self.assertEqual(data["city_name"], "Pune")

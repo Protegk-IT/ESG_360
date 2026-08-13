@@ -6,11 +6,14 @@ from .models import ReportingPeriod
 
 
 class ReportingPeriodSerializer(ValidatedModelSerializer):
+    children_count = serializers.IntegerField(read_only=True)
+
     class Meta:
         model = ReportingPeriod
         fields = [
             "id",
             "parent",
+            "children_count",
             "name",
             "period_type",
             "start_date",

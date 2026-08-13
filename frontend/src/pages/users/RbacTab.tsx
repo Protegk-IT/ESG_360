@@ -99,6 +99,11 @@ export default function RoleAccessTab({
   const hasRole = formData.role !== "";
 
   function selectRole(role: Role) {
+    // Preserve the hydrated scope when an editor clicks the role already
+    // selected. Resetting it in that case turns an otherwise no-op edit into
+    // an unscoped assignment when the user saves the form.
+    if (formData.role === role.id) return;
+
     updateField("role", role.id);
     // Reset org node whenever the role changes
     updateField("org_node", "");

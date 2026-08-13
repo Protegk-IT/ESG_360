@@ -495,6 +495,7 @@ class PlatformDashboardView(APIView):
             # Platform Statistics
             "companies": Company.objects.count(),
             "organizations": OrgNode.objects.count(),
+            "facility": OrgNode.objects.filter(node_type="FACILITY").count(),
             "departments": Department.objects.count(),
 
             # User Statistics

@@ -66,6 +66,8 @@ Content-Type: application/json
 
 - `GET /api/accounts/csrf/` returns `{"csrfToken":"…"}` and ensures the
   CSRF cookie exists.
+- The public login page obtains that token before submitting credentials. This
+  also handles a browser that retained a session cookie after a reload.
 - `GET /api/accounts/me/` is the authoritative session-restoration endpoint
   and returns the same current-user shape (including a flat `permissions`
   array).
@@ -94,10 +96,16 @@ The direct user create/update form can add a legacy single role/department,
 but it does not remove existing scoped assignments. Use the assignment routes
 for multi-role administration.
 
+For compatibility with that editor, user detail responses also expose `role`,
+`org_node`, and `department` as UUIDs for the oldest active role assignment
+and the primary department. They are convenience projections only; consumers
+that need the complete access picture must use `role_assignments`.
+
 `GET /api/accounts/roles/` requires `role.view`. Role creation, modification,
 and deletion are superuser-only. `GET /api/accounts/permissions/` requires
 `permission.view` and is intentionally read-only. System roles cannot be
-deleted and cannot have their identity fields changed through the API.
+deleted or renamed through the API, but their description, active state, and
+permission matrix may be updated.
 
 ## Applying RBAC in future modules
 

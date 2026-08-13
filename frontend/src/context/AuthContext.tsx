@@ -40,11 +40,10 @@ export function AuthProvider({ children }: Props) {
     setUser(user);
     setPermissions(user.permissions ?? []);
 
-    localStorage.setItem("user", JSON.stringify(user));
-    localStorage.setItem(
-      "permissions",
-      JSON.stringify(user.permissions ?? [])
-    );
+    // Authentication and authorisation are server-session state. Remove the
+    // legacy cache so no component can accidentally treat it as authoritative.
+    localStorage.removeItem("user");
+    localStorage.removeItem("permissions");
   }, []);
 
   const logout = useCallback(() => {
@@ -87,7 +86,7 @@ export function AuthProvider({ children }: Props) {
 
     restoreSession();
     return () => { mounted = false; };
-  }, [login, logout]);
+  }, [logout]);
 
   return (
     <AuthContext.Provider

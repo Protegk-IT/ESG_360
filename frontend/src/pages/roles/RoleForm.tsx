@@ -60,6 +60,14 @@ interface RoleFormData {
   permissions: string[];
 }
 
+function toDisplayLabel(value: string) {
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 /* ==========================================================
     COMPONENT
 ========================================================== */
@@ -114,12 +122,8 @@ useEffect(() => {
 
           return {
             ...permission,
-            module:
-              module.charAt(0).toUpperCase() +
-              module.slice(1),
-            action:
-              action.charAt(0).toUpperCase() +
-              action.slice(1),
+            module: toDisplayLabel(module),
+            action: toDisplayLabel(action),
           };
         }
       );

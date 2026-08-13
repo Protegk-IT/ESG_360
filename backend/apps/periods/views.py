@@ -1,3 +1,4 @@
+from django.db.models import Count
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from rest_framework.response import Response
@@ -27,7 +28,7 @@ class ReportingPeriodViewSet(RBACModelViewSet):
     queryset = ReportingPeriod.objects.select_related(
         "parent",
         "locked_by",
-    )
+    ).annotate(children_count=Count("children"))
 
     serializer_class = ReportingPeriodSerializer
 
