@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from django.core.management import call_command
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -34,6 +35,28 @@ class ModuleModelTests(TestCase):
 
         with self.assertRaises(ValidationError):
             module.full_clean()
+
+    def test_invalid_esg_pillar_is_rejected(self):
+        module = Module(
+            code="invalid-pillar",
+            name="Invalid pillar",
+            esg_pillar="INVALID",
+        )
+
+        with self.assertRaises(ValidationError):
+            module.full_clean()
+
+    def test_database_constraint_prevents_disabling_core_module(self):
+        module = Module.objects.create(
+            code="core-module",
+            name="Core module",
+            esg_pillar=ESGPillar.PLATFORM,
+            is_core=True,
+            is_enabled=True,
+        )
+
+        with self.assertRaises(IntegrityError):
+            Module.objects.filter(pk=module.pk).update(is_enabled=False)
 
     def test_core_module_can_be_enabled(self):
         module = Module(
@@ -103,9 +126,25 @@ class ModuleSeedCommandTests(TestCase):
 
         expected_codes = {
             "company",
-            "org",
+            "organization",
             "user",
-            "period",
+            "reporting_period",
+            "country",
+            "state",
+            "city",
+            "department",
+            "role",
+            "permission",
+            "dashboard",
+            "activity_log",
+            "datapoint",
+            "emission_factor",
+            "framework_mapping",
+            "data",
+            "evidence",
+            "disclosure",
+            "target",
+            "audit",
             "energy",
             "emissions",
             "water",
@@ -122,6 +161,14 @@ class ModuleSeedCommandTests(TestCase):
         )
 
         self.assertEqual(actual_codes, expected_codes)
+        self.assertFalse({"org", "period"} & actual_codes)
+
+        core_modules = Module.objects.filter(is_core=True)
+        self.assertEqual(
+            set(core_modules.values_list("code", flat=True)),
+            {"company", "organization", "user", "reporting_period"},
+        )
+        self.assertTrue(all(core_modules.values_list("is_enabled", flat=True)))
 
     def test_seed_modules_is_idempotent(self):
         call_command("seed_modules")
@@ -153,6 +200,14 @@ class ModuleSeedCommandTests(TestCase):
         self.assertTrue(module.is_core)
         self.assertTrue(module.is_enabled)
         self.assertEqual(module.display_order, 1)
+
+    def test_seed_preserves_optional_module_enabled_state(self):
+        call_command("seed_modules")
+        Module.objects.filter(code="energy").update(is_enabled=True)
+
+        call_command("seed_modules")
+
+        self.assertTrue(Module.objects.get(code="energy").is_enabled)
 
 
 class ModuleAPITests(TestCase):

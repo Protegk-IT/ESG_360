@@ -54,6 +54,12 @@ class Module(BaseModel):
 
     class Meta:
         ordering = ["display_order", "name"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(is_core=False) | models.Q(is_enabled=True),
+                name="modules_core_requires_enabled",
+            ),
+        ]
 
     def clean(self):
         super().clean()

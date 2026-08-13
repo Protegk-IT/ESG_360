@@ -15,7 +15,7 @@ MODULES = [
         "display_order": 1,
     },
     {
-        "code": "org",
+        "code": "organization",
         "name": "Organization",
         "description": "Organization structure and hierarchy management.",
         "esg_pillar": "PLATFORM",
@@ -35,7 +35,7 @@ MODULES = [
         "display_order": 3,
     },
     {
-        "code": "period",
+        "code": "reporting_period",
         "name": "Reporting Periods",
         "description": "Reporting period and reporting calendar management.",
         "esg_pillar": "PLATFORM",
@@ -52,7 +52,7 @@ MODULES = [
         "icon": "zap",
         "is_core": False,
         "is_enabled": False,
-        "display_order": 10,
+        "display_order": 100,
     },
     {
         "code": "emissions",
@@ -62,7 +62,7 @@ MODULES = [
         "icon": "cloud",
         "is_core": False,
         "is_enabled": False,
-        "display_order": 11,
+        "display_order": 101,
     },
     {
         "code": "water",
@@ -72,7 +72,7 @@ MODULES = [
         "icon": "droplets",
         "is_core": False,
         "is_enabled": False,
-        "display_order": 12,
+        "display_order": 102,
     },
     {
         "code": "waste",
@@ -82,7 +82,7 @@ MODULES = [
         "icon": "recycle",
         "is_core": False,
         "is_enabled": False,
-        "display_order": 13,
+        "display_order": 103,
     },
     {
         "code": "social",
@@ -92,7 +92,7 @@ MODULES = [
         "icon": "heart",
         "is_core": False,
         "is_enabled": False,
-        "display_order": 20,
+        "display_order": 110,
     },
     {
         "code": "governance",
@@ -102,7 +102,7 @@ MODULES = [
         "icon": "landmark",
         "is_core": False,
         "is_enabled": False,
-        "display_order": 30,
+        "display_order": 120,
     },
     {
         "code": "supplier",
@@ -112,7 +112,7 @@ MODULES = [
         "icon": "truck",
         "is_core": False,
         "is_enabled": False,
-        "display_order": 40,
+        "display_order": 130,
     },
     {
         "code": "materiality",
@@ -122,7 +122,7 @@ MODULES = [
         "icon": "layers",
         "is_core": False,
         "is_enabled": False,
-        "display_order": 50,
+        "display_order": 140,
     },
     {
         "code": "report",
@@ -132,7 +132,171 @@ MODULES = [
         "icon": "file-text",
         "is_core": False,
         "is_enabled": False,
-        "display_order": 60,
+        "display_order": 150,
+    },
+    # These codes are already active in the stabilized permission contract.
+    # Keep them in the registry even when their feature module has not yet
+    # been implemented, so ``<module>.<action>`` and assignment module scopes
+    # always resolve to one canonical catalog entry.
+    {
+        "code": "country",
+        "name": "Countries",
+        "description": "Country reference data management.",
+        "esg_pillar": "PLATFORM",
+        "icon": "globe",
+        "is_core": False,
+        "is_enabled": True,
+        "display_order": 5,
+    },
+    {
+        "code": "state",
+        "name": "States",
+        "description": "State reference data management.",
+        "esg_pillar": "PLATFORM",
+        "icon": "map",
+        "is_core": False,
+        "is_enabled": True,
+        "display_order": 6,
+    },
+    {
+        "code": "city",
+        "name": "Cities",
+        "description": "City reference data management.",
+        "esg_pillar": "PLATFORM",
+        "icon": "map-pin",
+        "is_core": False,
+        "is_enabled": True,
+        "display_order": 7,
+    },
+    {
+        "code": "department",
+        "name": "Departments",
+        "description": "Company department management.",
+        "esg_pillar": "PLATFORM",
+        "icon": "building-2",
+        "is_core": False,
+        "is_enabled": True,
+        "display_order": 8,
+    },
+    {
+        "code": "role",
+        "name": "Roles",
+        "description": "Role and permission-bundle administration.",
+        "esg_pillar": "PLATFORM",
+        "icon": "shield",
+        "is_core": False,
+        "is_enabled": True,
+        "display_order": 9,
+    },
+    {
+        "code": "permission",
+        "name": "Permissions",
+        "description": "Permission catalog visibility.",
+        "esg_pillar": "PLATFORM",
+        "icon": "key-round",
+        "is_core": False,
+        "is_enabled": True,
+        "display_order": 10,
+    },
+    {
+        "code": "dashboard",
+        "name": "Dashboard",
+        "description": "Platform dashboard and summary metrics.",
+        "esg_pillar": "PLATFORM",
+        "icon": "layout-dashboard",
+        "is_core": False,
+        "is_enabled": True,
+        "display_order": 11,
+    },
+    {
+        "code": "activity_log",
+        "name": "Activity Log",
+        "description": "Auditable platform activity history.",
+        "esg_pillar": "PLATFORM",
+        "icon": "history",
+        "is_core": False,
+        "is_enabled": True,
+        "display_order": 12,
+    },
+    {
+        "code": "datapoint",
+        "name": "Datapoints",
+        "description": "ESG datapoint catalog management.",
+        "esg_pillar": "PLATFORM",
+        "icon": "database",
+        "is_core": False,
+        "is_enabled": False,
+        "display_order": 20,
+    },
+    {
+        "code": "emission_factor",
+        "name": "Emission Factors",
+        "description": "Emission-factor catalog management.",
+        "esg_pillar": "E",
+        "icon": "calculator",
+        "is_core": False,
+        "is_enabled": False,
+        "display_order": 21,
+    },
+    {
+        "code": "framework_mapping",
+        "name": "Framework Mapping",
+        "description": "Sustainability-framework mapping management.",
+        "esg_pillar": "PLATFORM",
+        "icon": "git-merge",
+        "is_core": False,
+        "is_enabled": False,
+        "display_order": 22,
+    },
+    {
+        "code": "data",
+        "name": "Data Collection",
+        "description": "ESG data entry, submission, and approval.",
+        "esg_pillar": "PLATFORM",
+        "icon": "clipboard-input",
+        "is_core": False,
+        "is_enabled": False,
+        "display_order": 23,
+    },
+    {
+        "code": "evidence",
+        "name": "Evidence",
+        "description": "Evidence upload and review.",
+        "esg_pillar": "PLATFORM",
+        "icon": "paperclip",
+        "is_core": False,
+        "is_enabled": False,
+        "display_order": 24,
+    },
+    {
+        "code": "disclosure",
+        "name": "Disclosures",
+        "description": "Disclosure assignment and response workflows.",
+        "esg_pillar": "PLATFORM",
+        "icon": "file-check",
+        "is_core": False,
+        "is_enabled": False,
+        "display_order": 25,
+    },
+    {
+        "code": "target",
+        "name": "Targets",
+        "description": "Sustainability-target management.",
+        "esg_pillar": "PLATFORM",
+        "icon": "target",
+        "is_core": False,
+        "is_enabled": False,
+        "display_order": 26,
+    },
+    {
+        "code": "audit",
+        "name": "Audit",
+        "description": "Audit query and response workflows.",
+        "esg_pillar": "PLATFORM",
+        "icon": "search-check",
+        "is_core": False,
+        "is_enabled": False,
+        "display_order": 27,
     },
 ]
 
@@ -156,14 +320,15 @@ class Command(BaseCommand):
                 "display_order": module_data["display_order"],
             }
 
-            module, created = Module.objects.update_or_create(
+            module, created = Module.objects.get_or_create(
                 code=code,
-                defaults=defaults,
+                defaults={
+                    **defaults,
+                    "is_enabled": module_data["is_enabled"],
+                },
             )
 
             if created:
-                module.is_enabled = module_data["is_enabled"]
-                module.save()
 
                 created_count += 1
 
@@ -173,6 +338,16 @@ class Command(BaseCommand):
                     )
                 )
             else:
+                for field, value in defaults.items():
+                    setattr(module, field, value)
+
+                # Enabled state is deployment configuration for optional
+                # modules and must survive seed reruns. Core modules are the
+                # exception: their invariant requires them to remain enabled.
+                if module.is_core:
+                    module.is_enabled = True
+
+                module.save()
                 updated_count += 1
 
                 self.stdout.write(
