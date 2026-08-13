@@ -255,9 +255,16 @@ export default function OrgNodeFormPanel({
               <Select
                 value={form.country}
                 onValueChange={(value) => {
-                  update("country", value);
-                  update("state", "");
-                  update("city", "");
+                  // The Select can emit an empty value while its options are
+                  // mounting. Ignore that internal event so an edit dialog
+                  // keeps the location loaded from the existing OrgNode.
+                  if (!value) return;
+                  setForm((previous) => ({
+                    ...previous,
+                    country: value,
+                    state: "",
+                    city: "",
+                  }));
                 }}
               >
                 <SelectTrigger>
@@ -278,8 +285,12 @@ export default function OrgNodeFormPanel({
               <Select
                 value={form.state}
                 onValueChange={(value) => {
-                  update("state", value);
-                  update("city", "");
+                  if (!value) return;
+                  setForm((previous) => ({
+                    ...previous,
+                    state: value,
+                    city: "",
+                  }));
                 }}
                 disabled={!form.country}
               >
@@ -300,7 +311,9 @@ export default function OrgNodeFormPanel({
               <Label>City</Label>
               <Select
                 value={form.city}
-                onValueChange={(value) => update("city", value)}
+                onValueChange={(value) => {
+                  if (value) update("city", value);
+                }}
                 disabled={!form.state}
               >
                 <SelectTrigger>

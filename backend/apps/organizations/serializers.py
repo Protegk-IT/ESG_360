@@ -1,9 +1,11 @@
 from rest_framework import serializers
 
+from apps.core.serializers import ValidatedModelSerializer
+
 from .models import OrgNode
 
 
-class OrgNodeSerializer(serializers.ModelSerializer):
+class OrgNodeSerializer(ValidatedModelSerializer):
     company_name = serializers.CharField(source="company.company_name", read_only=True)
     parent_name = serializers.CharField(source="parent.name", read_only=True)
 

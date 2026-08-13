@@ -439,6 +439,10 @@ export default function ReportingPeriodList() {
 
       onGenerate:
         handleGenerate,
+      canGenerate: (period) =>
+        period.period_type === "ANNUAL" &&
+        period.status === "OPEN" &&
+        (period.children_count ?? 0) === 0,
     });
       /* ==========================================================
       UI

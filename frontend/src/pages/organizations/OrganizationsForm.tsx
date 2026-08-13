@@ -1,11 +1,11 @@
 import { useCallback,useEffect, useMemo, useState } from "react";
-import { AxiosError } from "axios";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { toast } from "sonner";
 
 import OrganizationApi from "@/api/organizations/OrganizationApi";
 import CompanyApi from "@/api/companies/CompanyApi";
+import { getApiErrorMessage } from "@/services/errors";
 
 import type {
   OrgNode,
@@ -61,8 +61,6 @@ interface Company {
   id: string;
   company_name: string;
 }
-
-type ValidationErrors = Record<string, string[]>;
 
 const ROOT_VALUE = "__root__";
 
@@ -368,19 +366,7 @@ const loadOrgNode = useCallback(async (nodeId: string) => {
 
       navigate("/organizations");
     } catch (error: unknown) {
-      const axiosError = error as AxiosError<ValidationErrors | string>;
-      const data = axiosError.response?.data;
-
-      if (typeof data === "string") {
-        toast.error(data);
-      } else if (data) {
-        Object.entries(data).forEach(([field, messages]) => {
-          const message = Array.isArray(messages) ? messages.join(", ") : messages;
-          toast.error(`${formatFieldName(field)}: ${message}`);
-        });
-      } else {
-        toast.error("Unable to save OrgNode. Please try again.");
-      }
+      toast.error(getApiErrorMessage(error, "Unable to save OrgNode. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -508,9 +494,16 @@ const loadOrgNode = useCallback(async (nodeId: string) => {
                   <Select
                     value={formData.country}
                     onValueChange={(value) => {
-                      updateField("country", value);
-                      updateField("state", "");
-                      updateField("city", "");
+                      // Radix can emit an empty value while options mount.
+                      // It is not a user action and must not erase hydrated
+                      // location values on the edit form.
+                      if (!value) return;
+                      setFormData((previous) => ({
+                        ...previous,
+                        country: value,
+                        state: "",
+                        city: "",
+                      }));
                     }}
                   >
                     <SelectTrigger>
@@ -531,8 +524,12 @@ const loadOrgNode = useCallback(async (nodeId: string) => {
                   <Select
                     value={formData.state}
                     onValueChange={(value) => {
-                      updateField("state", value);
-                      updateField("city", "");
+                      if (!value) return;
+                      setFormData((previous) => ({
+                        ...previous,
+                        state: value,
+                        city: "",
+                      }));
                     }}
                     disabled={!formData.country}
                   >
@@ -553,7 +550,9 @@ const loadOrgNode = useCallback(async (nodeId: string) => {
                   <Label>City</Label>
                   <Select
                     value={formData.city}
-                    onValueChange={(value) => updateField("city", value)}
+                    onValueChange={(value) => {
+                      if (value) updateField("city", value);
+                    }}
                     disabled={!formData.state}
                   >
                     <SelectTrigger>
@@ -787,9 +786,3 @@ const loadOrgNode = useCallback(async (nodeId: string) => {
 /* ==============================================================
     HELPERS
 ============================================================== */
-
-function formatFieldName(fieldName: string) {
-  return fieldName
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}

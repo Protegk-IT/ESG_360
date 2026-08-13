@@ -1,3 +1,4 @@
+from django.db.models import Count
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from rest_framework.response import Response
@@ -23,11 +24,11 @@ class GenerateSubperiodsSerializer(serializers.Serializer):
 
 
 class ReportingPeriodViewSet(RBACModelViewSet):
-    module_code = "period"
+    module_code = "reporting_period"
     queryset = ReportingPeriod.objects.select_related(
         "parent",
         "locked_by",
-    )
+    ).annotate(children_count=Count("children"))
 
     serializer_class = ReportingPeriodSerializer
 
@@ -149,4 +150,3 @@ class ReportingPeriodViewSet(RBACModelViewSet):
             {"detail": "Sub-periods generated successfully."},
             status=status.HTTP_201_CREATED,
         )
-

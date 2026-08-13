@@ -2,6 +2,7 @@ from calendar import monthrange
 from datetime import date
 
 from django.core.exceptions import ValidationError
+from django.db import transaction
 
 from .models import PeriodType, ReportingPeriod, Status
 
@@ -11,25 +12,28 @@ def generate_subperiods(parent_period, period_type):
     Generate child reporting periods for the given parent period.
     """
 
-    # Only annual periods can generate sub-periods
-    if parent_period.period_type != PeriodType.ANNUAL:
-        raise ValidationError("Sub-periods can only be generated for ANNUAL periods.")
+    with transaction.atomic():
+        parent_period = ReportingPeriod.objects.select_for_update().get(
+            pk=parent_period.pk
+        )
 
-    # Prevent duplicate generation
-    if parent_period.children.exists():
-        raise ValidationError("Sub-periods have already been generated.")
+        if parent_period.period_type != PeriodType.ANNUAL:
+            raise ValidationError("Sub-periods can only be generated for ANNUAL periods.")
 
-    if period_type == PeriodType.MONTHLY:
-        generate_monthly(parent_period)
+        if parent_period.status != Status.OPEN:
+            raise ValidationError("Sub-periods can only be generated for an OPEN period.")
 
-    elif period_type == PeriodType.QUARTERLY:
-        generate_quarterly(parent_period)
+        if parent_period.children.exists():
+            raise ValidationError("Sub-periods have already been generated.")
 
-    elif period_type == PeriodType.HALF_YEARLY:
-        generate_half_yearly(parent_period)
-
-    else:
-        raise ValidationError("Invalid period type.")
+        if period_type == PeriodType.MONTHLY:
+            generate_monthly(parent_period)
+        elif period_type == PeriodType.QUARTERLY:
+            generate_quarterly(parent_period)
+        elif period_type == PeriodType.HALF_YEARLY:
+            generate_half_yearly(parent_period)
+        else:
+            raise ValidationError("Invalid period type.")
     
 
 def generate_monthly(parent_period):
@@ -148,5 +152,4 @@ def generate_half_yearly(parent_period):
             half_start = date(year + 1, 1, 1)
         else:
             half_start = date(year, month + 1, 1)
-
 

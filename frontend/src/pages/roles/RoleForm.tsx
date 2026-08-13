@@ -42,7 +42,7 @@ import axios from "axios";
 ========================================================== */
 
 interface Permission {
-  id: number;
+  id: string;
   name: string;
   code: string;
   description: string;
@@ -57,7 +57,15 @@ interface RoleFormData {
   role_name: string;
   role_code: string;
   description: string;
-  permissions: number[];
+  permissions: string[];
+}
+
+function toDisplayLabel(value: string) {
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 /* ==========================================================
@@ -114,12 +122,8 @@ useEffect(() => {
 
           return {
             ...permission,
-            module:
-              module.charAt(0).toUpperCase() +
-              module.slice(1),
-            action:
-              action.charAt(0).toUpperCase() +
-              action.slice(1),
+            module: toDisplayLabel(module),
+            action: toDisplayLabel(action),
           };
         }
       );
@@ -203,7 +207,7 @@ useEffect(() => {
   ========================================================== */
 
   const togglePermission = (
-    permissionId: number
+    permissionId: string
   ) => {
     setFormData((prev) => ({
       ...prev,

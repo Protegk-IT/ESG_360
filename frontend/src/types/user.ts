@@ -24,10 +24,10 @@ export interface UserFormData {
 
 export interface UserData {
   assigned_plants: never[];
-  department: string;
-  org_node: string;
-  role: string;
-  company: string;
+  department: string | null;
+  org_node: string | null;
+  role: string | null;
+  company?: string;
   id: number;
   username: string;
   email: string;
@@ -40,4 +40,5 @@ export interface UserData {
   designation: string;
   mobile_number: string;
   is_active: boolean;
+  is_superuser: boolean;
 }

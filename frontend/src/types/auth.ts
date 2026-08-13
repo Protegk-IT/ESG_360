@@ -11,11 +11,11 @@ export interface AuthUser {
   full_name: string;
   email: string;
 
-  role_name: string;
-  department_name: string;
-  designation: string;
-  employee_code: string;
-  mobile_number: string;
+  role_name?: string;
+  department_name?: string;
+  designation?: string | null;
+  employee_code?: string | null;
+  mobile_number?: string | null;
 
   profile_image: string | null;
 
@@ -35,8 +35,6 @@ export interface AuthUser {
 
 // Login Response
 export interface LoginResponse {
-  success: boolean;
-  message: string;
-  csrf_token: string;
+  csrfToken: string;
   user: AuthUser;
 }

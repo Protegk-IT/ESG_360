@@ -64,7 +64,7 @@ export const getUserColumns = ({
     header: "Role",
 cell: ({ row }) => (
   <Badge variant="system">
-    {row.original.role_name}
+    {row.original.role_name || (row.original.is_superuser ? "Platform administrator" : "-")}
   </Badge>
 ),
   },

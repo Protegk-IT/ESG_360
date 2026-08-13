@@ -1,3 +1,35 @@
+CRUD_MODULES = (
+    "company",
+    "country",
+    "state",
+    "city",
+    "department",
+    "organization",
+    "reporting_period",
+)
+
+CRUD_ACTIONS = (
+    ("view", "VIEW"),
+    ("create", "CREATE"),
+    ("edit", "EDIT"),
+    ("delete", "DELETE"),
+)
+
+CRUD_PERMISSIONS = [
+    (f"{module}.{action}", f"{action.title()} {module.replace('_', ' ').title()}", module, db_action)
+    for module in CRUD_MODULES
+    for action, db_action in CRUD_ACTIONS
+]
+
+DEPRECATED_PERMISSION_CODES = (
+    "org.manage",
+    "period.manage",
+    "period.reopen",
+    "permission.create",
+    "permission.edit",
+    "permission.delete",
+)
+
 PERMISSIONS = [
     ("user.view", "View User", "user", "VIEW"),
     ("user.create", "Create User", "user", "CREATE"),
@@ -10,23 +42,19 @@ PERMISSIONS = [
     ("role.delete", "Delete Role", "role", "DELETE"),
 
     ("permission.view", "View Permission", "permission", "VIEW"),
-    ("permission.create", "Create Permission", "permission", "CREATE"),
-    ("permission.edit", "Edit Permission", "permission", "EDIT"),
-    ("permission.delete", "Delete Permission", "permission", "DELETE"),
-
     # §7.2 Capability permissions
 
-    ("org.manage", "Manage org structure", "organization", "MANAGE"),
+    ("organization.manage", "Manage org structure", "organization", "MANAGE"),
 
     ("user.manage", "Manage users and scopes", "user", "MANAGE"),
 
-    ("period.manage", "Manage reporting periods", "reporting_period", "MANAGE"),
+    ("reporting_period.manage", "Manage reporting periods", "reporting_period", "MANAGE"),
 
     ("datapoint.manage", "Manage datapoint catalog", "datapoint", "MANAGE"),
 
     ("emission_factor.manage", "Manage emission factors", "emission_factor", "MANAGE"),
 
-    ("framework_mapping.manage", "Manage framework mappings", "framework", "MANAGE"),
+    ("framework_mapping.manage", "Manage framework mappings", "framework_mapping", "MANAGE"),
 
     ("data.enter", "Enter data", "data", "EDIT"),
 
@@ -36,7 +64,7 @@ PERMISSIONS = [
 
     ("data.approve", "Approve or reject data", "data", "APPROVE"),
 
-    ("period.reopen", "Reopen a locked period", "reporting_period", "EDIT"),
+    ("reporting_period.reopen", "Reopen a locked period", "reporting_period", "EDIT"),
 
     ("materiality.run", "Run materiality assessment", "materiality", "CREATE"),
 
@@ -65,7 +93,7 @@ PERMISSIONS = [
     ("audit.respond_query", "Respond to audit query", "audit", "EDIT"),
 
     ("activity_log.view", "View activity log", "activity_log", "VIEW"),
-]
+] + CRUD_PERMISSIONS
 
 
 ROLES = [
@@ -113,30 +141,24 @@ ROLES = [
 
 ROLE_PERMISSIONS = {
     "platform_admin": [
-        "user.view",
-        "user.create",
-        "user.edit",
-        "user.delete",
-
-        "role.view",
-        "role.create",
-        "role.edit",
-        "role.delete",
-
-        "permission.view",
-        "permission.create",
-        "permission.edit",
-        "permission.delete",
+        *[code for code, *_ in PERMISSIONS],
     ],
     "company_admin": [
-        "org.manage",
+        *[
+            code for code, *_ in CRUD_PERMISSIONS
+            if code.split(".", 1)[0] in {
+                "company", "country", "state", "city", "department",
+                "organization", "reporting_period",
+            }
+        ],
+        "organization.manage",
         "user.manage",
-        "period.manage",
+        "reporting_period.manage",
         "datapoint.manage",
         "emission_factor.manage",
         "framework_mapping.manage",
         "evidence.upload",
-        "period.reopen",
+        "reporting_period.reopen",
         "report.export",
         "target.set",
         "dashboard.view",
@@ -153,7 +175,10 @@ ROLE_PERMISSIONS = {
     ],
 
     "esg_manager": [
-        "period.manage",
+        "reporting_period.view",
+        "reporting_period.create",
+        "reporting_period.edit",
+        "reporting_period.manage",
         "datapoint.manage",
         "emission_factor.manage",
         "framework_mapping.manage",

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AxiosError } from "axios";
 import { toast } from "sonner";
 import AppShell from "@/components/layout/AppShell";
 import ReportingPeriodApi from "@/api/reporting_periods/ReportingPeriodApi";
+import { getApiErrorMessage } from "@/services/errors";
 import type {
   ReportingPeriod,
   ReportingPeriodFormData,
@@ -28,10 +28,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-interface ValidationErrors {
-  [key: string]: string[];
-}
 
 const emptyForm: ReportingPeriodFormData = {
   parent: null,
@@ -144,15 +140,7 @@ export default function ReportingPeriodForm() {
 
       navigate("/periods");
     } catch (error: unknown) {
-      const axiosError = error as AxiosError<ValidationErrors>;
-
-      if (axiosError.response?.data) {
-        Object.entries(axiosError.response.data).forEach(([field, messages]) => {
-          toast.error(`${field}: ${messages.join(", ")}`);
-        });
-      } else {
-        toast.error("Something went wrong.");
-      }
+      toast.error(getApiErrorMessage(error, "Unable to save reporting period."));
     } finally {
       setSaving(false);
     }

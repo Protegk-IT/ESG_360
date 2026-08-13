@@ -1,31 +1,18 @@
-from urllib import request
-from django.contrib.auth import authenticate, login, logout
-from django.middleware.csrf import get_token
-from django.shortcuts import get_object_or_404
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.views import APIView
-
-from apps.companies.models import Company, Department
-from apps.organizations.models import OrgNode
-from .permissions import HasRolePermission
-from rest_framework import viewsets, status
-from rest_framework.response import Response
-
 from django.contrib.auth import authenticate, login, logout
 from django.shortcuts import get_object_or_404
-
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import action
-from apps.accounts.permissions import HasRolePermission
 from rest_framework import viewsets
 from apps.accounts.viewsets import RBACModelViewSet
+from apps.accounts.permissions import HasRolePermission
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from django.middleware.csrf import get_token
-from rest_framework.decorators import api_view
-
+from apps.companies.models import Company, Department
+from apps.organizations.models import OrgNode
 
 from .models import (
     User,
@@ -103,6 +90,11 @@ class RoleViewSet(RBACModelViewSet):
 
         super().initial(request, *args, **kwargs)
 
+    def perform_destroy(self, instance):
+        if instance.is_system:
+            raise DRFValidationError({"detail": "System roles cannot be deleted."})
+        instance.delete()
+
 
         
 class UserViewSet(RBACModelViewSet):
@@ -155,7 +147,8 @@ class UserViewSet(RBACModelViewSet):
         }       
 
         if self.action in custom_permissions:
-            return custom_permissions[self.action]
+            permission = custom_permissions[self.action]
+            return permission.get(self.request.method) if isinstance(permission, dict) else permission
 
         return super().get_required_permission()
 
@@ -412,45 +405,11 @@ class LoginView(APIView):
 
         return Response(
             {
-                "user": UserSerializer(user).data,
+                "user": CurrentUserSerializer(user).data,
                 "csrfToken": get_token(request),
             },
             status=status.HTTP_200_OK,
         )
-    
-        csrf_token = get_token(request)
-
-        return Response({
-    "success": True,
-    "message": "Login successful.",
-    "csrf_token": csrf_token,
-    "user": {
-        "id": user.id,
-        "username": user.username,
-        "full_name": user.full_name,
-        "email": user.email,
-
-        # Super Admin
-        "is_superuser": user.is_superuser,
-        "is_staff": user.is_staff,
-
-
-        # Role Codes
-        "roles": list(
-            user.role.filter(is_active=True)
-            .values_list("role_code", flat=True)
-        ),
-
-        # Permission Codes
-        "permissions": list(
-            user.role.filter(is_active=True)
-            .values_list("permissions__code", flat=True)
-            .distinct()
-        ),
-    }
-})
-
-
 # ==========================================
 # Logout
 # ==========================================
@@ -524,123 +483,19 @@ class ChangePasswordView(APIView):
         
 
 # ==========================================
-# USER DETAIL
-# ==========================================
-
-class UserDetailView(APIView):
-
-    def get_permissions(self):
-
-        if self.request.method == "GET":
-
-            class Permission(HasRolePermission):
-                permission_code = "user.view"
-
-            return [Permission()]
-
-        elif self.request.method in ["PUT", "PATCH"]:
-
-            class Permission(HasRolePermission):
-                permission_code = "user.edit"
-
-            return [Permission()]
-
-        elif self.request.method == "DELETE":
-
-            class Permission(HasRolePermission):
-                permission_code = "user.delete"
-
-            return [Permission()]
-
-        return [IsAuthenticated()]
-
-    def get_object(self, pk):
-
-        return get_object_or_404(
-            User.objects.prefetch_related(
-                "role",
-                "role__permissions"
-            ).select_related(
-                "company"
-            ),
-            pk=pk
-        )
-
-    def get(self, request, pk):
-
-        user = self.get_object(pk)
-
-        serializer = UserSerializer(user)
-
-        return Response(serializer.data)
-
-    def put(self, request, pk):
-
-        user = self.get_object(pk)
-
-        serializer = UserCreateUpdateSerializer(
-            user,
-            data=request.data,
-            context={"request": request},
-        )
-
-        serializer.is_valid(
-            raise_exception=True
-        )
-
-        serializer.save()
-
-        return Response(
-            UserSerializer(user).data
-        )
-
-    def patch(self, request, pk):
-
-        user = self.get_object(pk)
-
-        serializer = UserCreateUpdateSerializer(
-            user,
-            data=request.data,
-            partial=True,
-            context={"request": request},
-        )
-
-        serializer.is_valid(
-            raise_exception=True
-        )
-
-        serializer.save()
-
-        return Response(
-            UserSerializer(user).data
-        )
-
-    def delete(self, request, pk):
-
-        user = self.get_object(pk)
-
-        user.delete()
-
-        return Response(
-    {
-        "detail": "Password changed successfully."
-    },
-    status=status.HTTP_200_OK,
-)
-    status=status.HTTP_204_NO_CONTENT
-
-# ==========================================
 # DASHBOARD
 # ==========================================
 
 class PlatformDashboardView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasRolePermission]
+    permission_code = "dashboard.view"
 
     def get(self, request):
         data = {
             # Platform Statistics
             "companies": Company.objects.count(),
             "organizations": OrgNode.objects.count(),
+            "facility": OrgNode.objects.filter(node_type="FACILITY").count(),
             "departments": Department.objects.count(),
 
             # User Statistics
@@ -661,216 +516,3 @@ class PlatformDashboardView(APIView):
         }
 
         return Response(data)
-
-
-# ==========================================
-# ROLE VIEWSET
-# ==========================================
-
-class RoleViewSet(viewsets.ModelViewSet):
-
-    serializer_class = RoleSerializer
-
-    queryset = Role.objects.prefetch_related(
-        "permissions"
-    ).order_by(
-        "role_name"
-    )
-
-    def get_permissions(self):
-
-        if self.action in ["list", "retrieve"]:
-
-            class Permission(HasRolePermission):
-                permission_code = "role.view"
-
-            return [Permission()]
-
-        elif self.action == "create":
-
-            class Permission(HasRolePermission):
-                permission_code = "role.create"
-
-            return [Permission()]
-
-        elif self.action in ["update", "partial_update"]:
-
-            class Permission(HasRolePermission):
-                permission_code = "role.edit"
-
-            return [Permission()]
-
-        elif self.action == "destroy":
-
-            class Permission(HasRolePermission):
-                permission_code = "role.delete"
-
-            return [Permission()]
-
-        return [IsAuthenticated()]
-
-    def create(self, request, *args, **kwargs):
-
-        serializer = self.get_serializer(
-            data=request.data
-        )
-
-        serializer.is_valid(
-            raise_exception=True
-        )
-
-        role = serializer.save()
-
-        return Response(
-            {
-                "message": "Role created successfully.",
-                "data": RoleSerializer(role).data
-            },
-            status=status.HTTP_201_CREATED
-        )
-
-    def update(self, request, *args, **kwargs):
-
-        partial = kwargs.pop(
-            "partial",
-            False
-        )
-
-        instance = self.get_object()
-
-        serializer = self.get_serializer(
-            instance,
-            data=request.data,
-            partial=partial
-        )
-
-        serializer.is_valid(
-            raise_exception=True
-        )
-
-        role = serializer.save()
-
-        return Response({
-            "message": "Role updated successfully.",
-            "data": RoleSerializer(role).data
-        })
-
-    def destroy(self, request, *args, **kwargs):
-
-        role = self.get_object()
-
-        role.delete()
-
-        return Response(
-            {
-                "message": "Role deleted successfully."
-            },
-            status=status.HTTP_204_NO_CONTENT
-        )
-
-
-# ==========================================
-# PERMISSION VIEWSET
-# ==========================================
-
-class PermissionViewSet(viewsets.ModelViewSet):
-
-    serializer_class = PermissionSerializer
-
-    queryset = Permission.objects.order_by(
-        "display_order",
-        "name"
-    )
-
-    def get_permissions(self):
-
-        if self.action in ["list", "retrieve"]:
-
-            class Permission(HasRolePermission):
-                permission_code = "permission.view"
-
-            return [Permission()]
-
-        elif self.action == "create":
-
-            class Permission(HasRolePermission):
-                permission_code = "permission.create"
-
-            return [Permission()]
-
-        elif self.action in ["update", "partial_update"]:
-
-            class Permission(HasRolePermission):
-                permission_code = "permission.edit"
-
-            return [Permission()]
-
-        elif self.action == "destroy":
-
-            class Permission(HasRolePermission):
-                permission_code = "permission.delete"
-
-            return [Permission()]
-
-        return [IsAuthenticated()]
-
-    def create(self, request, *args, **kwargs):
-
-        serializer = self.get_serializer(
-            data=request.data
-        )
-
-        serializer.is_valid(
-            raise_exception=True
-        )
-
-        permission = serializer.save()
-
-        return Response(
-            {
-                "message": "Permission created successfully.",
-                "data": PermissionSerializer(permission).data
-            },
-            status=status.HTTP_201_CREATED
-        )
-
-    def update(self, request, *args, **kwargs):
-
-        partial = kwargs.pop(
-            "partial",
-            False
-        )
-
-        instance = self.get_object()
-
-        serializer = self.get_serializer(
-            instance,
-            data=request.data,
-            partial=partial
-        )
-
-        serializer.is_valid(
-            raise_exception=True
-        )
-
-        permission = serializer.save()
-
-        return Response({
-            "message": "Permission updated successfully.",
-            "data": PermissionSerializer(permission).data
-        })
-
-    def destroy(self, request, *args, **kwargs):
-
-        permission = self.get_object()
-
-        permission.delete()
-
-        return Response(
-            {
-                "message": "Permission deleted successfully."
-            },
-            status=status.HTTP_204_NO_CONTENT
-        )
-
-
