@@ -14,11 +14,13 @@ import {
   RefreshCw,
   Save,
   Search,
+  Sparkles,
   Tag,
 } from "lucide-react";
 
 import AppShell from "@/components/layout/AppShell";
 import api from "@/services/api";
+import SurveyApi from "@/api/materiality/surveyApi";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +34,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 import type {
   TopicCategory,
@@ -51,7 +61,7 @@ interface Assessment {
   period_start: string;
   period_end: string;
 
-  mode: "IMPACT" | "DOUBLE" | "FINANCIAL";
+  mode: "SINGLE" | "DOUBLE" ;
   status: string;
 
   primary_threshold: string | number;
@@ -172,6 +182,16 @@ export default function AssessmentDetail() {
 
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
+
+  /* ---------------------------- post-save "generate survey" dialog ---------------------------- */
+
+  /*
+   * Shown right after the topic selection is saved successfully, so the
+   * user can jump straight into generating the survey without having to
+   * find their way to the Survey Manager separately.
+   */
+  const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
+  const [generatingSurvey, setGeneratingSurvey] = useState(false);
 
   /* ---------------------------- load data ---------------------------- */
 
@@ -412,49 +432,83 @@ export default function AssessmentDetail() {
   /* ---------------------------- save ---------------------------- */
 
   const handleSaveTopics = async () => {
-  if (!id || !assessment || assessment.is_locked) {
-    return;
-  }
+    if (!id || !assessment || assessment.is_locked) {
+      return;
+    }
 
-  try {
-    setSaving(true);
-    setError(null);
+    try {
+      setSaving(true);
+      setError(null);
 
-    await api.post(
-      `/materiality/assessments/${id}/select-topics/`,
-      {
+      await api.post(`/materiality/assessments/${id}/select-topics/`, {
         subtopic_ids: Array.from(selectedSubTopicIds),
-      }
-    );
+      });
 
-    toast.success("Topics selected successfully.", {
-      description:
-        "The selected topics have been saved to this assessment.",
-    });
+      toast.success("Topics selected successfully.", {
+        description: "The selected topics have been saved to this assessment.",
+      });
 
-    // Refresh data before leaving the page
-    await loadData();
+      // Refresh data so the page reflects what was just saved.
+      await loadData();
 
-    // Navigate back to assessment list
+      /*
+       * Instead of navigating straight away, offer to generate the
+       * survey from the topics that were just saved. The user can
+       * still back out and go to the assessment list from the dialog.
+       */
+      setGenerateDialogOpen(true);
+    } catch (err: unknown) {
+      console.error("Failed to save topic selection:", err);
+
+      setError("Unable to save topic selection. Please try again.");
+
+      toast.error("Failed to save topics.", {
+        description: "Unable to save the topic selection. Please try again.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /* ---------------------------- generate survey ---------------------------- */
+
+  const handleGenerateSurvey = async () => {
+    if (!id) {
+      return;
+    }
+
+    try {
+      setGeneratingSurvey(true);
+
+      await SurveyApi.generateSurvey(id);
+
+      toast.success("Survey questions generated successfully.", {
+        description: "Questions were generated from the included assessment topics.",
+      });
+
+      setGenerateDialogOpen(false);
+
+      navigate(`/materiality/assessments/${id}/survey`);
+    } catch (err: unknown) {
+      console.error("Failed to generate survey questions:", err);
+
+      toast.error("Unable to generate survey questions.", {
+        description: "Make sure the assessment has included topics.",
+      });
+    } finally {
+      setGeneratingSurvey(false);
+    }
+  };
+
+  const handleSkipGenerate = () => {
+    if (generatingSurvey) {
+      return;
+    }
+
+    setGenerateDialogOpen(false);
     navigate("/materiality/assessments");
-  } catch (err: unknown) {
-    console.error(
-      "Failed to save topic selection:",
-      err
-    );
+  };
 
-    setError(
-      "Unable to save topic selection. Please try again."
-    );
-
-    toast.error("Failed to save topics.", {
-      description:
-        "Unable to save the topic selection. Please try again.",
-    });
-  } finally {
-    setSaving(false);
-  }
-};
   /* ---------------------------- badges ---------------------------- */
 
   const renderStatusBadge = (status: string) => {
@@ -932,6 +986,80 @@ export default function AssessmentDetail() {
           </Button>
         </div>
       </div>
+
+      {/* ==================================================
+          POST-SAVE: GENERATE SURVEY PROMPT
+
+          Fires automatically once the topic selection saves
+          successfully — offers to generate the survey right
+          away instead of making the user find their own way
+          to the Survey Manager afterwards.
+      ================================================== */}
+
+      <Dialog
+        open={generateDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleSkipGenerate();
+          }
+        }}
+      >
+        <DialogContent className="max-w-md border-slate-200 bg-white p-0">
+
+          <div className="flex flex-col items-center px-6 pb-2 pt-8 text-center">
+
+            <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-[#F1EFFF] text-[#4A3FD6]">
+              <Sparkles className="h-7 w-7" />
+            </div>
+
+            <DialogHeader className="items-center">
+              <DialogTitle className="text-lg font-semibold text-[#22243A]">
+                Generate your survey
+              </DialogTitle>
+
+              <DialogDescription className="max-w-sm text-center text-sm leading-6 text-slate-500">
+                Generate survey questions automatically from the topics included in this
+                materiality assessment. The generated questions can be reviewed and edited
+                afterwards.
+              </DialogDescription>
+            </DialogHeader>
+
+            <p className="mt-4 text-[11px] text-slate-400">
+              The survey and its generated questions will be created by the backend.
+            </p>
+
+          </div>
+
+          <DialogFooter className="flex-col gap-2 border-t border-slate-100 px-6 py-4 sm:flex-col">
+
+            <Button
+              type="button"
+              onClick={() => void handleGenerateSurvey()}
+              disabled={generatingSurvey}
+              className="w-full bg-[#4A3FD6] text-white hover:bg-[#3F34C2]"
+            >
+              {generatingSurvey ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 h-4 w-4" />
+              )}
+              {generatingSurvey ? "Generating Questions..." : "Generate Questions"}
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={generatingSurvey}
+              onClick={handleSkipGenerate}
+              className="w-full text-slate-500"
+            >
+              Not Now
+            </Button>
+
+          </DialogFooter>
+
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

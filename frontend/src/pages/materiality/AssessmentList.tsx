@@ -10,9 +10,16 @@ import AssessmentApi from "@/api/materiality/AssessmentApi";
 import AssessmentCreateDialog from "./AssessmentCreateDialog";
 
 import {
-  UsersRound,
+  MoreHorizontal,
 } from "lucide-react";
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type {
   MaterialityAssessment,
   AssessmentStatus,
@@ -28,7 +35,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { type ColumnDef } from "@tanstack/react-table";
-import { Eye, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /* ==========================================================
@@ -47,8 +53,7 @@ const STATUS_LABELS: Record<AssessmentStatus, string> = {
 ========================================================== */
 
 const MODE_LABELS: Record<AssessmentMode, string> = {
-  IMPACT: "Impact Materiality",
-  FINANCIAL: "Financial Materiality",
+  SINGLE:"Single Materiality",
   DOUBLE: "Double Materiality",
 };
 
@@ -91,6 +96,8 @@ const getStatusBadge = (status: AssessmentStatus) => {
   }
 };
 
+
+
 /* ==========================================================
    TABLE COLUMNS
 ========================================================== */
@@ -99,11 +106,15 @@ const getAssessmentColumns = ({
   onView,
   onDelete,
   onAddStakeholderGroup,
+  onManageSurvey,
+  onManageSurveyDistribution,
 }: {
   onView: (id: string) => void;
   onEdit: (id: string) => void;
   onDelete: (assessment: MaterialityAssessment) => void;
   onAddStakeholderGroup: (id: string) => void;
+  onManageSurvey: (id: string) => void;
+  onManageSurveyDistribution: (id: string) => void;
 }): ColumnDef<MaterialityAssessment>[] => [
   /* ASSESSMENT NAME */
   {
@@ -165,52 +176,91 @@ const getAssessmentColumns = ({
 
   /* ACTIONS */
   {
-    id: "actions",
-    header: "Actions",
-    cell: ({ row }) => {
-      const assessment = row.original;
+  id: "actions",
+  header: "Actions",
+  cell: ({ row }) => {
+    const assessment = row.original;
 
-      return (
-        <div className="flex items-center gap-1">
-          {/* View Assessment */}
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
           <Button
             type="button"
-            variant="ghost"
-            size="icon-sm"
-            title="View assessment"
-            onClick={() => onView(assessment.id)}
+            variant="outline"
+            size="sm"
+            className="
+              h-8
+              gap-2
+              px-3
+              text-xs
+              font-medium
+            "
           >
-            <Eye className="h-4 w-4" />
-            <span className="sr-only">View assessment</span>
+            Actions
+            <MoreHorizontal className="h-4 w-4" />
           </Button>
+        </DropdownMenuTrigger>
 
-          {/* Add Stakeholder Group */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            title="Add stakeholder group"
-            onClick={() => onAddStakeholderGroup(assessment.id)}
+        <DropdownMenuContent
+          align="end"
+          className="w-56"
+        >
+          <DropdownMenuItem
+            onClick={() =>
+              onView(assessment.id)
+            }
           >
-            <UsersRound className="h-4 w-4" />
-            <span className="sr-only">Add stakeholder group</span>
-          </Button>
+            Manage Topics
+          </DropdownMenuItem>
 
-          {/* Delete Assessment */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            title="Delete assessment"
-            onClick={() => onDelete(assessment)}
+          <DropdownMenuItem
+            onClick={() =>
+              onAddStakeholderGroup(
+                assessment.id
+              )
+            }
           >
-            <Trash2 className="h-4 w-4 text-red-500" />
-            <span className="sr-only">Delete assessment</span>
-          </Button>
-        </div>
-      );
-    },
+            Manage Stakeholder Groups
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            onClick={() =>
+              onManageSurvey(
+                assessment.id
+              )
+            }
+          >
+            Manage Survey
+          </DropdownMenuItem>
+          <DropdownMenuItem
+  onClick={() =>
+    onManageSurveyDistribution(
+      assessment.id
+    )
+  }
+>
+  Survey Distribution
+</DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+
+          <DropdownMenuItem
+            className="
+              text-red-600
+              focus:bg-red-50
+              focus:text-red-700
+            "
+            onClick={() =>
+              onDelete(assessment)
+            }
+          >
+            Delete Assessment
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
   },
+},
 ];
 
 /* ==========================================================
@@ -269,6 +319,7 @@ export default function AssessmentList() {
     loadAssessments();
   }, [loadAssessments]);
 
+ 
   /* --------------------------- filter assessments --------------------------- */
 
   const filteredAssessments = useMemo(() => {
@@ -300,6 +351,26 @@ export default function AssessmentList() {
     [navigate]
   );
 
+  const handleManageSurvey = useCallback(
+  (id: string) => {
+    navigate(
+      `/materiality/assessments/${id}/survey`
+    );
+  },
+  [navigate]
+);
+
+ const handleManageSurveyDistribution =
+  useCallback(
+    (id: string) => {
+      navigate(
+        `/materiality/assessments/${id}/survey/distribution`
+      );
+    },
+    [navigate]
+  );
+
+
   const confirmDelete = async () => {
     if (!selectedAssessment) return;
 
@@ -324,8 +395,10 @@ export default function AssessmentList() {
         onEdit: handleEdit,
         onDelete: handleDelete,
         onAddStakeholderGroup: handleAddStakeholderGroup,
+        onManageSurvey:handleManageSurvey,
+        onManageSurveyDistribution:handleManageSurveyDistribution,
       }),
-    [handleAssessmentClick, handleEdit, handleDelete, handleAddStakeholderGroup]
+    [handleAssessmentClick, handleEdit, handleDelete, handleAddStakeholderGroup,handleManageSurvey,handleManageSurveyDistribution]
   );
 
   /* --------------------------- export csv --------------------------- */
@@ -397,8 +470,7 @@ export default function AssessmentList() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All">All Modes</SelectItem>
-                  <SelectItem value="IMPACT">Impact Materiality</SelectItem>
-                  <SelectItem value="FINANCIAL">Financial Materiality</SelectItem>
+                  <SelectItem value="FINANCIAL">Single Materiality</SelectItem>
                   <SelectItem value="DOUBLE">Double Materiality</SelectItem>
                 </SelectContent>
               </Select>

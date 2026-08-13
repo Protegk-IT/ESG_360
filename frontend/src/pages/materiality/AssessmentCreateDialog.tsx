@@ -4,6 +4,7 @@ import {
 
 import AssessmentApi from "@/api/materiality/AssessmentApi";
 import axios from "axios";
+import { toast } from "sonner";
 
 import type {
   AssessmentMode,
@@ -147,117 +148,131 @@ export default function AssessmentCreateDialog({
      SAVE
   ======================================================== */
 
-  const handleSave = async () => {
+const handleSave = async () => {
+  /* ------------------------------------------------------
+     BASIC VALIDATION
+  ------------------------------------------------------ */
 
-    /* ------------------------------------------------------
-       BASIC VALIDATION
-    ------------------------------------------------------ */
+  if (!form.name.trim()) {
+    setError("Assessment name is required.");
+    return;
+  }
 
-    if (!form.name.trim()) {
-      setError("Assessment name is required.");
-      return;
-    }
+  if (!form.financial_year.trim()) {
+    setError("Financial year is required.");
+    return;
+  }
 
-    if (!form.financial_year.trim()) {
-      setError("Financial year is required.");
-      return;
-    }
+  if (!form.period_start) {
+    setError("Period start date is required.");
+    return;
+  }
 
-    if (!form.period_start) {
-      setError("Period start date is required.");
-      return;
-    }
+  if (!form.period_end) {
+    setError("Period end date is required.");
+    return;
+  }
 
-    if (!form.period_end) {
-      setError("Period end date is required.");
-      return;
-    }
+  if (form.period_start > form.period_end) {
+    setError(
+      "Period end date must be greater than or equal to the period start date."
+    );
+    return;
+  }
 
-    if (form.period_start > form.period_end) {
-      setError(
-        "Period end date must be greater than or equal to the period start date."
-      );
-      return;
-    }
+  /* ------------------------------------------------------
+     API REQUEST
+  ------------------------------------------------------ */
 
-    /* ------------------------------------------------------
-       API REQUEST
-    ------------------------------------------------------ */
+  try {
+    setSaving(true);
+    setError(null);
 
-    try {
-      setSaving(true);
-      setError(null);
+    await AssessmentApi.create({
+      name: form.name.trim(),
+      financial_year: form.financial_year.trim(),
+      period_start: form.period_start,
+      period_end: form.period_end,
+      mode: form.mode,
+    });
 
-      await AssessmentApi.create({
-        name: form.name.trim(),
-        financial_year: form.financial_year.trim(),
-        period_start: form.period_start,
-        period_end: form.period_end,
-        mode: form.mode,
-      });
+    /* ----------------------------------------------------
+       SUCCESS TOAST
+    ---------------------------------------------------- */
 
-      /* ----------------------------------------------------
-         REFRESH LIST
-      ---------------------------------------------------- */
-
-      onSaved();
-
-      /* ----------------------------------------------------
-         CLOSE DIALOG
-      ---------------------------------------------------- */
-
-      onClose();
-    } catch (err: unknown) {
-      console.error(
-        "Failed to create assessment:",
-        err
-      );
-
-      /* ----------------------------------------------------
-         AXIOS / DRF VALIDATION ERROR
-      ---------------------------------------------------- */
-
-      if (axios.isAxiosError(err)) {
-        const responseData = err.response?.data;
-
-        if (
-          responseData &&
-          typeof responseData === "object"
-        ) {
-          const firstError = Object.values(
-            responseData
-          )[0];
-
-          if (Array.isArray(firstError)) {
-            setError(String(firstError[0]));
-          } else if (
-            typeof firstError === "string"
-          ) {
-            setError(firstError);
-          } else {
-            setError(
-              "Unable to create assessment."
-            );
-          }
-        } else {
-          setError(
-            "Unable to create assessment. Please try again."
-          );
-        }
-      } else {
-        /* --------------------------------------------------
-           NON-AXIOS / UNKNOWN ERROR
-        -------------------------------------------------- */
-
-        setError(
-          "Unable to create assessment. Please try again."
-        );
+    toast.success(
+      "Assessment created successfully.",
+      {
+        description:
+          `${form.name.trim()} has been added successfully.`,
       }
-    } finally {
-      setSaving(false);
-    }
-  };
+    );
 
+    /* ----------------------------------------------------
+       REFRESH LIST
+    ---------------------------------------------------- */
+
+    onSaved();
+
+    /* ----------------------------------------------------
+       CLOSE DIALOG
+    ---------------------------------------------------- */
+
+    onClose();
+
+  } catch (err: unknown) {
+    console.error(
+      "Failed to create assessment:",
+      err
+    );
+
+    let errorMessage =
+      "Unable to create assessment. Please try again.";
+
+    /* ----------------------------------------------------
+       AXIOS / DRF VALIDATION ERROR
+    ---------------------------------------------------- */
+
+    if (axios.isAxiosError(err)) {
+      const responseData =
+        err.response?.data;
+
+      if (
+        responseData &&
+        typeof responseData === "object"
+      ) {
+        const firstError =
+          Object.values(responseData)[0];
+
+        if (Array.isArray(firstError)) {
+          errorMessage =
+            String(firstError[0]);
+        } else if (
+          typeof firstError === "string"
+        ) {
+          errorMessage =
+            firstError;
+        }
+      }
+    }
+
+    setError(errorMessage);
+
+    /* ----------------------------------------------------
+       ERROR TOAST
+    ---------------------------------------------------- */
+
+    toast.error(
+      "Failed to create assessment.",
+      {
+        description: errorMessage,
+      }
+    );
+
+  } finally {
+    setSaving(false);
+  }
+};
   /* ========================================================
      UI
   ======================================================== */
@@ -576,16 +591,10 @@ export default function AssessmentCreateDialog({
                 <SelectContent>
 
                   <SelectItem
-                    value="IMPACT"
+                    value="SINGLE"
                   >
-                    Impact Materiality
+                    Single Materiality
                   </SelectItem>
-                   <SelectItem
-                    value="FINANCIAL"
-                  >
-                    Financial Materiality
-                  </SelectItem>
-
 
                   <SelectItem
                     value="DOUBLE"

@@ -10,7 +10,6 @@ import {
   ChevronRight,
   FolderTree,
   Layers3,
-  MoreHorizontal,
   Plus,
   RefreshCw,
   Search,
@@ -824,420 +823,343 @@ export default function TopicLibrary() {
   ======================================================== */
 
   const renderSubTopic = (
-    subTopic: MaterialSubTopic,
-    isLast: boolean
-  ) => {
+  subTopic: MaterialSubTopic,
+  isLast: boolean
+) => {
+  return (
+    <div
+      key={subTopic.id}
+      className="relative pl-6 pb-3 last:pb-0"
+    >
+      {/* Horizontal connector */}
+      <span
+        className="
+          pointer-events-none
+          absolute
+          left-0
+          top-6
+          h-px
+          w-6
+          bg-slate-200
+        "
+      />
 
-    return (
-      <div
-        key={subTopic.id}
-        className="relative pb-3 last:pb-0"
-      >
-
-        {/* vertical stem segment for this row */}
-        {!isLast && (
-          <span
-            className="
-              pointer-events-none
-              absolute
-              -left-5
-              top-6
-              bottom-0
-              w-px
-              bg-slate-200
-            "
-          />
-        )}
-
-        {/* horizontal connector into the node */}
+      {/* Vertical connector */}
+      {!isLast && (
         <span
           className="
             pointer-events-none
             absolute
-            -left-5
+            left-0
             top-6
-            h-px
-            w-5
+            bottom-0
+            w-px
             bg-slate-200
           "
         />
+      )}
 
-        <div
-          className="
-            flex
-            items-center
-            justify-between
-            gap-4
-            rounded-lg
-            border
-            border-slate-100
-            bg-slate-50/70
-            px-4
-            py-3
-            transition-colors
-            hover:border-slate-200
-            hover:bg-slate-50
-          "
-        >
+      <div
+        className="
+          flex
+          items-center
+          justify-between
+          gap-4
+          rounded-lg
+          border
+          border-slate-100
+          bg-slate-50/70
+          px-4
+          py-3
+          transition-colors
+          hover:border-slate-200
+          hover:bg-slate-50
+        "
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <div
+            className="
+              flex
+              h-8
+              w-8
+              shrink-0
+              items-center
+              justify-center
+              rounded-md
+              bg-white
+              text-slate-500
+              shadow-sm
+            "
+          >
+            <Tag className="h-4 w-4" />
+          </div>
 
-          <div className="flex min-w-0 items-center gap-3">
-
-            <div
-              className="
-                flex
-                h-8
-                w-8
-                shrink-0
-                items-center
-                justify-center
-                rounded-md
-                bg-white
-                text-slate-500
-                shadow-sm
-              "
-            >
-              <Tag className="h-4 w-4" />
-            </div>
-
-            <div className="min-w-0">
-
-              <div
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
                 className="
-                  flex
-                  flex-wrap
-                  items-center
-                  gap-2
+                  text-xs
+                  font-semibold
+                  text-[#4A3FD6]
                 "
               >
+                {subTopic.code}
+              </span>
 
-                <span
-                  className="
-                    text-xs
-                    font-semibold
-                    text-[#4A3FD6]
-                  "
-                >
-                  {subTopic.code}
-                </span>
-
-                <span
-                  className="
-                    truncate
-                    text-sm
-                    font-medium
-                    text-slate-800
-                  "
-                >
-                  {subTopic.name}
-                </span>
-
-              </div>
-
-              {subTopic.description && (
-                <p
-                  className="
-                    mt-1
-                    line-clamp-2
-                    text-xs
-                    text-slate-500
-                  "
-                >
-                  {subTopic.description}
-                </p>
-              )}
-
+              <span
+                className="
+                  truncate
+                  text-sm
+                  font-medium
+                  text-slate-800
+                "
+              >
+                {subTopic.name}
+              </span>
             </div>
 
-          </div>
-
-
-          <div className="shrink-0">
-            {renderStatusBadge(
-              subTopic.is_active
+            {subTopic.description && (
+              <p
+                className="
+                  mt-1
+                  line-clamp-2
+                  text-xs
+                  text-slate-500
+                "
+              >
+                {subTopic.description}
+              </p>
             )}
           </div>
-
         </div>
 
+        <div className="shrink-0">
+          {renderStatusBadge(subTopic.is_active)}
+        </div>
       </div>
-    );
-
-  };
+    </div>
+  );
+};
 
 
   /* ========================================================
      RENDER TOPIC (TREE BRANCH)
   ======================================================== */
 
-  const renderTopic = (
-    topic: MaterialTopic,
-    isLast: boolean
-  ) => {
+ const renderTopic = (
+  topic: MaterialTopic,
+  isLast: boolean
+) => {
+  const children = sortSubTopics(
+    subTopicsByTopic.get(topic.id) ?? []
+  );
 
-    const children =
-      sortSubTopics(
-        subTopicsByTopic.get(
-          topic.id
-        ) ?? []
-      );
+  const expanded = expandedTopics.has(topic.id);
 
-    const expanded =
-      expandedTopics.has(
-        topic.id
-      );
+  return (
+    <div
+      key={topic.id}
+      className="relative pl-6 pb-4 last:pb-0"
+    >
+      {/* Horizontal connector from category trunk to topic */}
+      <span
+        className="
+          pointer-events-none
+          absolute
+          left-0
+          top-6
+          h-px
+          w-6
+          bg-slate-200
+        "
+      />
 
-    return (
-      <div
-        key={topic.id}
-        className="relative pb-3 last:pb-0"
-      >
-
-        {/* vertical stem segment for this row */}
-        {!isLast && (
-          <span
-            className="
-              pointer-events-none
-              absolute
-              -left-5
-              top-6
-              bottom-0
-              w-px
-              bg-slate-200
-            "
-          />
-        )}
-
-        {/* horizontal connector into the node */}
+      {/* Vertical connector between topics */}
+      {!isLast && (
         <span
           className="
             pointer-events-none
             absolute
-            -left-5
+            left-0
             top-6
-            h-px
-            w-5
+            bottom-0
+            w-px
             bg-slate-200
           "
         />
+      )}
 
-        <div
-          className="
-            flex
-            items-center
-            justify-between
-            gap-4
-            rounded-xl
-            border
-            border-slate-200
-            bg-white
-            px-4
-            py-3
-            shadow-sm
-            transition-all
-            hover:border-slate-300
-          "
-        >
-
-          <div className="flex min-w-0 items-center gap-3">
-
-            <button
-              type="button"
-              onClick={() =>
-                toggleTopic(
-                  topic.id
-                )
-              }
-              disabled={
-                children.length === 0
-              }
-              className="
-                flex
-                h-8
-                w-8
-                shrink-0
-                items-center
-                justify-center
-                rounded-md
-                text-slate-500
-                hover:bg-slate-100
-                disabled:cursor-default
-                disabled:opacity-30
-                disabled:hover:bg-transparent
-              "
-              aria-label={
-                expanded
-                  ? "Collapse topic"
-                  : "Expand topic"
-              }
-            >
-              {expanded ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-            </button>
-
-
-            <div
-              className="
-                flex
-                h-9
-                w-9
-                shrink-0
-                items-center
-                justify-center
-                rounded-lg
-                bg-indigo-50
-                text-[#4A3FD6]
-              "
-            >
-              <Layers3 className="h-4 w-4" />
-            </div>
-
-
-            <div className="min-w-0">
-
-              <div
-                className="
-                  flex
-                  flex-wrap
-                  items-center
-                  gap-2
-                "
-              >
-
-                <span
-                  className="
-                    text-xs
-                    font-semibold
-                    text-[#4A3FD6]
-                  "
-                >
-                  {topic.code}
-                </span>
-
-                <span
-                  className="
-                    truncate
-                    text-sm
-                    font-semibold
-                    text-slate-900
-                  "
-                >
-                  {topic.name}
-                </span>
-
-                {renderStatusBadge(
-                  topic.is_active
-                )}
-
-              </div>
-
-              {topic.description && (
-                <p
-                  className="
-                    mt-1
-                    line-clamp-1
-                    text-xs
-                    text-slate-500
-                  "
-                >
-                  {topic.description}
-                </p>
-              )}
-
-            </div>
-
-          </div>
-
+      <div
+        className="
+          flex
+          items-center
+          justify-between
+          gap-4
+          rounded-xl
+          border
+          border-slate-200
+          bg-white
+          px-4
+          py-3
+          shadow-sm
+          transition-all
+          hover:border-slate-300
+        "
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={() => toggleTopic(topic.id)}
+            disabled={children.length === 0}
+            className="
+              flex
+              h-8
+              w-8
+              shrink-0
+              items-center
+              justify-center
+              rounded-md
+              text-slate-500
+              hover:bg-slate-100
+              disabled:cursor-default
+              disabled:opacity-30
+              disabled:hover:bg-transparent
+            "
+            aria-label={
+              expanded
+                ? "Collapse topic"
+                : "Expand topic"
+            }
+          >
+            {expanded ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+          </button>
 
           <div
             className="
               flex
+              h-9
+              w-9
               shrink-0
               items-center
-              gap-2
+              justify-center
+              rounded-lg
+              bg-indigo-50
+              text-[#4A3FD6]
             "
           >
-
-            <span
-              className="
-                hidden
-                rounded-full
-                bg-slate-100
-                px-2.5
-                py-1
-                text-xs
-                text-slate-600
-                sm:inline-flex
-              "
-            >
-              {children.length}{" "}
-              {children.length === 1
-                ? "sub-topic"
-                : "sub-topics"}
-            </span>
-
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                handleAddSubTopic(
-                  topic
-                )
-              }
-            >
-              <Plus className="mr-1.5 h-4 w-4" />
-              <span className="hidden sm:inline">
-                Add Sub-topic
-              </span>
-              <span className="sm:hidden">
-                Add
-              </span>
-            </Button>
-
-
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-slate-500"
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-
+            <Layers3 className="h-4 w-4" />
           </div>
 
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className="
+                  text-xs
+                  font-semibold
+                  text-[#4A3FD6]
+                "
+              >
+                {topic.code}
+              </span>
+
+              <span
+                className="
+                  truncate
+                  text-sm
+                  font-semibold
+                  text-slate-900
+                "
+              >
+                {topic.name}
+              </span>
+
+              {renderStatusBadge(topic.is_active)}
+            </div>
+
+            {topic.description && (
+              <p
+                className="
+                  mt-1
+                  line-clamp-1
+                  text-xs
+                  text-slate-500
+                "
+              >
+                {topic.description}
+              </p>
+            )}
+          </div>
         </div>
 
+        <div
+          className="
+            flex
+            shrink-0
+            items-center
+            gap-2
+          "
+        >
+          <span
+            className="
+              hidden
+              rounded-full
+              bg-slate-100
+              px-2.5
+              py-1
+              text-xs
+              text-slate-600
+              sm:inline-flex
+            "
+          >
+            {children.length}{" "}
+            {children.length === 1
+              ? "sub-topic"
+              : "sub-topics"}
+          </span>
 
-        {expanded &&
-          children.length > 0 && (
-            <div
-              className="
-                relative
-                mt-3
-                ml-4
-                space-y-0
-                border-l
-                border-slate-200
-                pl-6
-              "
-            >
-              {children.map(
-                (subTopic, index) =>
-                  renderSubTopic(
-                    subTopic,
-                    index === children.length - 1
-                  )
-              )}
-            </div>
-          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleAddSubTopic(topic)}
+          >
+            <Plus className="mr-1.5 h-4 w-4" />
 
+            <span className="hidden sm:inline">
+              Add Sub-topic
+            </span>
+
+            <span className="sm:hidden">
+              Add
+            </span>
+          </Button>
+        </div>
       </div>
-    );
 
-  };
+      {/* Sub-topic tree */}
+      {expanded && children.length > 0 && (
+        <div
+          className="
+            relative
+            ml-4
+            mt-3
+            pl-6
+          "
+        >
+          {children.map((subTopic, index) =>
+            renderSubTopic(
+              subTopic,
+              index === children.length - 1
+            )
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 
   /* ========================================================
@@ -1443,16 +1365,7 @@ export default function TopicLibrary() {
 
             {categoryTopics.length > 0 ? (
 
-              <div
-                className="
-                  relative
-                  ml-4
-                  space-y-0
-                  border-l
-                  border-slate-200
-                  pl-6
-                "
-              >
+             <div className="relative ml-4 pl-8">
                 {categoryTopics.map(
                   (topic, index) =>
                     renderTopic(

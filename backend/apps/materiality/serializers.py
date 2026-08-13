@@ -398,12 +398,18 @@ class StakeholderSerializer(serializers.ModelSerializer):
         queryset=StakeholderGroup.objects.all()
     )
 
+    group_name = serializers.CharField(
+        source="group.name",
+        read_only=True,
+    )
+
     class Meta:
         model = Stakeholder
 
         fields = [
             "id",
             "group",
+            "group_name",
             "name",
             "email",
             "organisation",
@@ -413,6 +419,7 @@ class StakeholderSerializer(serializers.ModelSerializer):
 
         read_only_fields = [
             "id",
+            "group_name",
             "created_at",
         ]
 
