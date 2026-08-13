@@ -31,6 +31,9 @@ import AssessmentList from "./pages/materiality/AssessmentList";
 import AssessmentDetail from "./pages/materiality/AssessmentDetail";
 import StakeholderGroups from "@/pages/materiality/StakeholderGroups";
 import AssessmentStakeholders from "./pages/materiality/AssessmentStakeholders";
+import SurveyManager from "@/pages/materiality/SurveyManager";
+import SurveyDistribution from "@/pages/materiality/SurveyDistribution";
+import PublicSurvey from "./pages/materiality/PublicSurvey";
 
 export default function App() {
   return (
@@ -270,7 +273,20 @@ export default function App() {
 />
 
 
+<Route
+  path="/materiality/assessments/:id/survey"
+  element={<SurveyManager />}
+/>
 
+<Route
+  path="/materiality/assessments/:id/survey/distribution"
+  element={<SurveyDistribution />}
+/>
+
+<Route
+  path="/survey/:token"
+  element={<PublicSurvey />}
+/>
 
   <Route path="*" element={<Navigate to="/" replace />} />
 </Routes>

@@ -18,6 +18,7 @@ export interface StakeholderGroupFormData {
 export interface Stakeholder {
   id: string;
   group: string;
+  group_name: string;
   name: string;
   email: string;
   organisation: string;

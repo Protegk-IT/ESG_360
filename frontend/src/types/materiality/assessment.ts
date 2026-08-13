@@ -1,6 +1,5 @@
 export type AssessmentMode =
-  | "IMPACT"
-  | "FINANCIAL"
+  | "SINGLE"
   | "DOUBLE";
 
 export type AssessmentStatus =
@@ -76,8 +75,7 @@ export const ASSESSMENT_MODE_LABELS: Record<
   AssessmentMode,
   string
 > = {
-  IMPACT: "Impact Materiality",
-  FINANCIAL:"Financial Materiality",
+  SINGLE:"Single Materiality",
   DOUBLE: "Double Materiality",
 };
 
@@ -95,32 +93,22 @@ export const ASSESSMENT_STATUS_LABELS: Record<
 /* ==========================================================
    ASSESSMENT TOPIC
 ========================================================== */
-
 export interface AssessmentTopic {
   id: string;
-
   assessment: string;
-
   subtopic: string;
-
+  subtopic_name: string;
+  topic_name: string;
+  category_name: string;
   is_included: boolean;
-
   display_order: number;
-
   primary_score: string | null;
-
   secondary_score: string | null;
-
   classification: string;
-
   is_override: boolean;
-
   override_reason: string;
-
   override_by: number | null;
-
   created_at: string;
-
   updated_at: string;
 }
 
