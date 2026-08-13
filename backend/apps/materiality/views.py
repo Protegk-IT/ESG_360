@@ -1,9 +1,14 @@
 from django.db import models
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 from rest_framework import generics
-from rest_framework import permissions
-from rest_framework.permissions import IsAuthenticated
+from rest_framework import status
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
+from rest_framework.views import APIView
+from rest_framework.exceptions import ValidationError
 
 from apps.accounts.viewsets import RBACModelViewSet
 from apps.accounts import viewsets
@@ -26,6 +31,7 @@ from .models import (
     ScaleOption,
     SurveyQuestion,
     SurveyInvitation,
+    SurveyResponse,
 )
 
 from .serializers import (
@@ -1447,6 +1453,762 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
                 ),
 
                 "invitations": invitation_data,
+            },
+            status=status.HTTP_200_OK,
+        )
+    
+
+
+###### Public survey Api view ######
+
+# ============================================================
+# PUBLIC SURVEY
+# ============================================================
+
+GENERIC_SURVEY_ACCESS_ERROR = {
+    "detail": "This survey link is invalid or has expired."
+}
+
+
+def get_public_survey_invitation(token, lock=False):
+    """
+    Resolve a public survey token to its SurveyInvitation.
+
+    The token is the only credential required by the stakeholder.
+    No login/JWT authentication is required.
+    """
+
+    # --------------------------------------------------------
+    # 1. Validate UUID format
+    # --------------------------------------------------------
+
+    try:
+        token_uuid = uuid.UUID(str(token))
+    except (ValueError, TypeError, AttributeError):
+
+        raise NotFound(
+            GENERIC_SURVEY_ACCESS_ERROR
+        )
+
+    # --------------------------------------------------------
+    # 2. Get invitation
+    # --------------------------------------------------------
+
+    queryset = (
+        SurveyInvitation.objects
+        .select_related(
+            "survey",
+            "survey__assessment",
+            "stakeholder",
+        )
+    )
+
+    # Lock the invitation when modifying it.
+    if lock:
+        queryset = queryset.select_for_update()
+
+    invitation = (
+        queryset
+        .filter(token=token_uuid)
+        .first()
+    )
+
+    # --------------------------------------------------------
+    # 3. Invalid token
+    # --------------------------------------------------------
+
+    if not invitation:
+        raise NotFound(
+            GENERIC_SURVEY_ACCESS_ERROR
+        )
+
+    survey = invitation.survey
+    now = timezone.now()
+
+    # --------------------------------------------------------
+    # 4. Survey closed
+    # --------------------------------------------------------
+
+    if survey.status == "CLOSED":
+
+        raise NotFound(
+            GENERIC_SURVEY_ACCESS_ERROR
+        )
+
+    # --------------------------------------------------------
+    # 5. Survey has not opened yet
+    # --------------------------------------------------------
+
+    if (
+        survey.opens_at
+        and survey.opens_at > now
+    ):
+
+        raise NotFound(
+            GENERIC_SURVEY_ACCESS_ERROR
+        )
+
+    # --------------------------------------------------------
+    # 6. Survey has expired
+    # --------------------------------------------------------
+
+    if (
+        survey.closes_at
+        and survey.closes_at < now
+    ):
+
+        raise NotFound(
+            GENERIC_SURVEY_ACCESS_ERROR
+        )
+
+    return invitation
+
+
+def build_public_survey_response(invitation):
+    """
+    Build the survey payload required by the public frontend.
+
+    Only responses belonging to this exact invitation are returned.
+    """
+
+    survey = invitation.survey
+
+    # ========================================================
+    # EXISTING RESPONSES FOR THIS INVITATION ONLY
+    # ========================================================
+
+    responses = {
+        response.question_id: response
+        for response in (
+            SurveyResponse.objects
+            .filter(
+                invitation=invitation
+            )
+        )
+    }
+
+    # ========================================================
+    # QUESTIONS
+    # ========================================================
+
+    questions = (
+        SurveyQuestion.objects
+        .filter(
+            survey=survey
+        )
+        .select_related(
+            "assessment_topic",
+            "assessment_topic__subtopic",
+            "assessment_topic__subtopic__topic",
+            "assessment_topic__subtopic__topic__category",
+            "scale",
+        )
+        .prefetch_related(
+            "scale__options"
+        )
+        .order_by(
+            "display_order"
+        )
+    )
+
+    question_data = []
+
+    for question in questions:
+
+        saved_response = responses.get(
+            question.id
+        )
+
+        assessment_topic = (
+            question.assessment_topic
+        )
+
+        subtopic = (
+            assessment_topic.subtopic
+        )
+
+        topic = subtopic.topic
+        category = topic.category
+
+        # ====================================================
+        # QUESTION
+        # ====================================================
+
+        question_data.append(
+            {
+                "id": question.id,
+
+                "assessment_topic": (
+                    assessment_topic.id
+                ),
+
+                "category_name": (
+                    category.name
+                ),
+
+                "topic_name": (
+                    topic.name
+                ),
+
+                "subtopic_name": (
+                    subtopic.name
+                ),
+
+                "dimension": (
+                    question.dimension
+                ),
+
+                "question_text": (
+                    question.question_text
+                ),
+
+                "help_text": (
+                    question.help_text
+                ),
+
+                "display_order": (
+                    question.display_order
+                ),
+
+                "is_required": (
+                    question.is_required
+                ),
+
+                # ==========================================
+                # SCALE
+                # ==========================================
+
+                "scale": {
+                    "id": question.scale.id,
+
+                    "dimension": (
+                        question.scale.dimension
+                    ),
+
+                    "name": (
+                        question.scale.name
+                    ),
+
+                    "options": [
+                        {
+                            "id": option.id,
+                            "value": option.value,
+                            "label": option.label,
+                            "description": (
+                                option.description
+                            ),
+                        }
+                        for option
+                        in question.scale.options.all()
+                    ],
+                },
+
+                # ==========================================
+                # PREVIOUSLY SAVED ANSWER
+                # ==========================================
+
+                "response": (
+                    {
+                        "id": saved_response.id,
+
+                        "question": (
+                            saved_response.question_id
+                        ),
+
+                        "value": (
+                            saved_response.value
+                        ),
+
+                        "comment": (
+                            saved_response.comment
+                        ),
+
+                        "answered_at": (
+                            saved_response.answered_at
+                        ),
+                    }
+                    if saved_response
+                    else None
+                ),
+            }
+        )
+
+    # ========================================================
+    # FINAL RESPONSE
+    # ========================================================
+
+    return {
+        "success": True,
+
+        "survey": {
+            "id": survey.id,
+            "title": survey.title,
+            "intro_text": survey.intro_text,
+            "closing_text": survey.closing_text,
+            "status": survey.status,
+            "opens_at": survey.opens_at,
+            "closes_at": survey.closes_at,
+        },
+
+        "invitation": {
+            "id": invitation.id,
+
+            "status": (
+                invitation.status
+            ),
+
+            "first_opened_at": (
+                invitation.first_opened_at
+            ),
+
+            "submitted_at": (
+                invitation.submitted_at
+            ),
+
+            "is_submitted": (
+                invitation.status == "SUBMITTED"
+            ),
+        },
+
+        "questions": question_data,
+    }
+
+
+# ============================================================
+# GET PUBLIC SURVEY
+# ============================================================
+
+
+class PublicSurveyView(APIView):
+
+    authentication_classes = []
+
+    permission_classes = [
+        AllowAny
+    ]
+
+    throttle_classes = [
+        AnonRateThrottle
+    ]
+
+    def get(self, request, token):
+
+        # ----------------------------------------------------
+        # Get invitation
+        # ----------------------------------------------------
+
+        invitation = get_public_survey_invitation(
+            token
+        )
+
+        # ----------------------------------------------------
+        # Already submitted
+        # ----------------------------------------------------
+
+        if invitation.status == "SUBMITTED":
+
+            return Response(
+                {
+                    "success": True,
+                    "submitted": True,
+                    "message": (
+                        "This survey has already been submitted."
+                    ),
+                    "submitted_at": (
+                        invitation.submitted_at
+                    ),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # ----------------------------------------------------
+        # First opening
+        # ----------------------------------------------------
+
+        if not invitation.first_opened_at:
+
+            invitation.first_opened_at = (
+                timezone.now()
+            )
+
+            invitation.status = "OPENED"
+
+            invitation.save(
+                update_fields=[
+                    "first_opened_at",
+                    "status",
+                ]
+            )
+
+        # ----------------------------------------------------
+        # Return survey
+        # ----------------------------------------------------
+
+        return Response(
+            build_public_survey_response(
+                invitation
+            ),
+            status=status.HTTP_200_OK,
+        )
+
+
+# ============================================================
+# SAVE / UPDATE ANSWER
+# ============================================================
+
+
+class PublicSurveyAnswerView(APIView):
+
+    authentication_classes = []
+
+    permission_classes = [
+        AllowAny
+    ]
+
+    throttle_classes = [
+        AnonRateThrottle
+    ]
+
+    @transaction.atomic
+    def post(self, request, token):
+
+        # ----------------------------------------------------
+        # Lock invitation while modifying response
+        # ----------------------------------------------------
+
+        invitation = get_public_survey_invitation(
+            token,
+            lock=True,
+        )
+
+        # ----------------------------------------------------
+        # Cannot answer after submission
+        # ----------------------------------------------------
+
+        if invitation.status == "SUBMITTED":
+
+            raise ValidationError(
+                {
+                    "detail": (
+                        "This survey has already been submitted."
+                    )
+                }
+            )
+
+        # ----------------------------------------------------
+        # Request data
+        # ----------------------------------------------------
+
+        question_id = request.data.get(
+            "question"
+        )
+
+        value = request.data.get(
+            "value"
+        )
+
+        comment = request.data.get(
+            "comment",
+            "",
+        )
+
+        # ----------------------------------------------------
+        # Validate question
+        # ----------------------------------------------------
+
+        if not question_id:
+
+            raise ValidationError(
+                {
+                    "question": (
+                        "Question is required."
+                    )
+                }
+            )
+
+        # ----------------------------------------------------
+        # Find question belonging to this survey
+        # ----------------------------------------------------
+
+        question = (
+            SurveyQuestion.objects
+            .select_related(
+                "scale"
+            )
+            .filter(
+                id=question_id,
+                survey=invitation.survey,
+            )
+            .first()
+        )
+
+        if not question:
+
+            raise ValidationError(
+                {
+                    "question": (
+                        "Question does not belong "
+                        "to this survey."
+                    )
+                }
+            )
+
+        # ----------------------------------------------------
+        # Validate value exists
+        # ----------------------------------------------------
+
+        if value is None:
+
+            raise ValidationError(
+                {
+                    "value": (
+                        "Value is required."
+                    )
+                }
+            )
+
+        # ----------------------------------------------------
+        # Convert value to integer
+        # ----------------------------------------------------
+
+        try:
+
+            value = int(value)
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+
+            raise ValidationError(
+                {
+                    "value": (
+                        "Value must be a number."
+                    )
+                }
+            )
+
+        # ----------------------------------------------------
+        # Validate value against scale
+        # ----------------------------------------------------
+
+        valid_value = (
+            ScaleOption.objects
+            .filter(
+                scale=question.scale,
+                value=value,
+            )
+            .exists()
+        )
+
+        if not valid_value:
+
+            raise ValidationError(
+                {
+                    "value": (
+                        "Value is not valid for "
+                        "this question's scale."
+                    )
+                }
+            )
+
+        # ----------------------------------------------------
+        # Save / update response
+        # ----------------------------------------------------
+
+        response, created = (
+            SurveyResponse.objects
+            .update_or_create(
+                invitation=invitation,
+                question=question,
+                defaults={
+                    "value": value,
+                    "comment": str(
+                        comment
+                    ).strip(),
+                    "answered_at": (
+                        timezone.now()
+                    ),
+                },
+            )
+        )
+
+        # ----------------------------------------------------
+        # Response
+        # ----------------------------------------------------
+
+        return Response(
+            {
+                "success": True,
+
+                "id": response.id,
+
+                "question": (
+                    response.question_id
+                ),
+
+                "value": response.value,
+
+                "comment": response.comment,
+
+                "answered_at": (
+                    response.answered_at
+                ),
+            },
+            status=(
+                status.HTTP_201_CREATED
+                if created
+                else status.HTTP_200_OK
+            ),
+        )
+
+
+# ============================================================
+# SUBMIT SURVEY
+# ============================================================
+
+
+class PublicSurveySubmitView(APIView):
+
+    authentication_classes = []
+
+    permission_classes = [
+        AllowAny
+    ]
+
+    throttle_classes = [
+        AnonRateThrottle
+    ]
+
+    @transaction.atomic
+    def post(self, request, token):
+
+        # ----------------------------------------------------
+        # Lock invitation
+        # ----------------------------------------------------
+
+        invitation = get_public_survey_invitation(
+            token,
+            lock=True,
+        )
+
+        # ----------------------------------------------------
+        # Already submitted
+        # ----------------------------------------------------
+
+        if invitation.status == "SUBMITTED":
+
+            return Response(
+                {
+                    "success": True,
+                    "submitted": True,
+                    "message": (
+                        "This survey has already been submitted."
+                    ),
+                    "submitted_at": (
+                        invitation.submitted_at
+                    ),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # ----------------------------------------------------
+        # Required questions
+        # ----------------------------------------------------
+
+        required_question_ids = set(
+            SurveyQuestion.objects
+            .filter(
+                survey=invitation.survey,
+                is_required=True,
+            )
+            .values_list(
+                "id",
+                flat=True,
+            )
+        )
+
+        # ----------------------------------------------------
+        # Answered required questions
+        # ----------------------------------------------------
+
+        answered_question_ids = set(
+            SurveyResponse.objects
+            .filter(
+                invitation=invitation,
+                question_id__in=(
+                    required_question_ids
+                ),
+            )
+            .values_list(
+                "question_id",
+                flat=True,
+            )
+        )
+
+        # ----------------------------------------------------
+        # Find missing questions
+        # ----------------------------------------------------
+
+        missing_question_ids = (
+            required_question_ids
+            - answered_question_ids
+        )
+
+        if missing_question_ids:
+
+            return Response(
+                {
+                    "success": False,
+
+                    "message": (
+                        "All required questions must "
+                        "be answered before submitting."
+                    ),
+
+                    "missing_question_ids": (
+                        list(
+                            missing_question_ids
+                        )
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ----------------------------------------------------
+        # Submit survey
+        # ----------------------------------------------------
+
+        invitation.status = "SUBMITTED"
+
+        invitation.submitted_at = (
+            timezone.now()
+        )
+
+        invitation.save(
+            update_fields=[
+                "status",
+                "submitted_at",
+            ]
+        )
+
+        # ----------------------------------------------------
+        # Response
+        # ----------------------------------------------------
+
+        return Response(
+            {
+                "success": True,
+
+                "submitted": True,
+
+                "message": (
+                    "Survey submitted successfully."
+                ),
+
+                "submitted_at": (
+                    invitation.submitted_at
+                ),
             },
             status=status.HTTP_200_OK,
         )
