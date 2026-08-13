@@ -1247,206 +1247,206 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
-# ============================================================
-# SEND SURVEY INVITATIONS
-#
-# POST:
-# /api/materiality/assessments/<id>/survey/send/
-#
-# Body:
-# {
-#     "stakeholder_ids": [
-#         "uuid1",
-#         "uuid2"
-#     ]
-# }
-# ============================================================
+    # ============================================================
+    # SEND SURVEY INVITATIONS
+    #
+    # POST:
+    # /api/materiality/assessments/<id>/survey/send/
+    #
+    # Body:
+    # {
+    #     "stakeholder_ids": [
+    #         "uuid1",
+    #         "uuid2"
+    #     ]
+    # }
+    # ============================================================
 
-@action(
-    detail=True,
-    methods=["post"],
-    url_path="survey/send",
-)
-@transaction.atomic
-def send_survey(self, request, pk=None):
-
-    # ========================================================
-    # 1. GET ASSESSMENT
-    # ========================================================
-
-    assessment = self.get_object()
-
-    # ========================================================
-    # 2. GET SURVEY
-    # ========================================================
-
-    survey = Survey.objects.filter(
-        assessment=assessment
-    ).first()
-
-    if not survey:
-        raise ValidationError(
-            "Survey has not been generated for this assessment."
-        )
-
-    # ========================================================
-    # 3. GET STAKEHOLDER IDS
-    # ========================================================
-
-    stakeholder_ids = request.data.get(
-        "stakeholder_ids"
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="survey/send",
     )
+    @transaction.atomic
+    def send_survey(self, request, pk=None):
 
-    if not stakeholder_ids:
-        raise ValidationError({
-            "stakeholder_ids": (
-                "At least one stakeholder must be selected."
+        # ========================================================
+        # 1. GET ASSESSMENT
+        # ========================================================
+
+        assessment = self.get_object()
+
+        # ========================================================
+        # 2. GET SURVEY
+        # ========================================================
+
+        survey = Survey.objects.filter(
+            assessment=assessment
+        ).first()
+
+        if not survey:
+            raise ValidationError(
+                "Survey has not been generated for this assessment."
             )
-        })
 
-    if not isinstance(stakeholder_ids, list):
-        raise ValidationError({
-            "stakeholder_ids": (
-                "stakeholder_ids must be a list."
+        # ========================================================
+        # 3. GET STAKEHOLDER IDS
+        # ========================================================
+
+        stakeholder_ids = request.data.get(
+            "stakeholder_ids"
+        )
+
+        if not stakeholder_ids:
+            raise ValidationError({
+                "stakeholder_ids": (
+                    "At least one stakeholder must be selected."
+                )
+            })
+
+        if not isinstance(stakeholder_ids, list):
+            raise ValidationError({
+                "stakeholder_ids": (
+                    "stakeholder_ids must be a list."
+                )
+            })
+
+        # Remove duplicate stakeholder IDs
+        stakeholder_ids = list(
+            dict.fromkeys(stakeholder_ids)
+        )
+
+        # ========================================================
+        # 4. GET VALID STAKEHOLDERS
+        # ========================================================
+
+        stakeholders = (
+            Stakeholder.objects
+            .filter(
+                id__in=stakeholder_ids,
+                group__assessment=assessment,
             )
-        })
-
-    # Remove duplicate stakeholder IDs
-    stakeholder_ids = list(
-        dict.fromkeys(stakeholder_ids)
-    )
-
-    # ========================================================
-    # 4. GET VALID STAKEHOLDERS
-    # ========================================================
-
-    stakeholders = (
-        Stakeholder.objects
-        .filter(
-            id__in=stakeholder_ids,
-            group__assessment=assessment,
+            .select_related("group")
         )
-        .select_related("group")
-    )
 
-    # ========================================================
-    # 5. VALIDATE STAKEHOLDERS
-    # ========================================================
+        # ========================================================
+        # 5. VALIDATE STAKEHOLDERS
+        # ========================================================
 
-    if stakeholders.count() != len(
-        stakeholder_ids
-    ):
-        raise ValidationError({
-            "stakeholder_ids": (
-                "One or more stakeholders do not "
-                "belong to this assessment."
+        if stakeholders.count() != len(
+            stakeholder_ids
+        ):
+            raise ValidationError({
+                "stakeholder_ids": (
+                    "One or more stakeholders do not "
+                    "belong to this assessment."
+                )
+            })
+
+        # ========================================================
+        # 6. CREATE / GET INVITATIONS
+        # ========================================================
+
+        invitations = []
+
+        for stakeholder in stakeholders:
+
+            invitation, created = (
+                SurveyInvitation.objects.get_or_create(
+                    survey=survey,
+                    stakeholder=stakeholder,
+                    defaults={
+                        "status": "NOT_SENT",
+                    },
+                )
             )
-        })
 
-    # ========================================================
-    # 6. CREATE / GET INVITATIONS
-    # ========================================================
-
-    invitations = []
-
-    for stakeholder in stakeholders:
-
-        invitation, created = (
-            SurveyInvitation.objects.get_or_create(
-                survey=survey,
-                stakeholder=stakeholder,
-                defaults={
-                    "status": "NOT_SENT",
-                },
+            invitations.append(
+                invitation
             )
+
+        # ========================================================
+        # 7. SEND EMAIL
+        # ========================================================
+
+        sent_invitations = []
+
+        for invitation in invitations:
+
+            send_survey_invitation(
+                invitation
+            )
+
+            invitation.status = "SENT"
+            invitation.sent_at = timezone.now()
+
+            invitation.save(
+                update_fields=[
+                    "status",
+                    "sent_at",
+                ]
+            )
+
+            sent_invitations.append(
+                invitation
+            )
+
+        # ========================================================
+        # 8. BUILD RESPONSE
+        # ========================================================
+
+        invitation_data = []
+
+        for invitation in sent_invitations:
+
+            invitation_data.append({
+                "id": invitation.id,
+
+                "stakeholder_id": (
+                    invitation.stakeholder.id
+                ),
+
+                "stakeholder_name": (
+                    invitation.stakeholder.name
+                ),
+
+                "stakeholder_email": (
+                    invitation.stakeholder.email
+                ),
+
+                "status": invitation.status,
+
+                "sent_at": invitation.sent_at,
+
+                "token": str(
+                    invitation.token
+                ),
+
+                "survey_url": (
+                    f"{settings.FRONTEND_URL}/survey/"
+                    f"{invitation.token}/"
+                ),
+            })
+
+        # ========================================================
+        # 9. RESPONSE
+        # ========================================================
+
+        return Response(
+            {
+                "success": True,
+
+                "message": (
+                    "Survey invitations sent successfully."
+                ),
+
+                "survey_id": survey.id,
+
+                "count": len(
+                    sent_invitations
+                ),
+
+                "invitations": invitation_data,
+            },
+            status=status.HTTP_200_OK,
         )
-
-        invitations.append(
-            invitation
-        )
-
-    # ========================================================
-    # 7. SEND EMAIL
-    # ========================================================
-
-    sent_invitations = []
-
-    for invitation in invitations:
-
-        send_survey_invitation(
-            invitation
-        )
-
-        invitation.status = "SENT"
-        invitation.sent_at = timezone.now()
-
-        invitation.save(
-            update_fields=[
-                "status",
-                "sent_at",
-            ]
-        )
-
-        sent_invitations.append(
-            invitation
-        )
-
-    # ========================================================
-    # 8. BUILD RESPONSE
-    # ========================================================
-
-    invitation_data = []
-
-    for invitation in sent_invitations:
-
-        invitation_data.append({
-            "id": invitation.id,
-
-            "stakeholder_id": (
-                invitation.stakeholder.id
-            ),
-
-            "stakeholder_name": (
-                invitation.stakeholder.name
-            ),
-
-            "stakeholder_email": (
-                invitation.stakeholder.email
-            ),
-
-            "status": invitation.status,
-
-            "sent_at": invitation.sent_at,
-
-            "token": str(
-                invitation.token
-            ),
-
-            "survey_url": (
-                f"{settings.FRONTEND_URL}/survey/"
-                f"{invitation.token}/"
-            ),
-        })
-
-    # ========================================================
-    # 9. RESPONSE
-    # ========================================================
-
-    return Response(
-        {
-            "success": True,
-
-            "message": (
-                "Survey invitations sent successfully."
-            ),
-
-            "survey_id": survey.id,
-
-            "count": len(
-                sent_invitations
-            ),
-
-            "invitations": invitation_data,
-        },
-        status=status.HTTP_200_OK,
-    )    
