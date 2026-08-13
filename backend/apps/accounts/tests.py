@@ -183,6 +183,15 @@ class AuthenticationAndAdministrationTests(TestCase):
         self.assertTrue(assigned_codes.issubset(seeded_codes))
         self.assertFalse(any(code.startswith(("org.", "period.")) for code in seeded_codes))
 
+    def test_permission_module_codes_match_the_module_registry_catalog(self):
+        """The RBAC module field and the permission-code prefix stay canonical."""
+        from apps.modules.management.commands.seed_modules import MODULES
+
+        registry_codes = {module["code"] for module in MODULES}
+        for code, _name, module_code, _action in PERMISSIONS:
+            self.assertEqual(module_code, code.split(".", 1)[0])
+            self.assertIn(module_code, registry_codes)
+
     def test_role_writes_are_superuser_only(self):
         self.client.force_login(self.user)
         response = self.client.post(

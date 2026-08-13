@@ -54,7 +54,7 @@ PERMISSIONS = [
 
     ("emission_factor.manage", "Manage emission factors", "emission_factor", "MANAGE"),
 
-    ("framework_mapping.manage", "Manage framework mappings", "framework", "MANAGE"),
+    ("framework_mapping.manage", "Manage framework mappings", "framework_mapping", "MANAGE"),
 
     ("data.enter", "Enter data", "data", "EDIT"),
 
