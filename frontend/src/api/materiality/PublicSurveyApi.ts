@@ -1,33 +1,19 @@
 import api from "@/services/api";
 
 import type {
-  PublicSurveyData,
+  PublicSurveyGetResponse,
 } from "@/types/materiality/survey";
 
-
-const BASE_URL = "/survey";
-
+const BASE_URL =
+  "/public/materiality/survey";
 
 const PublicSurveyApi = {
-
-  /*
-   * IMPORTANT:
-   * The exact backend URL has not yet been provided.
-   * Replace this path with your actual public-survey endpoint.
-   */
   getSurvey(token: string) {
-    return api.get<PublicSurveyData>(
+    return api.get<PublicSurveyGetResponse>(
       `${BASE_URL}/${token}/`
     );
   },
 
-
-  /*
-   * Auto-save one answer.
-   *
-   * Replace the URL/method with your actual
-   * public response endpoint.
-   */
   saveResponse(
     token: string,
     data: {
@@ -37,24 +23,16 @@ const PublicSurveyApi = {
     }
   ) {
     return api.post(
-      `${BASE_URL}/${token}/responses/`,
+      `${BASE_URL}/${token}/answer/`,
       data
     );
   },
 
-
-  /*
-   * Submit the complete survey.
-   *
-   * Replace with the actual backend endpoint.
-   */
   submitSurvey(token: string) {
     return api.post(
       `${BASE_URL}/${token}/submit/`
     );
   },
-
 };
-
 
 export default PublicSurveyApi;

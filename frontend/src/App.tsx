@@ -34,6 +34,7 @@ import AssessmentStakeholders from "./pages/materiality/AssessmentStakeholders";
 import SurveyManager from "@/pages/materiality/SurveyManager";
 import SurveyDistribution from "@/pages/materiality/SurveyDistribution";
 import PublicSurvey from "./pages/materiality/PublicSurvey";
+import SurveyThankYou from "./pages/materiality/SurveyThankYou";
 
 export default function App() {
   return (
@@ -286,6 +287,12 @@ export default function App() {
 <Route
   path="/survey/:token"
   element={<PublicSurvey />}
+/>
+
+
+<Route
+  path="/survey/:token/thank-you"
+  element={<SurveyThankYou />}
 />
 
   <Route path="*" element={<Navigate to="/" replace />} />

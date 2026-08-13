@@ -18,8 +18,12 @@ import {
 import AppShell from "@/components/layout/AppShell";
 
 import SurveyApi, {
-  type SurveyInvitationResult,
 } from "@/api/materiality/surveyApi";
+
+
+import type {
+  SurveyInvitationResult,
+} from "@/types/materiality/survey";
 
 import type {
   Survey,
