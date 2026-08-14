@@ -22,6 +22,7 @@ class StateViewSet(RBACModelViewSet):
 
 
 class CityViewSet(RBACModelViewSet):
+    module_code = "city"
     queryset = City.objects.select_related(
         "country",
         "state",
@@ -82,4 +83,3 @@ class DepartmentViewSet(RBACModelViewSet):
         "parent_department",
     )
     serializer_class = DepartmentSerializer
-

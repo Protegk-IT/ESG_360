@@ -11,9 +11,9 @@ class CurrentRequestMiddleware:
 
     def __call__(self, request):
         set_current_request(request)
-
-        response = self.get_response(request)
-
-        set_current_request(None)
-
-        return response
+        try:
+            return self.get_response(request)
+        finally:
+            # Thread-local state must never leak into the next request when a
+            # view or another middleware raises an exception.
+            set_current_request(None)

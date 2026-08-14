@@ -37,6 +37,7 @@ interface ReportingPeriodColumnsProps {
   onUnlock: (period: ReportingPeriod) => void;
 
   onGenerate: (period: ReportingPeriod) => void;
+  canGenerate: (period: ReportingPeriod) => boolean;
 }
 
 export const getReportingPeriodColumns = ({
@@ -46,6 +47,7 @@ export const getReportingPeriodColumns = ({
   onLock,
   onUnlock,
   onGenerate,
+  canGenerate,
 }: ReportingPeriodColumnsProps): ColumnDef<ReportingPeriod>[] => [
   {
     accessorKey: "name",
@@ -210,16 +212,12 @@ export const getReportingPeriodColumns = ({
 
             </DropdownMenuItem>
 
-            <DropdownMenuItem
-              onClick={() =>
-                onGenerate(period)
-              }
-            >
-              <GitBranch className="mr-2 h-4 w-4" />
-
-              Generate Sub Periods
-
-            </DropdownMenuItem>
+            {canGenerate(period) && (
+              <DropdownMenuItem onClick={() => onGenerate(period)}>
+                <GitBranch className="mr-2 h-4 w-4" />
+                Generate Sub Periods
+              </DropdownMenuItem>
+            )}
 
             <DropdownMenuSeparator />
 

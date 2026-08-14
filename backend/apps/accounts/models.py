@@ -240,6 +240,14 @@ class UserRoleAssignment(ActivityLogMixin, BaseModel):
     def __str__(self):
         return f"{self.user} - {self.role}"
 
+    def clean(self):
+        if self.valid_from and self.valid_to and self.valid_from > self.valid_to:
+            raise ValidationError({"valid_to": "Valid From cannot be after Valid To."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
 class TestModel(ActivityLogMixin, BaseModel):
     name = models.CharField(max_length=100)
 
@@ -276,4 +284,3 @@ class UserDepartment(ActivityLogMixin, BaseModel):
         ]
     def __str__(self):
         return f"{self.user} - {self.department}"
-    

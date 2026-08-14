@@ -38,9 +38,10 @@ export default function AppShell({
   children,
 }: AppShellProps) {
   const navigate = useNavigate();
-  const { logout } = useAuth();
-
-  const user = JSON.parse(localStorage.getItem("user") ?? "{}");
+  const { logout, user } = useAuth();
+  const roleLabel = user?.is_superuser
+    ? "Platform administrator"
+    : user?.roles?.join(", ") || "User";
 
   const handleLogout = async () => {
     try {
@@ -51,7 +52,7 @@ export default function AppShell({
       toast.error("Unable to contact server. Logging out locally.");
     } finally {
       logout();
-      navigate("/login", { replace: true });
+      navigate("/", { replace: true });
     }
   };
 
@@ -109,7 +110,7 @@ export default function AppShell({
     </p>
 
     <p className="mt-1 truncate text-sm font-semibold text-[#4A3FD6]">
-      {user?.role_name ?? "User"}
+      {roleLabel}
     </p>
   </div>
 

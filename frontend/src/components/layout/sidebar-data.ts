@@ -1,18 +1,32 @@
 import {
   FileBarChart2,
-  FileText,
   FolderTree,
   LayoutDashboard,
-  Leaf,
-  Settings,
   ShieldCheck,
 } from "lucide-react";
 
-export const navMain = [
+import type { LucideIcon } from "lucide-react";
+
+export interface SidebarSubItem {
+  title: string;
+  url: string;
+  permission: string;
+}
+
+export interface SidebarItem {
+  title: string;
+  icon: LucideIcon;
+  url?: string;
+  permission?: string;
+  items?: SidebarSubItem[];
+}
+
+export const navMain: SidebarItem[] = [
   {
     title: "Dashboard",
     url: "/accounts/dashboard/",
     icon: LayoutDashboard,
+    permission: "dashboard.view",
   },
 
   {
@@ -22,18 +36,22 @@ export const navMain = [
       {
         title: "Company Management",
         url: "/companies",
+        permission: "company.view",
       },
       {
         title: "User Management",
         url: "/accounts/users",
+        permission: "user.view",
       },
       {
         title: "Role Management",
         url: "/accounts/roles",
+        permission: "role.view",
       },
        {
         title: "Departments",
         url: "/company/departments",
+        permission: "department.view",
       },
     ],
   },
@@ -45,40 +63,7 @@ export const navMain = [
       {
         title: "Organization",
         url: "/organizations",
-      },
-    ],
-  },
-
-  {
-    title: "Frameworks",
-    icon: FileText,
-    items: [
-      {
-        title: "BRSR",
-        url: "/frameworks/brsr",
-      },
-      {
-        title: "GRI",
-        url: "/frameworks/gri",
-      },
-    ],
-  },
-
-  {
-    title: "Emissions",
-    icon: Leaf,
-    items: [
-      {
-        title: "Scope 1",
-        url: "/emissions/scope-1",
-      },
-      {
-        title: "Scope 2",
-        url: "/emissions/scope-2",
-      },
-      {
-        title: "Scope 3",
-        url: "/emissions/scope-3",
+        permission: "organization.view",
       },
     ],
   },
@@ -90,17 +75,8 @@ export const navMain = [
       {
         title: "Reporting Periods",
         url: "/periods",
-      },
-      {
-        title: "Reporting Forms",
-        url: "/periods/create",
+        permission: "reporting_period.view",
       },
     ],
-  },
-
-  {
-    title: "Settings",
-    url: "/settings/",
-    icon: Settings,
   },
 ];

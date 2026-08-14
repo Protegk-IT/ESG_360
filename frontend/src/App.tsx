@@ -28,6 +28,7 @@ export default function App() {
     <BrowserRouter>
      <Routes>
   <Route path="/" element={<Login />} />
+  <Route path="/login" element={<Navigate to="/" replace />} />
 
   <Route
     path="/dashboard"
@@ -36,7 +37,7 @@ export default function App() {
 
   <Route
     path="/accounts/dashboard/"
-    element={<PlatformAdminDashboard />}
+    element={<ProtectedRoute permission="dashboard.view"><PlatformAdminDashboard /></ProtectedRoute>}
   />
 
   {/* Company */}
@@ -48,15 +49,6 @@ export default function App() {
       </ProtectedRoute>
     }
   />
-
-  <Route
-  path="/companies/profile/create"
-  element={
-    <ProtectedRoute permission="company.create">
-      <CompanyForm />
-    </ProtectedRoute>
-  }
-/>
 
 <Route
   path="/company/profile/edit"
@@ -164,7 +156,7 @@ export default function App() {
   <Route
     path="/accounts/roles/create"
     element={
-      <ProtectedRoute permission="role.create">
+      <ProtectedRoute permission="role.create" superuserOnly>
         <RoleForm />
       </ProtectedRoute>
     }
@@ -173,7 +165,7 @@ export default function App() {
   <Route
     path="/accounts/roles/:id/edit"
     element={
-      <ProtectedRoute permission="role.edit">
+      <ProtectedRoute permission="role.edit" superuserOnly>
         <RoleForm />
       </ProtectedRoute>
     }

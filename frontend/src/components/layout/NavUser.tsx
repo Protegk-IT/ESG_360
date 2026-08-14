@@ -1,8 +1,5 @@
-import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LogOut, UserCircle2 } from "lucide-react";
-
-import api from "@/services/api";
 
 import { SidebarFooter } from "@/components/ui/sidebar";
 
@@ -12,24 +9,9 @@ import { logoutUser } from "@/services/authService";
 
 import { useAuth } from "@/context/AuthContext";
 
-interface User {
-  id: number;
-  full_name: string;
-  username: string;
-  email: string;
-}
-
 export function NavUser() {
   const navigate = useNavigate();
-  const { logout } = useAuth();
-  const [user, setUser] = useState<User | null>(null);
-
-  useEffect(() => {
-    api
-      .get("/accounts/me/")
-      .then((res) => setUser(res.data))
-      .catch(console.error);
-  }, []);
+  const { logout, user } = useAuth();
 
   const handleLogout = async () => {
     try {
@@ -42,7 +24,7 @@ export function NavUser() {
       toast.error("Unable to contact server. Logging out locally.");
     } finally {
       logout();
-      navigate("/login", { replace: true });
+      navigate("/", { replace: true });
     }
   };
 

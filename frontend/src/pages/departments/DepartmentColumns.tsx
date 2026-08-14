@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 interface DepartmentColumnsProps {
-  onEdit: (id: number) => void;
+  onEdit: (id: string) => void;
   onDelete: (department: Department) => void;
 }
 
@@ -131,7 +131,7 @@ export const getDepartmentColumns = ({
 
               <DropdownMenuItem
                 onClick={() =>
-                  onEdit(Number(department.id))
+                  onEdit(department.id)
                 }
               >
                 <Pencil className="mr-2 h-4 w-4" />

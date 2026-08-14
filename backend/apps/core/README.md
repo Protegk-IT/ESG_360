@@ -130,7 +130,7 @@ Use the notification helper instead of creating notifications manually.
 Example
 
 ```python
-from apps.core.notifications import notify
+from apps.core.services.notification_service import notify
 
 notify(
     recipient=user,

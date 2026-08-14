@@ -14,14 +14,19 @@ def login_handler(sender, request, user, **kwargs):
         object_id=str(user.pk),
         object_repr=str(user),
         changes={},
-        ip_address=request.META.get("REMOTE_ADDR"),
-        user_agent=request.META.get("HTTP_USER_AGENT", ""),
-        request_path=request.path,
+        ip_address=request.META.get("REMOTE_ADDR") if request else None,
+        user_agent=request.META.get("HTTP_USER_AGENT", "") if request else "",
+        request_path=request.path if request else "",
     )
 
 
 @receiver(user_logged_out)
 def logout_handler(sender, request, user, **kwargs):
+
+    # Django permits logout on an anonymous request, which has no actor to
+    # record. Authenticated logout continues to be audited below.
+    if user is None:
+        return
 
     ActivityLog.objects.create(
         user=user,
@@ -30,7 +35,7 @@ def logout_handler(sender, request, user, **kwargs):
         object_id=str(user.pk),
         object_repr=str(user),
         changes={},
-        ip_address=request.META.get("REMOTE_ADDR"),
-        user_agent=request.META.get("HTTP_USER_AGENT", ""),
-        request_path=request.path,
+        ip_address=request.META.get("REMOTE_ADDR") if request else None,
+        user_agent=request.META.get("HTTP_USER_AGENT", "") if request else "",
+        request_path=request.path if request else "",
     )

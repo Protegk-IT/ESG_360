@@ -5,7 +5,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/context/AuthContext";
 
-import { navMain } from "./sidebar-data";
+import { navMain, type SidebarItem } from "./sidebar-data";
 import { NavMain } from "./NavMain";
 import { NavUser } from "./NavUser";
 
@@ -13,7 +13,18 @@ import { NavUser } from "./NavUser";
 
 
 export function AppSidebar() {
-  const { user } = useAuth();
+  const { user, permissions } = useAuth();
+  const roleLabel = user?.is_superuser
+    ? "Platform administrator"
+    : user?.roles?.join(", ") || "User";
+  const canAccess = (permission?: string) =>
+    Boolean(user?.is_superuser || (permission && permissions.includes(permission)));
+  const items = navMain.flatMap((item): SidebarItem[] => {
+    if (!item.items) return canAccess(item.permission) ? [item] : [];
+
+    const visibleChildren = item.items.filter((child) => canAccess(child.permission));
+    return visibleChildren.length ? [{ ...item, items: visibleChildren }] : [];
+  });
   return (
     <Sidebar
       collapsible="icon"
@@ -33,14 +44,14 @@ export function AppSidebar() {
               ESG<span className="text-blue-600">360</span>
             </h1>
            <p className="truncate text-xs text-gray-500">
-              {user?.role_name ?? "User"}
+              {roleLabel}
             </p>
           </div>
         </div>
       </SidebarHeader>
 
       <SidebarContent className="py-2">
-        <NavMain items={navMain} />
+        <NavMain items={items} />
       </SidebarContent>
 
       <NavUser />

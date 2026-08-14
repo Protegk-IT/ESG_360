@@ -16,7 +16,9 @@ class HasRolePermission(BasePermission):
         if request.user.is_superuser:
             return True
 
-        permission_code = view.get_required_permission()
+        permission_code = getattr(view, "permission_code", None)
+        if permission_code is None:
+            permission_code = view.get_required_permission()
 
         if not permission_code:
             return False

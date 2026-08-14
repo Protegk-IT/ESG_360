@@ -20,8 +20,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 interface RoleColumnsProps {
-  onEdit: (id: number) => void;
+  onEdit: (id: string) => void;
   onDelete: (role: Role) => void;
+  canManage: boolean;
 }
 
 
@@ -29,6 +30,7 @@ interface RoleColumnsProps {
 export const getRoleColumns = ({
   onEdit,
   onDelete,
+  canManage,
 }: RoleColumnsProps): ColumnDef<Role>[] => [
   {
     accessorKey: "role_name",
@@ -81,24 +83,24 @@ export const getRoleColumns = ({
   },
 
   {
-    accessorKey: "is_system_role",
+    accessorKey: "is_system",
 
     header: "Type",
 
     cell: ({ row }) => (
       <Badge
         className={
-          row.original.is_system_role
+          row.original.is_system
             ? ""
             : ""
         }
         variant={
-          row.original.is_system_role
+          row.original.is_system
             ? "system"
             : "warning"
         }
       >
-        {row.original.is_system_role
+        {row.original.is_system
           ? "System"
           : "Custom"}
       </Badge>
@@ -147,6 +149,8 @@ export const getRoleColumns = ({
     cell: ({ row }) => {
       const role = row.original;
 
+      if (!canManage) return null;
+
       return (
         <div className="flex justify-center">
           <DropdownMenu>
@@ -173,7 +177,7 @@ export const getRoleColumns = ({
                 Edit
               </DropdownMenuItem>
 
-              {!role.is_system_role && (
+              {!role.is_system && (
                 <DropdownMenuItem
                   variant="destructive"
                   onClick={() =>

@@ -303,7 +303,7 @@ export default function Dashboard() {
             <Button
               variant="outline"
               className="h-auto justify-start p-6"
-              onClick={() => navigate("/departments")}
+              onClick={() => navigate("/company/departments")}
             >
               <div className="flex flex-col items-start">
                 <Building className="mb-4 h-7 w-7 text-[#0F7A5C]" />
