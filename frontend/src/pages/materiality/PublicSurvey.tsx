@@ -21,9 +21,7 @@ import {
   Save,
 } from "lucide-react";
 
-import {
-  toast,
-} from "sonner";
+import { toast } from "sonner";
 
 import {
   Card,
@@ -65,18 +63,28 @@ import {
 import PublicSurveyApi from "@/api/materiality/PublicSurveyApi";
 
 import type {
+  PublicSurveyAlreadySubmitted,
   PublicSurveyData,
+  PublicSurveyGetResponse,
   PublicSurveyQuestion,
 } from "@/types/materiality/survey";
 
+
+/* ==========================================================
+   LABELS
+========================================================== */
 
 const DIMENSION_LABELS = {
   IMPACT: "Impact",
   STAKEHOLDER_IMPORTANCE:
     "Stakeholder Importance",
   FINANCIAL: "Financial",
-};
+} as const;
 
+
+/* ==========================================================
+   LOCAL RESPONSE STATE
+========================================================== */
 
 interface ResponseState {
   value: number | null;
@@ -84,8 +92,40 @@ interface ResponseState {
 }
 
 
-export default function PublicSurvey() {
+/* ==========================================================
+   GROUPED UI TYPES
+========================================================== */
 
+interface GroupedSubtopic {
+  name: string;
+  questions: PublicSurveyQuestion[];
+}
+
+interface GroupedCategory {
+  name: string;
+  subtopics: GroupedSubtopic[];
+}
+
+
+/* ==========================================================
+   TYPE GUARD
+========================================================== */
+
+function isAlreadySubmittedResponse(
+  result: PublicSurveyGetResponse
+): result is PublicSurveyAlreadySubmitted {
+  return (
+    "submitted" in result &&
+    result.submitted === true
+  );
+}
+
+
+/* ==========================================================
+   COMPONENT
+========================================================== */
+
+export default function PublicSurvey() {
   const { token } =
     useParams<{
       token: string;
@@ -94,6 +134,10 @@ export default function PublicSurvey() {
   const navigate =
     useNavigate();
 
+
+  /* ========================================================
+     DATA
+  ======================================================== */
 
   const [
     data,
@@ -110,6 +154,10 @@ export default function PublicSurvey() {
     Record<string, ResponseState>
   >({});
 
+
+  /* ========================================================
+     PAGE STATE
+  ======================================================== */
 
   const [
     loading,
@@ -139,6 +187,10 @@ export default function PublicSurvey() {
   ] = useState(0);
 
 
+  /* ========================================================
+     SAVE STATE
+  ======================================================== */
+
   const [
     savingQuestion,
     setSavingQuestion,
@@ -155,6 +207,10 @@ export default function PublicSurvey() {
   >(new Set());
 
 
+  /* ========================================================
+     SUBMIT STATE
+  ======================================================== */
+
   const [
     submitOpen,
     setSubmitOpen,
@@ -168,12 +224,12 @@ export default function PublicSurvey() {
 
 
   /* ========================================================
-     LOAD SURVEY
+     LOAD PUBLIC SURVEY
   ======================================================== */
 
   useEffect(() => {
-
     if (!token) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoadError(
         "Invalid survey link."
       );
@@ -183,49 +239,87 @@ export default function PublicSurvey() {
       return;
     }
 
+    const surveyToken =
+      token;
+
 
     const loadSurvey =
       async () => {
-
         try {
-
           setLoading(true);
           setLoadError(null);
 
           const response =
             await PublicSurveyApi.getSurvey(
-              token
+              surveyToken
             );
 
           const result =
             response.data;
 
+
+          /* ================================================
+             ALREADY SUBMITTED
+          ================================================= */
+
+          if (
+            isAlreadySubmittedResponse(
+              result
+            )
+          ) {
+            navigate(
+              `/survey/${surveyToken}/thank-you`,
+              {
+                replace: true,
+              }
+            );
+
+            return;
+          }
+
+
+          /* ================================================
+             NORMAL SURVEY
+          ================================================= */
+
           setData(result);
 
 
-          const initialResponses:
-            Record<string, ResponseState> =
-            {};
+          /* ================================================
+             RESTORE SAVED RESPONSES
+          ================================================= */
 
-          result.responses.forEach(
-            (item) => {
+          const initialResponses:
+            Record<
+              string,
+              ResponseState
+            > = {};
+
+
+          result.questions.forEach(
+            (question) => {
               initialResponses[
-                item.question
+                question.id
               ] = {
                 value:
-                  item.value,
+                  question.response
+                    ?.value ??
+                  null,
+
                 comment:
-                  item.comment ?? "",
+                  question.response
+                    ?.comment ??
+                  "",
               };
             }
           );
+
 
           setResponses(
             initialResponses
           );
 
         } catch (error) {
-
           console.error(
             "Failed to load public survey:",
             error
@@ -234,124 +328,132 @@ export default function PublicSurvey() {
           setLoadError(
             "This survey is unavailable or the link has expired."
           );
-
         } finally {
-
           setLoading(false);
-
         }
       };
 
 
     void loadSurvey();
 
-  }, [token]);
-
-
-  /* ========================================================
+  }, [
+    token,
+    navigate,
+  ]);
+    /* ========================================================
      GROUP QUESTIONS
+     
+     Category
+       ↓
+     Subtopic
+       ↓
+     Questions
   ======================================================== */
 
   const categories =
-    useMemo(() => {
-
-      if (!data) {
-        return [];
-      }
-
-      const categoryMap =
-        new Map<
-          string,
-          {
-            id: string;
-            name: string;
-            subtopics: Map<
-              string,
-              {
-                id: string;
-                name: string;
-                questions:
-                  PublicSurveyQuestion[];
-              }
-            >;
-          }
-        >();
-
-      data.questions.forEach(
-        (question) => {
-
-          if (
-            !categoryMap.has(
-              question.category_id
-            )
-          ) {
-            categoryMap.set(
-              question.category_id,
-              {
-                id:
-                  question.category_id,
-                name:
-                  question.category_name,
-                subtopics:
-                  new Map(),
-              }
-            );
-          }
-
-
-          const category =
-            categoryMap.get(
-              question.category_id
-            )!;
-
-
-          if (
-            !category.subtopics.has(
-              question.subtopic_id
-            )
-          ) {
-            category.subtopics.set(
-              question.subtopic_id,
-              {
-                id:
-                  question.subtopic_id,
-                name:
-                  question.subtopic_name,
-                questions: [],
-              }
-            );
-          }
-
-
-          category.subtopics
-            .get(
-              question.subtopic_id
-            )!
-            .questions.push(
-              question
-            );
-
+    useMemo<GroupedCategory[]>(
+      () => {
+        if (!data) {
+          return [];
         }
-      );
 
 
-      return Array.from(
-        categoryMap.values()
-      ).map(
-        (category) => ({
-          id:
-            category.id,
-          name:
-            category.name,
-          subtopics:
-            Array.from(
-              category.subtopics.values()
-            ),
-        })
-      );
+        const categoryMap =
+          new Map<
+            string,
+            {
+              name: string;
+              subtopics: Map<
+                string,
+                GroupedSubtopic
+              >;
+            }
+          >();
 
-    }, [data]);
 
+        data.questions.forEach(
+          (question) => {
+            const categoryKey =
+              question.category_name;
+
+
+            if (
+              !categoryMap.has(
+                categoryKey
+              )
+            ) {
+              categoryMap.set(
+                categoryKey,
+                {
+                  name:
+                    categoryKey,
+
+                  subtopics:
+                    new Map(),
+                }
+              );
+            }
+
+
+            const category =
+              categoryMap.get(
+                categoryKey
+              )!;
+
+
+            const subtopicKey =
+              question.subtopic_name;
+
+
+            if (
+              !category.subtopics.has(
+                subtopicKey
+              )
+            ) {
+              category.subtopics.set(
+                subtopicKey,
+                {
+                  name:
+                    subtopicKey,
+
+                  questions: [],
+                }
+              );
+            }
+
+
+            category.subtopics
+              .get(
+                subtopicKey
+              )!
+              .questions.push(
+                question
+              );
+          }
+        );
+
+
+        return Array.from(
+          categoryMap.values()
+        ).map(
+          (category) => ({
+            name:
+              category.name,
+
+            subtopics:
+              Array.from(
+                category.subtopics.values()
+              ),
+          })
+        );
+      },
+      [data]
+    );
+
+
+  /* ========================================================
+     ALL QUESTIONS
+  ======================================================== */
 
   const allQuestions =
     useMemo(
@@ -367,21 +469,71 @@ export default function PublicSurvey() {
     );
 
 
+  const totalQuestions =
+    allQuestions.length;
+
+
+  /* ========================================================
+     ANSWERED COUNT
+  ======================================================== */
+
   const answeredCount =
-    allQuestions.filter(
+    useMemo(
+      () =>
+        allQuestions.filter(
+          (question) =>
+            responses[
+              question.id
+            ]?.value !== null &&
+            responses[
+              question.id
+            ]?.value !==
+              undefined
+        ).length,
+
+      [
+        allQuestions,
+        responses,
+      ]
+    );
+
+
+  /* ========================================================
+     REQUIRED QUESTIONS
+  ======================================================== */
+
+  const requiredQuestions =
+    useMemo(
+      () =>
+        allQuestions.filter(
+          (question) =>
+            question.is_required
+        ),
+      [allQuestions]
+    );
+
+
+  const answeredRequiredCount =
+    requiredQuestions.filter(
       (question) =>
         responses[
           question.id
         ]?.value !== null &&
         responses[
           question.id
-        ]?.value !== undefined
+        ]?.value !==
+          undefined
     ).length;
 
 
-  const totalQuestions =
-    allQuestions.length;
+  const allRequiredAnswered =
+    answeredRequiredCount ===
+    requiredQuestions.length;
 
+
+  /* ========================================================
+     PROGRESS
+  ======================================================== */
 
   const progress =
     totalQuestions > 0
@@ -393,6 +545,10 @@ export default function PublicSurvey() {
       : 0;
 
 
+  /* ========================================================
+     ESTIMATED TIME
+  ======================================================== */
+
   const estimatedMinutes =
     Math.ceil(
       (totalQuestions * 15) /
@@ -400,86 +556,356 @@ export default function PublicSurvey() {
     );
 
 
+  /* ========================================================
+     CURRENT CATEGORY
+  ======================================================== */
+
   const currentCategory =
     categories[
       categoryIndex
-    ];
+    ] ?? null;
 
 
   /* ========================================================
-     RESPONSE UPDATE
+     UPDATE LOCAL RESPONSE
   ======================================================== */
 
-  const updateResponse =
-    (
-      questionId: string,
-      patch: Partial<ResponseState>
-    ) => {
+  const updateResponse = (
+    questionId: string,
+    patch: Partial<ResponseState>
+  ) => {
+    setResponses(
+      (previous) => ({
+        ...previous,
 
-      setResponses(
-        (previous) => ({
-          ...previous,
+        [questionId]: {
+          value:
+            previous[
+              questionId
+            ]?.value ??
+            null,
 
-          [questionId]: {
-            value:
-              previous[
-                questionId
-              ]?.value ??
-              null,
+          comment:
+            previous[
+              questionId
+            ]?.comment ??
+            "",
 
-            comment:
-              previous[
-                questionId
-              ]?.comment ??
-              "",
+          ...patch,
+        },
+      })
+    );
+  };
 
-            ...patch,
-          },
-        })
+
+  /* ========================================================
+     SAVE ANSWER
+  ======================================================== */
+
+  const handleAnswer = async (
+    question: PublicSurveyQuestion,
+    value: number
+  ) => {
+    if (!token) {
+      return;
+    }
+
+    const surveyToken =
+      token;
+
+
+    const previousResponse =
+      responses[
+        question.id
+      ] ?? {
+        value: null,
+        comment: "",
+      };
+
+
+    /* ---------------------------------------------
+       Optimistic UI update
+    --------------------------------------------- */
+
+    updateResponse(
+      question.id,
+      {
+        value,
+      }
+    );
+
+
+    try {
+      setSavingQuestion(
+        question.id
       );
 
+
+      await PublicSurveyApi.saveResponse(
+        surveyToken,
+        {
+          question:
+            question.id,
+
+          value,
+
+          comment:
+            previousResponse.comment,
+        }
+      );
+
+
+      setSavedQuestions(
+        (previous) => {
+          const next =
+            new Set(previous);
+
+          next.add(
+            question.id
+          );
+
+          return next;
+        }
+      );
+
+    } catch (error) {
+      console.error(
+        "Failed to save survey answer:",
+        error
+      );
+
+
+      /* -------------------------------------------
+         Roll back optimistic value
+      ------------------------------------------- */
+
+      updateResponse(
+        question.id,
+        {
+          value:
+            previousResponse.value,
+        }
+      );
+
+
+      toast.error(
+        "Unable to save your answer.",
+        {
+          description:
+            "Please try selecting the answer again.",
+        }
+      );
+
+    } finally {
+      setSavingQuestion(
+        null
+      );
+    }
+  };
+
+
+  /* ========================================================
+     SAVE COMMENT
+     
+     Comment is stored on the IMPACT response row.
+     
+     We save on BLUR instead of every keystroke.
+  ======================================================== */
+
+  const handleCommentBlur =
+    async (
+      question: PublicSurveyQuestion,
+      comment: string
+    ) => {
+      if (!token) {
+        return;
+      }
+
+      const surveyToken =
+        token;
+
+
+      const currentResponse =
+        responses[
+          question.id
+        ] ?? {
+          value: null,
+          comment: "",
+        };
+
+
+      /*
+       * Backend requires a valid numeric value.
+       *
+       * Therefore a comment cannot be persisted
+       * until the associated question has an answer.
+       */
+      if (
+        currentResponse.value ===
+        null
+      ) {
+        return;
+      }
+
+
+      try {
+        setSavingQuestion(
+          question.id
+        );
+
+
+        await PublicSurveyApi.saveResponse(
+          surveyToken,
+          {
+            question:
+              question.id,
+
+            value:
+              currentResponse.value,
+
+            comment,
+          }
+        );
+
+
+        setSavedQuestions(
+          (previous) => {
+            const next =
+              new Set(previous);
+
+            next.add(
+              question.id
+            );
+
+            return next;
+          }
+        );
+
+      } catch (error) {
+        console.error(
+          "Failed to save survey comment:",
+          error
+        );
+
+
+        toast.error(
+          "Unable to save your comment."
+        );
+
+      } finally {
+        setSavingQuestion(
+          null
+        );
+      }
     };
 
 
   /* ========================================================
-     LOAD / ERROR STATES
+     SUBMIT
+  ======================================================== */
+
+  const handleSubmit =
+    async () => {
+      if (!token) {
+        return;
+      }
+
+
+      const surveyToken =
+        token;
+
+
+      try {
+        setSubmitting(true);
+
+
+        await PublicSurveyApi.submitSurvey(
+          surveyToken
+        );
+
+
+        setSubmitOpen(false);
+
+
+        toast.success(
+          "Survey submitted successfully."
+        );
+
+
+        navigate(
+          `/survey/${surveyToken}/thank-you`,
+          {
+            replace: true,
+          }
+        );
+
+      } catch (
+        error: unknown
+      ) {
+        console.error(
+          "Failed to submit survey:",
+          error
+        );
+
+
+        const responseData =
+          (
+            error as {
+              response?: {
+                data?: {
+                  message?: string;
+                  missing_question_ids?: string[];
+                };
+              };
+            }
+          )?.response?.data;
+
+
+        if (
+          responseData
+            ?.missing_question_ids
+            ?.length
+        ) {
+          toast.error(
+            "Some required questions are unanswered.",
+            {
+              description:
+                "Please review the highlighted sections before submitting.",
+            }
+          );
+
+        } else {
+          toast.error(
+            responseData?.message ??
+              "Unable to submit your survey."
+          );
+        }
+
+      } finally {
+        setSubmitting(false);
+      }
+    };
+
+
+  /* ========================================================
+     INVALID TOKEN
+  ======================================================== */
+
+  if (!token) {
+    return (
+      <PublicError
+        title="Invalid Survey Link"
+        message="The survey link is missing or invalid."
+      />
+    );
+  }
+
+
+  /* ========================================================
+     LOADING
   ======================================================== */
 
   if (loading) {
-
-    return (
-      <div
-        className="
-          flex
-          min-h-screen
-          items-center
-          justify-center
-          bg-slate-50
-          px-4
-        "
-      >
-        <div className="flex flex-col items-center gap-3">
-          <Loader2
-            className="
-              h-7
-              w-7
-              animate-spin
-              text-[#4A3FD6]
-            "
-          />
-
-          <p className="text-sm text-slate-500">
-            Loading survey...
-          </p>
-        </div>
-      </div>
-    );
-
-  }
-
-
-  if (loadError || !data) {
-
     return (
       <div
         className="
@@ -492,65 +918,74 @@ export default function PublicSurvey() {
         "
       >
 
-        <Card
+        <div
           className="
-            w-full
-            max-w-md
-            border-slate-200
-            shadow-sm
+            flex
+            flex-col
+            items-center
+            gap-3
           "
         >
 
-          <CardContent
+          <div
             className="
-              px-6
-              py-10
-              text-center
+              flex
+              h-12
+              w-12
+              items-center
+              justify-center
+              rounded-xl
+              bg-[#F1EFFF]
+              text-[#4A3FD6]
             "
           >
 
-            <AlertCircle
+            <Loader2
               className="
-                mx-auto
-                h-8
-                w-8
-                text-red-500
+                h-6
+                w-6
+                animate-spin
               "
             />
 
-            <h1
-              className="
-                mt-4
-                text-lg
-                font-semibold
-                text-[#22243A]
-              "
-            >
-              Survey unavailable
-            </h1>
+          </div>
 
-            <p
-              className="
-                mt-2
-                text-sm
-                leading-6
-                text-slate-500
-              "
-            >
-              {loadError}
-            </p>
 
-          </CardContent>
+          <p
+            className="
+              text-sm
+              text-slate-500
+            "
+          >
+            Loading survey...
+          </p>
 
-        </Card>
+        </div>
 
       </div>
     );
-
   }
 
 
-  return (
+  /* ========================================================
+     ERROR
+  ======================================================== */
+
+  if (
+    loadError ||
+    !data
+  ) {
+    return (
+      <PublicError
+        title="Survey unavailable"
+        message={
+          loadError ??
+          "This survey is unavailable."
+        }
+      />
+    );
+  }
+    return (
     <div
       className="
         min-h-screen
@@ -558,7 +993,9 @@ export default function PublicSurvey() {
       "
     >
 
-      {/* HEADER */}
+      {/* ==================================================
+          HEADER
+      ================================================== */}
 
       <header
         className="
@@ -579,13 +1016,21 @@ export default function PublicSurvey() {
             max-w-3xl
             items-center
             justify-between
+            gap-4
             px-4
             py-3
             sm:px-6
           "
         >
 
-          <div className="flex min-w-0 items-center gap-3">
+          <div
+            className="
+              flex
+              min-w-0
+              items-center
+              gap-3
+            "
+          >
 
             <div
               className="
@@ -600,12 +1045,22 @@ export default function PublicSurvey() {
                 text-[#4A3FD6]
               "
             >
+
               <FileText
-                className="h-4 w-4"
+                className="
+                  h-4
+                  w-4
+                "
               />
+
             </div>
 
-            <div className="min-w-0">
+
+            <div
+              className="
+                min-w-0
+              "
+            >
 
               <p
                 className="
@@ -617,6 +1072,7 @@ export default function PublicSurvey() {
               >
                 {data.survey.title}
               </p>
+
 
               <p
                 className="
@@ -638,15 +1094,23 @@ export default function PublicSurvey() {
             <div
               className="
                 flex
+                shrink-0
                 items-center
                 gap-2
                 text-xs
                 text-slate-500
               "
             >
-              <Clock3 className="h-3.5 w-3.5" />
+
+              <Clock3
+                className="
+                  h-3.5
+                  w-3.5
+                "
+              />
 
               ~{estimatedMinutes} min
+
             </div>
           )}
 
@@ -668,7 +1132,9 @@ export default function PublicSurvey() {
         "
       >
 
-        {/* INTRO */}
+        {/* =================================================
+            INTRO
+        ================================================= */}
 
         {step === "intro" && (
 
@@ -686,6 +1152,7 @@ export default function PublicSurvey() {
                 bg-[#4A3FD6]
               "
             />
+
 
             <CardHeader
               className="
@@ -708,6 +1175,7 @@ export default function PublicSurvey() {
                 Stakeholder Survey
               </Badge>
 
+
               <CardTitle
                 className="
                   mt-4
@@ -720,20 +1188,25 @@ export default function PublicSurvey() {
                 {data.survey.title}
               </CardTitle>
 
-              <CardDescription
-                className="
-                  mt-3
-                  text-sm
-                  leading-6
-                  sm:text-base
-                "
-              >
-                {data.survey.intro_text}
-              </CardDescription>
+
+              {data.survey.intro_text && (
+                <CardDescription
+                  className="
+                    mt-3
+                    text-sm
+                    leading-6
+                    sm:text-base
+                  "
+                >
+                  {data.survey.intro_text}
+                </CardDescription>
+              )}
 
             </CardHeader>
 
+
             <Separator />
+
 
             <CardContent
               className="
@@ -762,7 +1235,14 @@ export default function PublicSurvey() {
                     p-4
                   "
                 >
-                  <div className="flex items-center gap-3">
+
+                  <div
+                    className="
+                      flex
+                      items-center
+                      gap-3
+                    "
+                  >
 
                     <Clock3
                       className="
@@ -773,16 +1253,36 @@ export default function PublicSurvey() {
                     />
 
                     <div>
-                      <p className="text-xs text-slate-500">
+
+                      <p
+                        className="
+                          text-xs
+                          text-slate-500
+                        "
+                      >
                         Estimated completion
                       </p>
 
-                      <p className="mt-1 text-sm font-semibold text-[#22243A]">
-                        {estimatedMinutes} minutes
+                      <p
+                        className="
+                          mt-1
+                          text-sm
+                          font-semibold
+                          text-[#22243A]
+                        "
+                      >
+                        {estimatedMinutes}{" "}
+                        minute
+                        {estimatedMinutes ===
+                        1
+                          ? ""
+                          : "s"}
                       </p>
+
                     </div>
 
                   </div>
+
                 </div>
 
 
@@ -795,7 +1295,14 @@ export default function PublicSurvey() {
                     p-4
                   "
                 >
-                  <div className="flex items-center gap-3">
+
+                  <div
+                    className="
+                      flex
+                      items-center
+                      gap-3
+                    "
+                  >
 
                     <FileText
                       className="
@@ -806,16 +1313,31 @@ export default function PublicSurvey() {
                     />
 
                     <div>
-                      <p className="text-xs text-slate-500">
+
+                      <p
+                        className="
+                          text-xs
+                          text-slate-500
+                        "
+                      >
                         Questions
                       </p>
 
-                      <p className="mt-1 text-sm font-semibold text-[#22243A]">
+                      <p
+                        className="
+                          mt-1
+                          text-sm
+                          font-semibold
+                          text-[#22243A]
+                        "
+                      >
                         {totalQuestions}
                       </p>
+
                     </div>
 
                   </div>
+
                 </div>
 
               </div>
@@ -870,8 +1392,8 @@ export default function PublicSurvey() {
                         text-slate-500
                       "
                     >
-                      You can return later using
-                      this same survey link.
+                      You can close the survey and
+                      return later using the same link.
                     </p>
 
                   </div>
@@ -896,6 +1418,7 @@ export default function PublicSurvey() {
                   setStep("survey")
                 }
               >
+
                 Start Survey
 
                 <ArrowRight
@@ -905,16 +1428,25 @@ export default function PublicSurvey() {
                     w-4
                   "
                 />
+
               </Button>
 
             </CardContent>
 
           </Card>
         )}
+                {/* =================================================
+            SURVEY QUESTIONS
+        ================================================= */}
+
         {step === "survey" &&
           currentCategory && (
 
-          <div className="space-y-5">
+          <div
+            className="
+              space-y-5
+            "
+          >
 
             {/* CATEGORY PROGRESS */}
 
@@ -959,6 +1491,7 @@ export default function PublicSurvey() {
                       {categories.length}
                     </p>
 
+
                     <h1
                       className="
                         mt-1
@@ -976,7 +1509,9 @@ export default function PublicSurvey() {
 
                   <Badge
                     variant="outline"
-                    className="shrink-0"
+                    className="
+                      shrink-0
+                    "
                   >
                     {answeredCount} of{" "}
                     {totalQuestions}
@@ -999,18 +1534,24 @@ export default function PublicSurvey() {
                     mt-2
                     flex
                     justify-between
+                    gap-3
                     text-[11px]
                     text-slate-500
                   "
                 >
+
                   <span>
-                    {answeredCount} of{" "}
-                    {totalQuestions} questions answered
+                    Page{" "}
+                    {categoryIndex + 1}{" "}
+                    of{" "}
+                    {categories.length}
                   </span>
 
                   <span>
-                    {progress}%
+                    {answeredCount} of{" "}
+                    {totalQuestions} answered
                   </span>
+
                 </div>
 
               </CardContent>
@@ -1036,13 +1577,14 @@ export default function PublicSurvey() {
                   impactQuestion
                     ? responses[
                         impactQuestion.id
-                      ]?.comment ?? ""
+                      ]?.comment ??
+                      ""
                     : "";
 
 
                 return (
                   <Card
-                    key={subtopic.id}
+                    key={subtopic.name}
                     className="
                       border-slate-200
                       shadow-sm
@@ -1082,7 +1624,10 @@ export default function PublicSurvey() {
                     >
 
                       {subtopic.questions.map(
-                        (question, index) => {
+                        (
+                          question,
+                          questionIndex
+                        ) => {
 
                           const response =
                             responses[
@@ -1095,9 +1640,15 @@ export default function PublicSurvey() {
 
                           return (
                             <div
-                              key={question.id}
-                              className="space-y-4"
+                              key={
+                                question.id
+                              }
+                              className="
+                                space-y-4
+                              "
                             >
+
+                              {/* QUESTION */}
 
                               <div>
 
@@ -1124,6 +1675,7 @@ export default function PublicSurvey() {
                                       ]
                                     }
                                   </Badge>
+
 
                                   {question.is_required && (
                                     <Badge
@@ -1173,13 +1725,15 @@ export default function PublicSurvey() {
                               </div>
 
 
+                              {/* SCALE */}
+
                               <div
                                 className="
                                   space-y-2
                                 "
                               >
 
-                                {question.scale_options.map(
+                                {question.scale.options.map(
                                   (option) => {
 
                                     const selected =
@@ -1189,8 +1743,14 @@ export default function PublicSurvey() {
 
                                     return (
                                       <button
-                                        key={option.id}
+                                        key={
+                                          option.id
+                                        }
                                         type="button"
+                                        disabled={
+                                          savingQuestion ===
+                                          question.id
+                                        }
                                         className={`
                                           flex
                                           min-h-[58px]
@@ -1208,81 +1768,18 @@ export default function PublicSurvey() {
                                               ? "border-[#4A3FD6] bg-[#F7F5FF] ring-1 ring-[#4A3FD6]"
                                               : "border-slate-200 bg-white hover:bg-slate-50"
                                           }
+                                          disabled:cursor-not-allowed
+                                          disabled:opacity-70
                                         `}
-                                        onClick={async () => {
-
-                                          updateResponse(
-                                            question.id,
-                                            {
-                                              value:
-                                                option.value,
-                                            }
-                                          );
-
-
-                                          if (!token) {
-                                            return;
-                                          }
-
-
-                                          try {
-
-                                            setSavingQuestion(
-                                              question.id
-                                            );
-
-
-                                            await PublicSurveyApi.saveResponse(
-                                              token,
-                                              {
-                                                question:
-                                                  question.id,
-                                                value:
-                                                  option.value,
-                                                comment:
-                                                  response.comment,
-                                              }
-                                            );
-
-
-                                            setSavedQuestions(
-                                              (previous) => {
-
-                                                const next =
-                                                  new Set(
-                                                    previous
-                                                  );
-
-                                                next.add(
-                                                  question.id
-                                                );
-
-                                                return next;
-
-                                              }
-                                            );
-
-                                          } catch (error) {
-
-                                            console.error(
-                                              "Failed to save response:",
-                                              error
-                                            );
-
-                                            toast.error(
-                                              "Unable to save your answer."
-                                            );
-
-                                          } finally {
-
-                                            setSavingQuestion(
-                                              null
-                                            );
-
-                                          }
-
-                                        }}
+                                        onClick={() =>
+                                          void handleAnswer(
+                                            question,
+                                            option.value
+                                          )
+                                        }
                                       >
+
+                                        {/* RADIO */}
 
                                         <span
                                           className={`
@@ -1301,6 +1798,7 @@ export default function PublicSurvey() {
                                             }
                                           `}
                                         >
+
                                           {selected && (
                                             <span
                                               className="
@@ -1311,8 +1809,11 @@ export default function PublicSurvey() {
                                               "
                                             />
                                           )}
+
                                         </span>
 
+
+                                        {/* LABEL */}
 
                                         <div
                                           className="
@@ -1328,9 +1829,13 @@ export default function PublicSurvey() {
                                               text-slate-800
                                             "
                                           >
-                                            {option.value}{" "}
+                                            {
+                                              option.value
+                                            }{" "}
                                             —{" "}
-                                            {option.label}
+                                            {
+                                              option.label
+                                            }
                                           </p>
 
 
@@ -1351,6 +1856,8 @@ export default function PublicSurvey() {
 
                                         </div>
 
+
+                                        {/* SAVE STATUS */}
 
                                         {savingQuestion ===
                                         question.id ? (
@@ -1388,8 +1895,9 @@ export default function PublicSurvey() {
                               </div>
 
 
-                              {index <
-                                subtopic.questions.length -
+                              {questionIndex <
+                                subtopic.questions
+                                  .length -
                                   1 && (
                                 <Separator />
                               )}
@@ -1431,14 +1939,16 @@ export default function PublicSurvey() {
                             text-slate-500
                           "
                         >
-                          Add any context you would
-                          like to share about{" "}
+                          Add any additional context
+                          about{" "}
                           {subtopic.name}.
                         </p>
 
 
                         <Textarea
-                          value={comment}
+                          value={
+                            comment
+                          }
                           rows={4}
                           placeholder="Optional comment..."
                           className="
@@ -1446,96 +1956,54 @@ export default function PublicSurvey() {
                             resize-none
                             bg-white
                           "
-                          onChange={async (event) => {
+                          onChange={(
+                            event
+                          ) => {
 
-                            if (!impactQuestion) {
+                            if (
+                              !impactQuestion
+                            ) {
                               return;
                             }
-
-
-                            const value =
-                              event.target.value;
 
 
                             updateResponse(
                               impactQuestion.id,
                               {
                                 comment:
-                                  value,
+                                  event.target
+                                    .value,
                               }
                             );
 
+                          }}
+                          onBlur={(event) => {
 
-                            if (!token) {
+                            if (
+                              !impactQuestion
+                            ) {
                               return;
                             }
 
 
-                            try {
-
-                              setSavingQuestion(
-                                impactQuestion.id
-                              );
-
-
-                              /*
-                               * Response value is preserved
-                               * while saving the comment.
-                               */
-
-                              await PublicSurveyApi.saveResponse(
-                                token,
-                                {
-                                  question:
-                                    impactQuestion.id,
-                                  value:
-                                    responses[
-                                      impactQuestion.id
-                                    ]?.value ??
-                                    0,
-                                  comment:
-                                    value,
-                                }
-                              );
-
-
-                              setSavedQuestions(
-                                (previous) => {
-
-                                  const next =
-                                    new Set(
-                                      previous
-                                    );
-
-                                  next.add(
-                                    impactQuestion.id
-                                  );
-
-                                  return next;
-                                }
-                              );
-
-                            } catch (error) {
-
-                              console.error(
-                                "Failed to save comment:",
-                                error
-                              );
-
-                              toast.error(
-                                "Unable to save your comment."
-                              );
-
-                            } finally {
-
-                              setSavingQuestion(
-                                null
-                              );
-
-                            }
+                            void handleCommentBlur(
+                              impactQuestion,
+                              event.target.value
+                            );
 
                           }}
                         />
+
+                        <p
+                          className="
+                            mt-2
+                            text-[11px]
+                            text-slate-400
+                          "
+                        >
+                          Saved automatically when
+                          you leave this field.
+                        </p>
 
                       </div>
 
@@ -1582,7 +2050,8 @@ export default function PublicSurvey() {
                   type="button"
                   variant="outline"
                   disabled={
-                    categoryIndex === 0
+                    categoryIndex ===
+                    0
                   }
                   onClick={() =>
                     setCategoryIndex(
@@ -1600,7 +2069,10 @@ export default function PublicSurvey() {
                 >
 
                   <ArrowLeft
-                    className="h-4 w-4"
+                    className="
+                      h-4
+                      w-4
+                    "
                   />
 
                   Back
@@ -1623,7 +2095,11 @@ export default function PublicSurvey() {
                     onClick={() =>
                       setCategoryIndex(
                         (previous) =>
-                          previous + 1
+                          Math.min(
+                            previous + 1,
+                            categories.length -
+                              1
+                          )
                       )
                     }
                   >
@@ -1631,7 +2107,10 @@ export default function PublicSurvey() {
                     Next
 
                     <ArrowRight
-                      className="h-4 w-4"
+                      className="
+                        h-4
+                        w-4
+                      "
                     />
 
                   </Button>
@@ -1648,16 +2127,17 @@ export default function PublicSurvey() {
                       hover:bg-[#3F34C2]
                     "
                     onClick={() =>
-                      setStep(
-                        "review"
-                      )
+                      setStep("review")
                     }
                   >
 
                     Review Responses
 
                     <ArrowRight
-                      className="h-4 w-4"
+                      className="
+                        h-4
+                        w-4
+                      "
                     />
 
                   </Button>
@@ -1676,7 +2156,11 @@ export default function PublicSurvey() {
 
         {step === "review" && (
 
-          <div className="space-y-5">
+          <div
+            className="
+              space-y-5
+            "
+          >
 
             <Card
               className="
@@ -1705,6 +2189,7 @@ export default function PublicSurvey() {
                   Final Review
                 </Badge>
 
+
                 <CardTitle
                   className="
                     mt-3
@@ -1716,8 +2201,14 @@ export default function PublicSurvey() {
                   Review your responses
                 </CardTitle>
 
-                <CardDescription>
-                  Check your responses before submitting.
+
+                <CardDescription
+                  className="
+                    leading-6
+                  "
+                >
+                  Check your responses before submitting
+                  the survey.
                 </CardDescription>
 
               </CardHeader>
@@ -1761,17 +2252,33 @@ export default function PublicSurvey() {
                       ).length;
 
 
-                    const complete =
-                      categoryAnswered ===
-                      categoryQuestions.length;
+                    const categoryRequiredQuestions =
+                      categoryQuestions.filter(
+                        (question) =>
+                          question.is_required
+                      );
+
+
+                    const categoryRequiredAnswered =
+                      categoryRequiredQuestions.every(
+                        (question) =>
+                          responses[
+                            question.id
+                          ]?.value !== null &&
+                          responses[
+                            question.id
+                          ]?.value !==
+                            undefined
+                      );
 
 
                     return (
                       <button
-                        key={category.id}
+                        key={
+                          category.name
+                        }
                         type="button"
                         onClick={() => {
-
                           setCategoryIndex(
                             index
                           );
@@ -1779,7 +2286,6 @@ export default function PublicSurvey() {
                           setStep(
                             "survey"
                           );
-
                         }}
                         className="
                           flex
@@ -1793,11 +2299,17 @@ export default function PublicSurvey() {
                           px-4
                           py-4
                           text-left
+                          transition
                           hover:bg-slate-50
                         "
                       >
 
-                        <div>
+                        <div
+                          className="
+                            min-w-0
+                          "
+                        >
+
                           <p
                             className="
                               text-sm
@@ -1807,6 +2319,7 @@ export default function PublicSurvey() {
                           >
                             {category.name}
                           </p>
+
 
                           <p
                             className="
@@ -1821,16 +2334,18 @@ export default function PublicSurvey() {
                             }{" "}
                             questions answered
                           </p>
+
                         </div>
 
 
-                        {complete ? (
+                        {categoryRequiredAnswered ? (
 
                           <div
                             className="
                               flex
                               h-8
                               w-8
+                              shrink-0
                               items-center
                               justify-center
                               rounded-full
@@ -1838,7 +2353,14 @@ export default function PublicSurvey() {
                               text-emerald-600
                             "
                           >
-                            <Check className="h-4 w-4" />
+
+                            <Check
+                              className="
+                                h-4
+                                w-4
+                              "
+                            />
+
                           </div>
 
                         ) : (
@@ -1846,6 +2368,7 @@ export default function PublicSurvey() {
                           <Badge
                             variant="outline"
                             className="
+                              shrink-0
                               border-amber-200
                               bg-amber-50
                               text-amber-700
@@ -1858,7 +2381,6 @@ export default function PublicSurvey() {
 
                       </button>
                     );
-
                   }
                 )}
 
@@ -1866,6 +2388,8 @@ export default function PublicSurvey() {
 
             </Card>
 
+
+            {/* SUBMIT SUMMARY */}
 
             <Card
               className="
@@ -1902,6 +2426,7 @@ export default function PublicSurvey() {
                     {totalQuestions} questions answered
                   </p>
 
+
                   <p
                     className="
                       mt-1
@@ -1910,8 +2435,20 @@ export default function PublicSurvey() {
                       text-slate-500
                     "
                   >
-                    You won't be able to change your
-                    answers after submission.
+
+                    {allRequiredAnswered
+                      ? "All required questions are complete."
+                      : `Please answer ${
+                          requiredQuestions.length -
+                          answeredRequiredCount
+                        } required question${
+                          requiredQuestions.length -
+                            answeredRequiredCount ===
+                          1
+                            ? ""
+                            : "s"
+                        } before submitting.`}
+
                   </p>
 
                 </div>
@@ -1920,8 +2457,8 @@ export default function PublicSurvey() {
                 <Button
                   type="button"
                   disabled={
-                    answeredCount <
-                    totalQuestions
+                    !allRequiredAnswered ||
+                    submitting
                   }
                   onClick={() =>
                     setSubmitOpen(true)
@@ -1936,7 +2473,10 @@ export default function PublicSurvey() {
                 >
 
                   <CheckCircle2
-                    className="h-4 w-4"
+                    className="
+                      h-4
+                      w-4
+                    "
                   />
 
                   Submit Survey
@@ -1951,14 +2491,19 @@ export default function PublicSurvey() {
             <Button
               type="button"
               variant="ghost"
-              className="gap-2"
+              className="
+                gap-2
+              "
               onClick={() =>
                 setStep("survey")
               }
             >
 
               <ArrowLeft
-                className="h-4 w-4"
+                className="
+                  h-4
+                  w-4
+                "
               />
 
               Back to Survey
@@ -1970,11 +2515,13 @@ export default function PublicSurvey() {
 
 
         {/* ==================================================
-            SUBMIT CONFIRMATION
+            SUBMIT DIALOG
         ================================================== */}
 
         <Dialog
-          open={submitOpen}
+          open={
+            submitOpen
+          }
           onOpenChange={(
             open
           ) => {
@@ -1983,7 +2530,9 @@ export default function PublicSurvey() {
               !open &&
               !submitting
             ) {
-              setSubmitOpen(false);
+              setSubmitOpen(
+                false
+              );
             }
 
           }}
@@ -2023,6 +2572,7 @@ export default function PublicSurvey() {
 
               </div>
 
+
               <DialogTitle
                 className="
                   pt-2
@@ -2034,8 +2584,12 @@ export default function PublicSurvey() {
                 Submit your survey?
               </DialogTitle>
 
+
               <DialogDescription
-                className="text-center"
+                className="
+                  text-center
+                  leading-6
+                "
               >
                 Your responses will be submitted
                 and cannot be changed afterwards.
@@ -2058,8 +2612,9 @@ export default function PublicSurvey() {
               "
             >
 
-              {answeredCount} of{" "}
-              {totalQuestions} questions answered
+              {answeredRequiredCount} of{" "}
+              {requiredQuestions.length} required
+              questions answered
 
             </div>
 
@@ -2079,7 +2634,9 @@ export default function PublicSurvey() {
                   submitting
                 }
                 onClick={() =>
-                  setSubmitOpen(false)
+                  setSubmitOpen(
+                    false
+                  )
                 }
               >
                 Cancel
@@ -2090,52 +2647,11 @@ export default function PublicSurvey() {
                 type="button"
                 disabled={
                   submitting ||
-                  !token
+                  !allRequiredAnswered
                 }
-                onClick={async () => {
-
-                  if (!token) {
-                    return;
-                  }
-
-                  try {
-
-                    setSubmitting(
-                      true
-                    );
-
-                    await PublicSurveyApi.submitSurvey(
-                      token
-                    );
-
-                    toast.success(
-                      "Survey submitted successfully."
-                    );
-
-                    navigate(
-                      `/survey/${token}/thank-you`
-                    );
-
-                  } catch (error) {
-
-                    console.error(
-                      "Failed to submit survey:",
-                      error
-                    );
-
-                    toast.error(
-                      "Unable to submit survey."
-                    );
-
-                  } finally {
-
-                    setSubmitting(
-                      false
-                    );
-
-                  }
-
-                }}
+                onClick={() =>
+                  void handleSubmit()
+                }
                 className="
                   bg-[#4A3FD6]
                   text-white
@@ -2143,7 +2659,7 @@ export default function PublicSurvey() {
                 "
               >
 
-                {submitting && (
+                {submitting ? (
                   <Loader2
                     className="
                       mr-2
@@ -2152,7 +2668,8 @@ export default function PublicSurvey() {
                       animate-spin
                     "
                   />
-                )}
+                ) : null}
+
 
                 {submitting
                   ? "Submitting..."
@@ -2167,6 +2684,88 @@ export default function PublicSurvey() {
         </Dialog>
 
       </main>
+
+    </div>
+  );
+}
+
+
+/* ==========================================================
+   ERROR COMPONENT
+========================================================== */
+
+function PublicError({
+  title,
+  message,
+}: {
+  title: string;
+  message: string;
+}) {
+  return (
+    <div
+      className="
+        flex
+        min-h-screen
+        items-center
+        justify-center
+        bg-slate-50
+        px-4
+      "
+    >
+
+      <Card
+        className="
+          w-full
+          max-w-md
+          border-slate-200
+          shadow-sm
+        "
+      >
+
+        <CardContent
+          className="
+            px-6
+            py-10
+            text-center
+          "
+        >
+
+          <AlertCircle
+            className="
+              mx-auto
+              h-8
+              w-8
+              text-red-500
+            "
+          />
+
+
+          <h1
+            className="
+              mt-4
+              text-lg
+              font-semibold
+              text-[#22243A]
+            "
+          >
+            {title}
+          </h1>
+
+
+          <p
+            className="
+              mt-2
+              text-sm
+              leading-6
+              text-slate-500
+            "
+          >
+            {message}
+          </p>
+
+        </CardContent>
+
+      </Card>
 
     </div>
   );

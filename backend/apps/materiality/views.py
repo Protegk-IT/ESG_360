@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from django.core.exceptions import ValidationError as DjangoValidationError
 
@@ -8,7 +10,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError,NotFound
 
 from apps.accounts.viewsets import RBACModelViewSet
 from apps.accounts import viewsets
@@ -810,89 +812,155 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
             serializer.data,
             status=status.HTTP_200_OK,
         )
-
-    @action(detail=True,methods=["get", "post"],url_path="scales",)
+    
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        url_path="scales",
+    )
+    @transaction.atomic
     def scales(self, request, pk=None):
+
         assessment = self.get_object()
+
+        # =========================================================
+        # GET
+        # =========================================================
+
         if request.method == "GET":
-            scales = ScaleDefinition.objects.filter(
-                models.Q(assessment=assessment)
-                | models.Q(assessment__isnull=True)
-            ).prefetch_related("options")
+
+            scales = (
+                ScaleDefinition.objects
+                .filter(
+                    models.Q(assessment=assessment)
+                    | models.Q(assessment__isnull=True)
+                )
+                .prefetch_related("options")
+                .order_by(
+                    "dimension",
+                    "assessment",
+                )
+            )
 
             serializer = ScaleDefinitionSerializer(
                 scales,
                 many=True,
             )
 
-            return Response(serializer.data)
+            return Response(
+                serializer.data,
+                status=status.HTTP_200_OK,
+            )
+
+        # =========================================================
+        # POST
+        # =========================================================
 
         serializer = ScaleDefinitionSerializer(
             data=request.data
         )
+
         serializer.is_valid(
             raise_exception=True
         )
+
+        dimension = serializer.validated_data[
+            "dimension"
+        ]
+
+        # =========================================================
+        # 1. PREVENT DUPLICATE ASSESSMENT-SPECIFIC SCALE
+        # =========================================================
+
+        if ScaleDefinition.objects.filter(
+            assessment=assessment,
+            dimension=dimension,
+        ).exists():
+
+            raise ValidationError({
+                "dimension": (
+                    "A scale for this dimension already "
+                    "exists for this assessment."
+                )
+            })
+
+        # =========================================================
+        # 2. GET GLOBAL SEEDED SCALE
+        # =========================================================
+
+        global_scale = (
+            ScaleDefinition.objects
+            .filter(
+                assessment__isnull=True,
+                dimension=dimension,
+            )
+            .prefetch_related("options")
+            .first()
+        )
+
+        if not global_scale:
+            raise ValidationError({
+                "dimension": (
+                    f"No default scale is configured "
+                    f"for {dimension}."
+                )
+            })
+
+        # =========================================================
+        # 3. VALIDATE GLOBAL SCALE OPTIONS
+        # =========================================================
+
+        global_options = list(
+            global_scale.options.all()
+        )
+
+        if not global_options:
+
+            raise ValidationError({
+                "dimension": (
+                    f"The default {dimension} scale "
+                    "has no configured options."
+                )
+            })
+
+        # =========================================================
+        # 4. CREATE ASSESSMENT-SPECIFIC SCALE
+        # =========================================================
+
         scale = serializer.save(
             assessment=assessment
         )
-        return Response(
-            ScaleDefinitionSerializer(scale).data,
-            status=status.HTTP_201_CREATED,
-        )
 
-    @action(detail=True,methods=["get", "post"],url_path=r"scales/(?P<scale_id>[^/.]+)/options",)
-    def scale_options(
-        self,
-        request,
-        pk=None,
-        scale_id=None,
-    ):
+        # =========================================================
+        # 5. COPY GLOBAL OPTIONS
+        # =========================================================
 
-        assessment = self.get_object()
-
-        scale = ScaleDefinition.objects.filter(
-            pk=scale_id
-        ).filter(
-            models.Q(assessment=assessment)
-            | models.Q(assessment__isnull=True)
-        ).first()
-
-        if not scale:
-            raise ValidationError(
-                "Scale does not belong to this assessment."
+        ScaleOption.objects.bulk_create([
+            ScaleOption(
+                scale=scale,
+                value=option.value,
+                label=option.label,
+                description=option.description,
             )
+            for option in global_options
+        ])
 
-        if request.method == "GET":
+        # =========================================================
+        # 6. RETURN SCALE WITH OPTIONS
+        # =========================================================
 
-            options = ScaleOption.objects.filter(
-                scale=scale
-            )
-
-            serializer = ScaleOptionSerializer(
-                options,
-                many=True,
-            )
-
-            return Response(serializer.data)
-
-        serializer = ScaleOptionSerializer(
-            data=request.data
-        )
-
-        serializer.is_valid(
-            raise_exception=True
-        )
-
-        option = serializer.save(
-            scale=scale
+        scale = (
+            ScaleDefinition.objects
+            .prefetch_related("options")
+            .get(pk=scale.pk)
         )
 
         return Response(
-            ScaleOptionSerializer(option).data,
+            ScaleDefinitionSerializer(
+                scale
+            ).data,
             status=status.HTTP_201_CREATED,
         )
-
 
 ##### survey questions endpoint #######
     @action(
@@ -1091,9 +1159,17 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
         # If none exists, use the seeded global scale.
         # =========================================================
 
+        # =========================================================
+# 5. GET VALID SCALES
+# =========================================================
+
         scales = {}
 
         for dimension in dimensions:
+
+            # -----------------------------------------------------
+            # Prefer assessment-specific scale
+            # -----------------------------------------------------
 
             scale = (
                 ScaleDefinition.objects
@@ -1101,10 +1177,19 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
                     assessment=assessment,
                     dimension=dimension,
                 )
+                .prefetch_related("options")
                 .first()
             )
 
-            if not scale:
+            # -----------------------------------------------------
+            # If assessment-specific scale does not exist OR
+            # has no options, use the seeded global scale.
+            # -----------------------------------------------------
+
+            if (
+                not scale
+                or not scale.options.exists()
+            ):
 
                 scale = (
                     ScaleDefinition.objects
@@ -1112,14 +1197,29 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
                         assessment__isnull=True,
                         dimension=dimension,
                     )
+                    .prefetch_related("options")
                     .first()
                 )
+
+            # -----------------------------------------------------
+            # No usable scale
+            # -----------------------------------------------------
 
             if not scale:
 
                 raise ValidationError(
-                    f"No scale has been configured "
-                    f"for {dimension}."
+                    f"No scale has been configured for {dimension}."
+                )
+
+            # -----------------------------------------------------
+            # No options
+            # -----------------------------------------------------
+
+            if not scale.options.exists():
+
+                raise ValidationError(
+                    f"No options have been configured "
+                    f"for the {dimension} scale."
                 )
 
             scales[dimension] = scale
