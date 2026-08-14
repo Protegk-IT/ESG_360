@@ -17,6 +17,9 @@ from .models import (
     SurveyQuestion,
     SurveyInvitation,
     SurveyResponse,
+    InternalScore,
+    ScoreRun,
+    ScoreRunTopic,
 )
 
 
@@ -746,3 +749,216 @@ class SurveyResponseSerializer(serializers.ModelSerializer):
                 })
 
         return attrs    
+    
+
+
+class InternalScoreSerializer(serializers.ModelSerializer):
+    """
+    Internal expert scoring (§6.2), double mode only.
+    Written the same way StakeholderSerializer.validate_group works —
+    ownership of the parent object is checked against a context value
+    the view supplies, not re-derived here.
+    """
+ 
+    assessment_topic_name = serializers.CharField(
+        source="assessment_topic.subtopic.name",
+        read_only=True,
+    )
+ 
+    class Meta:
+        model = InternalScore
+        fields = [
+            "id",
+            "assessment_topic",
+            "assessment_topic_name",
+            "impact_type",
+            "scale",
+            "scope",
+            "irremediability",
+            "likelihood",
+            "financial_magnitude",
+            "financial_likelihood",
+            "rationale",
+            "scored_by",
+            "scored_at",
+        ]
+        read_only_fields = [
+            "id",
+            "assessment_topic_name",
+            "scored_by",
+            "scored_at",
+        ]
+ 
+    def validate_assessment_topic(self, assessment_topic):
+        assessment = self.context.get("assessment")
+ 
+        if assessment and assessment_topic.assessment_id != assessment.id:
+            raise serializers.ValidationError(
+                "This sub-topic does not belong to this assessment."
+            )
+ 
+        return assessment_topic
+ 
+    def validate(self, attrs):
+        impact_type = attrs.get(
+            "impact_type",
+            getattr(self.instance, "impact_type", None),
+        )
+ 
+        likelihood = attrs.get(
+            "likelihood",
+            getattr(self.instance, "likelihood", None),
+        )
+ 
+        if impact_type == "POTENTIAL" and likelihood is None:
+            raise serializers.ValidationError({
+                "likelihood": (
+                    "Likelihood is required when impact_type is POTENTIAL."
+                )
+            })
+ 
+        return attrs
+ 
+ 
+class ScoreRunTopicSerializer(serializers.ModelSerializer):
+    subtopic_code = serializers.CharField(
+        source="assessment_topic.subtopic.code",
+        read_only=True,
+    )
+ 
+    subtopic_name = serializers.CharField(
+        source="assessment_topic.subtopic.name",
+        read_only=True,
+    )
+ 
+    category_code = serializers.CharField(
+        source="assessment_topic.subtopic.topic.category.code",
+        read_only=True,
+    )
+ 
+    is_override = serializers.BooleanField(
+        source="assessment_topic.is_override",
+        read_only=True,
+    )
+ 
+    override_reason = serializers.CharField(
+        source="assessment_topic.override_reason",
+        read_only=True,
+    )
+ 
+    class Meta:
+        model = ScoreRunTopic
+        fields = [
+            "id",
+            "assessment_topic",
+            "subtopic_code",
+            "subtopic_name",
+            "category_code",
+            "primary_score",
+            "secondary_score",
+            "classification",
+            "is_override",
+            "override_reason",
+        ]
+        read_only_fields = fields
+ 
+ 
+class ScoreRunSerializer(serializers.ModelSerializer):
+    topic_results = ScoreRunTopicSerializer(
+        many=True,
+        read_only=True,
+    )
+ 
+    class Meta:
+        model = ScoreRun
+        fields = [
+            "id",
+            "assessment",
+            "mode",
+            "thresholds_snapshot",
+            "group_weights_snapshot",
+            "response_count",
+            "invited_count",
+            "method_version",
+            "run_by",
+            "run_at",
+            "topic_results",
+        ]
+        read_only_fields = fields
+ 
+ 
+class ScoreRunListSerializer(serializers.ModelSerializer):
+    """Lighter version for the score-run history list — no nested topics."""
+ 
+    class Meta:
+        model = ScoreRun
+        fields = [
+            "id",
+            "mode",
+            "response_count",
+            "invited_count",
+            "method_version",
+            "run_by",
+            "run_at",
+        ]
+        read_only_fields = fields
+ 
+ 
+SINGLE_CLASSIFICATIONS = {
+    "MATERIAL",
+    "MONITOR",
+    "NOT_MATERIAL",
+}
+ 
+DOUBLE_CLASSIFICATIONS = {
+    "DOUBLE_MATERIAL",
+    "IMPACT_MATERIAL",
+    "FINANCIAL_MATERIAL",
+    "NOT_MATERIAL",
+}
+ 
+ 
+class AssessmentTopicOverrideSerializer(serializers.ModelSerializer):
+    """Manual classification override (§6.5)."""
+ 
+    class Meta:
+        model = AssessmentTopic
+        fields = [
+            "classification",
+            "override_reason",
+        ]
+ 
+    def validate_override_reason(self, value):
+        if len(value.strip()) < 20:
+            raise serializers.ValidationError(
+                "override_reason must be at least 20 characters — an "
+                "auditor will ask why this topic was reclassified."
+            )
+ 
+        return value
+ 
+    def validate_classification(self, value):
+        mode = self.instance.assessment.mode
+ 
+        allowed = (
+            SINGLE_CLASSIFICATIONS
+            if mode == "SINGLE"
+            else DOUBLE_CLASSIFICATIONS
+        )
+ 
+        if value not in allowed:
+            raise serializers.ValidationError(
+                f"'{value}' is not valid for {mode} mode. "
+                f"Expected one of: {sorted(allowed)}."
+            )
+ 
+        return value
+ 
+    def save(self, **kwargs):
+        self.instance.is_override = True
+ 
+        self.instance.override_by = (
+            self.context["request"].user
+        )
+ 
+        return super().save(**kwargs)    
