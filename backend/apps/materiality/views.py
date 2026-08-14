@@ -19,6 +19,7 @@ from django.utils import timezone
 from django.conf import settings
 
 from .services.survey_email import send_survey_invitation
+from .services.scoring import run_scoring
 
 from .models import (
     AssessmentTopic,
@@ -34,6 +35,9 @@ from .models import (
     SurveyQuestion,
     SurveyInvitation,
     SurveyResponse,
+    InternalScore, 
+    ScoreRun,
+    ScoreRunTopic
 )
 
 from .serializers import (
@@ -49,6 +53,10 @@ from .serializers import (
     ScaleDefinitionSerializer,
     ScaleOptionSerializer,
     SurveyQuestionSerializer,
+    InternalScoreSerializer,
+    ScoreRunSerializer,
+    ScoreRunListSerializer,
+    AssessmentTopicOverrideSerializer,
 )
 
 class TopicCategoryListCreateView(
@@ -290,6 +298,20 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
         
         if self.action == "generate_survey":
             return SurveySerializer
+        if self.action == "internal_scores":
+            return InternalScoreSerializer
+
+        if self.action == "run_score":
+            return ScoreRunSerializer
+ 
+        if self.action == "results":
+            return ScoreRunSerializer
+ 
+        if self.action == "override_topic":
+            return AssessmentTopicOverrideSerializer
+ 
+        if self.action == "score_runs":
+            return ScoreRunListSerializer
 
         return MaterialityAssessmentSerializer
 
@@ -1502,6 +1524,7 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
                 invitation
             )
 
+
         # ========================================================
         # 7. SEND EMAIL
         # ========================================================
@@ -1587,6 +1610,312 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
             },
             status=status.HTTP_200_OK,
         )
+
+
+# =============================================================
+# INTERNAL EXPERT SCORING — double mode only
+#
+# GET, PUT:
+# /api/materiality/assessments/<id>/internal-scores/
+#
+# PUT body: a list of items, one per sub-topic:
+# [
+#     {
+#         "assessment_topic": "uuid",
+#         "impact_type": "ACTUAL",
+#         "scale": 4,
+#         "scope": 3,
+#         "irremediability": 5,
+#         "financial_magnitude": 3,
+#         "financial_likelihood": 4,
+#         "rationale": "..."
+#     },
+#     ...
+# ]
+# =============================================================
+
+    @action(
+        detail=True,
+        methods=["get", "put"],
+        url_path="internal-scores",
+    )
+    def internal_scores(self, request, pk=None):
+
+        assessment = self.get_object()
+
+        if assessment.mode != "DOUBLE":
+            raise ValidationError(
+                "Internal scoring only applies to double-materiality "
+                "assessments."
+            )
+
+        # =========================================================
+        # GET
+        # =========================================================
+
+        if request.method == "GET":
+
+            scores = (
+                InternalScore.objects
+                .filter(
+                    assessment_topic__assessment=assessment
+                )
+                .select_related(
+                    "assessment_topic",
+                    "assessment_topic__subtopic",
+                )
+            )
+
+            serializer = InternalScoreSerializer(
+                scores,
+                many=True,
+            )
+
+            return Response(
+                serializer.data,
+                status=status.HTTP_200_OK,
+            )
+
+        # =========================================================
+        # PUT — bulk upsert
+        # =========================================================
+
+        if assessment.is_locked:
+            raise ValidationError(
+                "This assessment is approved and locked."
+            )
+
+        items = request.data
+
+        if not isinstance(items, list) or not items:
+            raise ValidationError(
+                "Expected a non-empty list of scores."
+            )
+
+        saved = []
+
+        with transaction.atomic():
+
+            for item in items:
+
+                topic_id = item.get("assessment_topic")
+
+                topic = (
+                    AssessmentTopic.objects
+                    .filter(
+                        id=topic_id,
+                        assessment=assessment,
+                    )
+                    .first()
+                )
+
+                if not topic:
+                    raise ValidationError({
+                        "assessment_topic": (
+                            f"'{topic_id}' does not belong to this "
+                            "assessment."
+                        )
+                    })
+
+                instance = InternalScore.objects.filter(
+                    assessment_topic=topic
+                ).first()
+
+                serializer = InternalScoreSerializer(
+                    instance=instance,
+                    data=item,
+                    partial=bool(instance),
+                    context={
+                        "assessment": assessment,
+                    },
+                )
+
+                serializer.is_valid(
+                    raise_exception=True
+                )
+
+                serializer.save(
+                    assessment_topic=topic,
+                    scored_by=request.user,
+                )
+
+                saved.append(serializer.data)
+
+        return Response(
+            saved,
+            status=status.HTTP_200_OK,
+        )
+
+
+    # =============================================================
+    # RUN SCORING
+    #
+    # POST:
+    # /api/materiality/assessments/<id>/score/
+    # =============================================================
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="score",
+    )
+    def run_score(self, request, pk=None):
+
+        assessment = self.get_object()
+
+        try:
+            score_run = run_scoring(
+                assessment,
+                request.user,
+            )
+
+        except DjangoValidationError as exc:
+            raise ValidationError(
+                getattr(exc, "message", str(exc))
+            )
+
+        return Response(
+            ScoreRunSerializer(score_run).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+    # =============================================================
+    # RESULTS — latest score run
+    #
+    # GET:
+    # /api/materiality/assessments/<id>/results/
+    # =============================================================
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="results",
+    )
+    def results(self, request, pk=None):
+
+        assessment = self.get_object()
+
+        latest_run = (
+            ScoreRun.objects
+            .filter(
+                assessment=assessment
+            )
+            .order_by("-run_at")
+            .prefetch_related(
+                "topic_results__assessment_topic__subtopic__topic__category",
+            )
+            .first()
+        )
+
+        if not latest_run:
+            return Response(
+                {
+                    "detail": "No score run yet for this assessment.",
+                    "topic_results": [],
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        return Response(
+            ScoreRunSerializer(latest_run).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+    # =============================================================
+    # MANUAL OVERRIDE
+    #
+    # PATCH:
+    # /api/materiality/assessments/<id>/topics/<topic_id>/override/
+    # =============================================================
+
+    @action(
+        detail=True,
+        methods=["patch"],
+        url_path=r"topics/(?P<topic_id>[^/.]+)/override",
+    )
+    def override_topic(
+        self,
+        request,
+        pk=None,
+        topic_id=None,
+    ):
+
+        assessment = self.get_object()
+
+        if assessment.is_locked:
+            raise ValidationError(
+                "This assessment is approved and locked."
+            )
+
+        topic = (
+            AssessmentTopic.objects
+            .filter(
+                id=topic_id,
+                assessment=assessment,
+            )
+            .first()
+        )
+
+        if not topic:
+            raise ValidationError(
+                "This sub-topic does not belong to this assessment."
+            )
+
+        serializer = AssessmentTopicOverrideSerializer(
+            instance=topic,
+            data=request.data,
+            context={
+                "request": request,
+            },
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        serializer.save()
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
+
+
+    # =============================================================
+    # SCORE RUN HISTORY
+    #
+    # GET:
+    # /api/materiality/assessments/<id>/score-runs/
+    # =============================================================
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="score-runs",
+    )
+    def score_runs(self, request, pk=None):
+
+        assessment = self.get_object()
+
+        runs = (
+            ScoreRun.objects
+            .filter(
+                assessment=assessment
+            )
+            .order_by("-run_at")
+        )
+
+        serializer = ScoreRunListSerializer(
+            runs,
+            many=True,
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )       
     
 
 
@@ -2343,3 +2672,7 @@ class PublicSurveySubmitView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+    
+    
