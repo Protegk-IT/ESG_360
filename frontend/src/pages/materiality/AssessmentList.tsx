@@ -134,30 +134,21 @@ const getAssessmentColumns = ({
     },
   },
 
-  /* FINANCIAL YEAR */
-  {
-    accessorKey: "financial_year",
-    header: "Financial Year",
-    cell: ({ row }) => (
-      <span className="text-sm text-[#4B5563]">{row.original.financial_year}</span>
-    ),
-  },
+  /* REPORTING PERIOD */
+/* REPORTING PERIOD */
+{
+  id: "reporting_period",
+  header: "Reporting Period",
+  cell: ({ row }) => {
+    const period = row.original.reporting_period_details;
 
-  /* PERIOD */
-  {
-    id: "period",
-    header: "Period",
-    cell: ({ row }) => {
-      const assessment = row.original;
-      return (
-        <div className="text-sm">
-          <div className="text-[#22243A]">{assessment.period_start}</div>
-          <div className="text-xs text-[#6B7280]">to {assessment.period_end}</div>
-        </div>
-      );
-    },
+    return (
+      <span className="text-sm text-[#22243A]">
+        {period?.name || "—"}
+      </span>
+    );
   },
-
+},
   /* MODE */
   {
     accessorKey: "mode",

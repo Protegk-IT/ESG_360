@@ -5,6 +5,7 @@ import type {
   MaterialityAssessmentFormData,
   AssessmentTopic,
 } from "@/types/materiality/assessment";
+import type { ReportingPeriod } from "@/types/reporting-period";
 
 const BASE_URL = "/materiality/assessments";
 
@@ -28,6 +29,19 @@ const AssessmentApi = {
     return api.get<MaterialityAssessment>(
       `${BASE_URL}/${id}/`
     );
+  },
+
+
+  /* ========================================================
+     GET REPORTING PERIODS
+  ======================================================== */
+
+  getReportingPeriods: async () => {
+    const response = await api.get<ReportingPeriod[]>(
+      `${BASE_URL}/reporting-periods/`
+    );
+
+    return response.data;
   },
 
   /* ========================================================

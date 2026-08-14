@@ -424,13 +424,16 @@ export default function SurveyManager() {
     try {
       setEditingQuestionSaving(true);
 
-      await SurveyApi.updateQuestions(id, {
-        id: editingQuestion.id,
-        question_text: questionForm.question_text.trim(),
-        help_text: questionForm.help_text.trim(),
-        display_order: displayOrder,
-        is_required: questionForm.is_required,
-      });
+      await SurveyApi.updateQuestion(
+  id,
+  editingQuestion.id,
+  {
+    question_text: questionForm.question_text.trim(),
+    help_text: questionForm.help_text.trim(),
+    display_order: displayOrder,
+    is_required: questionForm.is_required,
+  }
+);
 
       toast.success("Question updated successfully.");
 

@@ -181,7 +181,7 @@ from django.db import models
 
 from apps.companies.models import Company
 from apps.core.models import BaseModel
-
+from apps.periods.models import ReportingPeriod 
 
 class MaterialityAssessment(BaseModel):
 
@@ -203,17 +203,14 @@ class MaterialityAssessment(BaseModel):
         related_name="materiality_assessments",
     )
 
-    name = models.CharField(
-        max_length=200,
+    name = models.CharField(max_length=200)
+
+    # Main relationship
+    reporting_period = models.ForeignKey(
+        ReportingPeriod,
+        on_delete=models.PROTECT,
+        related_name="materiality_assessments",
     )
-
-    financial_year = models.CharField(
-        max_length=20,
-    )
-
-    period_start = models.DateField()
-
-    period_end = models.DateField()
 
     mode = models.CharField(
         max_length=20,
@@ -239,13 +236,8 @@ class MaterialityAssessment(BaseModel):
         default=0,
     )
 
-    scale_min = models.IntegerField(
-        default=1,
-    )
-
-    scale_max = models.IntegerField(
-        default=5,
-    )
+    scale_min = models.IntegerField(default=1)
+    scale_max = models.IntegerField(default=5)
 
     internal_blend_weight = models.DecimalField(
         max_digits=5,
@@ -253,9 +245,7 @@ class MaterialityAssessment(BaseModel):
         default=0.50,
     )
 
-    is_locked = models.BooleanField(
-        default=False,
-    )
+    is_locked = models.BooleanField(default=False)
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -282,8 +272,6 @@ class MaterialityAssessment(BaseModel):
 
     def __str__(self):
         return f"{self.name} - {self.financial_year}"
-
-
 
 # Another model to store     
 class AssessmentTopic(BaseModel):
