@@ -78,6 +78,17 @@ const SurveyApi = {
       `${BASE_URL}/${assessmentId}/survey/status/`
     );
   },
+
+updateQuestion(
+  assessmentId: string,
+  questionId: string,
+  data: Partial<SurveyQuestion>
+) {
+  return api.patch<SurveyQuestion>(
+    `${BASE_URL}/${assessmentId}/survey/questions/${questionId}/`,
+    data
+  );
+},
 };
 
 export default SurveyApi;

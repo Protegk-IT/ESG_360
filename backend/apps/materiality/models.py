@@ -181,7 +181,7 @@ from django.db import models
 
 from apps.companies.models import Company
 from apps.core.models import BaseModel
-
+from apps.periods.models import ReportingPeriod 
 
 class MaterialityAssessment(BaseModel):
 
@@ -203,17 +203,14 @@ class MaterialityAssessment(BaseModel):
         related_name="materiality_assessments",
     )
 
-    name = models.CharField(
-        max_length=200,
+    name = models.CharField(max_length=200)
+
+    # Main relationship
+    reporting_period = models.ForeignKey(
+        ReportingPeriod,
+        on_delete=models.PROTECT,
+        related_name="materiality_assessments",
     )
-
-    financial_year = models.CharField(
-        max_length=20,
-    )
-
-    period_start = models.DateField()
-
-    period_end = models.DateField()
 
     mode = models.CharField(
         max_length=20,
@@ -239,13 +236,8 @@ class MaterialityAssessment(BaseModel):
         default=0,
     )
 
-    scale_min = models.IntegerField(
-        default=1,
-    )
-
-    scale_max = models.IntegerField(
-        default=5,
-    )
+    scale_min = models.IntegerField(default=1)
+    scale_max = models.IntegerField(default=5)
 
     internal_blend_weight = models.DecimalField(
         max_digits=5,
@@ -253,9 +245,7 @@ class MaterialityAssessment(BaseModel):
         default=0.50,
     )
 
-    is_locked = models.BooleanField(
-        default=False,
-    )
+    is_locked = models.BooleanField(default=False)
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -282,8 +272,6 @@ class MaterialityAssessment(BaseModel):
 
     def __str__(self):
         return f"{self.name} - {self.financial_year}"
-
-
 
 # Another model to store     
 class AssessmentTopic(BaseModel):
@@ -775,3 +763,192 @@ class SurveyResponse(BaseModel):
 
     def __str__(self):
         return f"{self.invitation} - {self.question}"           
+    
+
+##### SCORING MODELS #######
+#     
+from django.core.validators import MaxValueValidator, MinValueValidator
+
+# assuming BaseModel already exists in your project
+
+class InternalScore(BaseModel):
+    IMPACT_TYPE_CHOICES = [
+        ("ACTUAL", "Actual"),
+        ("POTENTIAL", "Potential"),
+    ]
+
+    assessment_topic = models.OneToOneField(
+        "AssessmentTopic",
+        on_delete=models.CASCADE,
+        related_name="internal_score",
+    )
+
+    impact_type = models.CharField(
+        max_length=20,
+        choices=IMPACT_TYPE_CHOICES,
+    )
+
+    scale = models.IntegerField(
+        validators=[
+            MinValueValidator(1),
+            MaxValueValidator(5),
+        ],
+    )
+
+    scope = models.IntegerField(
+        validators=[
+            MinValueValidator(1),
+            MaxValueValidator(5),
+        ],
+    )
+
+    irremediability = models.IntegerField(
+        validators=[
+            MinValueValidator(1),
+            MaxValueValidator(5),
+        ],
+    )
+
+    likelihood = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[
+            MinValueValidator(1),
+            MaxValueValidator(5),
+        ],
+    )
+
+    financial_magnitude = models.IntegerField(
+        validators=[
+            MinValueValidator(1),
+            MaxValueValidator(5),
+        ],
+    )
+
+    financial_likelihood = models.IntegerField(
+        validators=[
+            MinValueValidator(1),
+            MaxValueValidator(5),
+        ],
+    )
+
+    rationale = models.TextField(
+        blank=True,
+    )
+
+    scored_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="internal_materiality_scores",
+    )
+
+    scored_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        db_table = "internal_score"
+
+    def __str__(self):
+        return (
+            f"Internal score - "
+            f"{self.assessment_topic}"
+        )
+    
+
+
+class ScoreRun(BaseModel):
+    assessment = models.ForeignKey(
+        "MaterialityAssessment",
+        on_delete=models.CASCADE,
+        related_name="score_runs",
+    )
+
+    mode = models.CharField(
+        max_length=20,
+    )
+
+    thresholds_snapshot = models.JSONField()
+
+    group_weights_snapshot = models.JSONField()
+
+    response_count = models.PositiveIntegerField(
+        default=0,
+    )
+
+    invited_count = models.PositiveIntegerField(
+        default=0,
+    )
+
+    method_version = models.CharField(
+        max_length=50,
+    )
+
+    run_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="materiality_score_runs",
+    )
+
+    run_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        db_table = "score_run"
+        ordering = ["-run_at"]
+
+    def __str__(self):
+        return (
+            f"Score Run - "
+            f"{self.assessment} - "
+            f"{self.run_at}"
+        )
+    
+
+class ScoreRunTopic(BaseModel):
+    score_run = models.ForeignKey(
+        ScoreRun,
+        on_delete=models.CASCADE,
+        related_name="topic_results",
+    )
+
+    assessment_topic = models.ForeignKey(
+        "AssessmentTopic",
+        on_delete=models.CASCADE,
+        related_name="score_run_results",
+    )
+
+    primary_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+    )
+
+    secondary_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+    )
+
+    classification = models.CharField(
+        max_length=30,
+    )
+
+    class Meta:
+        db_table = "score_run_topic"
+        ordering = ["created_at"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "score_run",
+                    "assessment_topic",
+                ],
+                name="unique_score_run_assessment_topic",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.score_run} - "
+            f"{self.assessment_topic}"
+        )

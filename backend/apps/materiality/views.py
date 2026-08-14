@@ -239,6 +239,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.companies.models import Company
+from apps.periods.models import ReportingPeriod
 
 from .models import (
     MaterialityAssessment,
@@ -250,6 +251,7 @@ from .serializers import (
     MaterialityAssessmentSerializer,
     AssessmentTopicSerializer,
     SelectAssessmentTopicsSerializer,
+    MaterialityReportingPeriodSerializer,
 )
 
 
@@ -318,6 +320,7 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
                 "company",
                 "created_by",
                 "approved_by",
+                "reporting_period",
             )
         )
 
@@ -338,6 +341,34 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
             company=company,
             created_by=self.request.user,
         )
+
+
+     #Reporting Period
+    @action(
+    detail=False,
+    methods=["get"],
+    url_path="reporting-periods",
+    )
+    def reporting_periods(self, request):
+
+        periods = (
+            ReportingPeriod.objects
+            .filter(
+                is_active=True,
+                status="OPEN",
+            )
+            .order_by("-start_date")
+        )
+
+        serializer = MaterialityReportingPeriodSerializer(
+            periods,
+            many=True,
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )   
 
     # =========================================================
     # GET SELECTED TOPICS FOR ASSESSMENT

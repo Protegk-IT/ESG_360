@@ -1,3 +1,5 @@
+import type { ReportingPeriod } from "../reporting-period";
+
 export type AssessmentMode =
   | "SINGLE"
   | "DOUBLE";
@@ -10,6 +12,7 @@ export type AssessmentStatus =
 
 
 export interface MaterialityAssessment {
+  reporting_period_name: string;
   id: string;
 
   company: string;
@@ -22,13 +25,17 @@ export interface MaterialityAssessment {
 
   period_end: string;
 
+  reporting_period: string;
+
+  reporting_period_details?: ReportingPeriod;
+
   mode: AssessmentMode;
 
   status: AssessmentStatus;
 
-  primary_threshold: string;
+  primary_threshold: number;
 
-  secondary_threshold: string;
+  secondary_threshold: number;
 
   scale_min: number;
 
@@ -55,14 +62,10 @@ export interface MaterialityAssessment {
 ========================================================== */
 
 export interface MaterialityAssessmentFormData {
+  primary_threshold: number;
+  secondary_threshold: number;
   name: string;
-
-  financial_year: string;
-
-  period_start: string;
-
-  period_end: string;
-
+  reporting_period: string;
   mode: AssessmentMode;
 }
 

@@ -154,6 +154,25 @@ class MaterialSubTopicSerializer(serializers.ModelSerializer):
 
         return value.strip()
 
+#Reporting Period
+
+from apps.periods.models import ReportingPeriod
+
+
+class ReportingPeriodSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReportingPeriod
+        fields = [
+            "id",
+            "name",
+            "period_type",
+            "start_date",
+            "end_date",
+            "status",
+            "is_baseline_year",
+        ]
+
+
 
 
 # Serilizer for Materilaity Assesmnet  total 3 serilizers
@@ -168,6 +187,10 @@ from .models import AssessmentTopic
 class MaterialityAssessmentSerializer(serializers.ModelSerializer):
     company = serializers.PrimaryKeyRelatedField(
         read_only=True
+    )
+    reporting_period_details = ReportingPeriodSerializer(
+        source="reporting_period",
+        read_only=True,
     )
 
     created_by = serializers.PrimaryKeyRelatedField(
@@ -184,9 +207,8 @@ class MaterialityAssessmentSerializer(serializers.ModelSerializer):
             "id",
             "company",
             "name",
-            "financial_year",
-            "period_start",
-            "period_end",
+            "reporting_period",
+            "reporting_period_details",
             "mode",
             "status",
             "primary_threshold",
@@ -212,16 +234,21 @@ class MaterialityAssessmentSerializer(serializers.ModelSerializer):
             "created_at",
         ]
 
-    def validate(self, attrs):
-        period_start = attrs.get(
-            "period_start",
-            getattr(self.instance, "period_start", None),
-        )
+    def validate_reporting_period(self, reporting_period):
 
-        period_end = attrs.get(
-            "period_end",
-            getattr(self.instance, "period_end", None),
-        )
+        if not reporting_period.is_active:
+            raise serializers.ValidationError(
+                "This reporting period is inactive."
+            )
+
+        if reporting_period.status != "OPEN":
+            raise serializers.ValidationError(
+                "Only OPEN reporting periods can be used for a new assessment."
+            )
+
+        return reporting_period
+
+    def validate(self, attrs):
 
         scale_min = attrs.get(
             "scale_min",
@@ -242,14 +269,6 @@ class MaterialityAssessmentSerializer(serializers.ModelSerializer):
             ),
         )
 
-        if period_start and period_end:
-            if period_start > period_end:
-                raise serializers.ValidationError({
-                    "period_end": (
-                        "Period end date must be greater than "
-                        "or equal to period start date."
-                    )
-                })
 
         if scale_min >= scale_max:
             raise serializers.ValidationError({
@@ -294,6 +313,19 @@ class MaterialityAssessmentSerializer(serializers.ModelSerializer):
                 })
 
         return super().update(instance, validated_data)
+
+
+class MaterialityReportingPeriodSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReportingPeriod
+        fields = [
+            "id",
+            "name",
+            "period_type",
+            "start_date",
+            "end_date",
+            "status",
+        ]   
 
 
 

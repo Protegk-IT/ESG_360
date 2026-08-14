@@ -1,10 +1,12 @@
 import {
+  useEffect,
   useState,
 } from "react";
 
 import AssessmentApi from "@/api/materiality/AssessmentApi";
 import axios from "axios";
 import { toast } from "sonner";
+import { Slider } from "@/components/ui/slider";
 
 import type {
   AssessmentMode,
@@ -39,6 +41,7 @@ import {
 import {
   Button,
 } from "@/components/ui/button";
+import type { ReportingPeriod } from "@/types/reporting-period";
 
 
 /* ==========================================================
@@ -60,10 +63,10 @@ interface AssessmentCreateDialogProps {
 
 const emptyForm: MaterialityAssessmentFormData = {
   name: "",
-  financial_year: "",
-  period_start: "",
-  period_end: "",
+  reporting_period: "",
   mode: "DOUBLE",
+  primary_threshold: 3,
+  secondary_threshold: 3,
 };
 
 
@@ -90,6 +93,46 @@ export default function AssessmentCreateDialog({
   onClose,
   onSaved,
 }: AssessmentCreateDialogProps) {
+
+// Reporting Period
+
+const [reportingPeriods, setReportingPeriods] = useState<
+  ReportingPeriod[]
+>([]);
+
+const [loadingPeriods, setLoadingPeriods] = useState(false);
+
+
+useEffect(() => {
+  if (!open) return;
+
+  const loadReportingPeriods = async () => {
+    try {
+      setLoadingPeriods(true);
+
+      const data =
+        await AssessmentApi.getReportingPeriods();
+
+      setReportingPeriods(data);
+
+    } catch (error) {
+      console.error(
+        "Failed to load reporting periods:",
+        error
+      );
+
+      toast.error(
+        "Failed to load reporting periods."
+      );
+
+    } finally {
+      setLoadingPeriods(false);
+    }
+  };
+
+  loadReportingPeriods();
+
+}, [open]);
 
   /* ========================================================
      FORM STATE
@@ -158,27 +201,13 @@ const handleSave = async () => {
     return;
   }
 
-  if (!form.financial_year.trim()) {
-    setError("Financial year is required.");
+  if (!form.reporting_period.trim()) {
+    setError("Reporting period  is required.");
     return;
   }
 
-  if (!form.period_start) {
-    setError("Period start date is required.");
-    return;
-  }
 
-  if (!form.period_end) {
-    setError("Period end date is required.");
-    return;
-  }
 
-  if (form.period_start > form.period_end) {
-    setError(
-      "Period end date must be greater than or equal to the period start date."
-    );
-    return;
-  }
 
   /* ------------------------------------------------------
      API REQUEST
@@ -190,10 +219,10 @@ const handleSave = async () => {
 
     await AssessmentApi.create({
       name: form.name.trim(),
-      financial_year: form.financial_year.trim(),
-      period_start: form.period_start,
-      period_end: form.period_end,
+      reporting_period: form.reporting_period.trim(),
       mode: form.mode,
+      primary_threshold: form.primary_threshold,
+      secondary_threshold: form.secondary_threshold,
     });
 
     /* ----------------------------------------------------
@@ -429,93 +458,65 @@ const handleSave = async () => {
                 FINANCIAL YEAR
             ================================================== */}
 
-            <div className="space-y-1.5">
+          {/* ==================================================
+    REPORTING PERIOD
+================================================== */}
 
-              <Label htmlFor="financial-year">
-                Financial Year
-              </Label>
+<div className="space-y-1.5">
 
-              <Input
-                id="financial-year"
-                value={
-                  form.financial_year
-                }
-                onChange={(event) =>
-                  update(
-                    "financial_year",
-                    event.target.value
-                  )
-                }
-                placeholder="e.g. FY 2026-27"
-                disabled={saving}
-              />
+  <Label>
+    Reporting Period
+  </Label>
 
-            </div>
+  <Select
+    value={form.reporting_period}
+    onValueChange={(value) =>
+      update(
+        "reporting_period",
+        value
+      )
+    }
+    disabled={
+      saving ||
+      loadingPeriods
+    }
+  >
 
+    <SelectTrigger>
+      <SelectValue
+        placeholder={
+          loadingPeriods
+            ? "Loading reporting periods..."
+            : "Select reporting period"
+        }
+      />
+    </SelectTrigger>
 
-            {/* ==================================================
-                PERIOD
-            ================================================== */}
+    <SelectContent>
 
-            <div
-              className="
-                grid
-                grid-cols-1
-                gap-3
-                sm:grid-cols-2
-              "
-            >
+      {reportingPeriods.map(
+        (period) => (
+          <SelectItem
+            key={period.id}
+            value={period.id}
+          >
+            {period.name}
+            {" "}
+            (
+            {period.start_date}
+            {" → "}
+            {period.end_date}
+            )
+          </SelectItem>
+        )
+      )}
 
-              <div className="space-y-1.5">
+    </SelectContent>
 
-                <Label htmlFor="period-start">
-                  Period Start
-                </Label>
+  </Select>
 
-                <Input
-                  id="period-start"
-                  type="date"
-                  value={
-                    form.period_start
-                  }
-                  onChange={(event) =>
-                    update(
-                      "period_start",
-                      event.target.value
-                    )
-                  }
-                  disabled={saving}
-                />
-
-              </div>
-
-
-              <div className="space-y-1.5">
-
-                <Label htmlFor="period-end">
-                  Period End
-                </Label>
-
-                <Input
-                  id="period-end"
-                  type="date"
-                  value={
-                    form.period_end
-                  }
-                  onChange={(event) =>
-                    update(
-                      "period_end",
-                      event.target.value
-                    )
-                  }
-                  disabled={saving}
-                />
-
-              </div>
-
-            </div>
-
-          </div>
+</div>
+</div>
 
 
           {/* ==================================================
@@ -614,6 +615,97 @@ const handleSave = async () => {
         </div>
 
 
+     
+{/* ==================================================
+    MATERIALITY THRESHOLDS
+================================================== */}
+
+<div className="space-y-6">
+
+  {/* PRIMARY THRESHOLD */}
+  <div className="mx-auto w-full max-w-[320px] space-y-2">
+    <div className="flex items-center justify-between">
+      <Label className="text-sm font-semibold text-foreground">
+        Primary Threshold
+      </Label>
+
+      <span className="text-sm font-semibold text-blue-600">
+        {Number(form.primary_threshold).toFixed(1)}
+      </span>
+    </div>
+
+    <p className="text-xs text-muted-foreground">
+      Minimum score required for primary materiality.
+    </p>
+
+    <div className="pt-2">
+      <Slider
+        value={[form.primary_threshold]}
+        min={1}
+        max={5}
+        step={0.1}
+        onValueChange={(value) =>
+          update("primary_threshold", value[0])
+        }
+        disabled={saving}
+        className="w-full"
+      />
+    </div>
+
+    <div className="flex justify-between px-1 text-[11px] text-muted-foreground">
+      <span>1</span>
+      <span>2</span>
+      <span>3</span>
+      <span>4</span>
+      <span>5</span>
+    </div>
+  </div>
+
+
+  {/* SECONDARY THRESHOLD */}
+  {form.mode === "DOUBLE" && (
+    <div className="mx-auto w-full max-w-[320px] space-y-2">
+
+      <div className="flex items-center justify-between">
+        <Label className="text-sm font-semibold text-foreground">
+          Secondary Threshold
+        </Label>
+
+        <span className="text-sm font-semibold text-blue-600">
+          {Number(form.secondary_threshold).toFixed(1)}
+        </span>
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Minimum score required for secondary materiality.
+      </p>
+
+      <div className="pt-2">
+        <Slider
+          value={[form.secondary_threshold]}
+          min={1}
+          max={5}
+          step={0.1}
+          onValueChange={(value) =>
+            update("secondary_threshold", value[0])
+          }
+          disabled={saving}
+          className="w-full"
+        />
+      </div>
+
+      <div className="flex justify-between px-1 text-[11px] text-muted-foreground">
+        <span>1</span>
+        <span>2</span>
+        <span>3</span>
+        <span>4</span>
+        <span>5</span>
+      </div>
+
+    </div>
+  )}
+
+</div>
         {/* ==================================================
             FOOTER
         ================================================== */}
