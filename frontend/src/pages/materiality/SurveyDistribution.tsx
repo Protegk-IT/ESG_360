@@ -1954,7 +1954,7 @@ export default function SurveyDistribution() {
 
           {/* RESPONSE BREAKDOWN */}
 
-          <Card className="border-slate-200 shadow-sm">
+          <Card className="border-slate-200 shadow-sm px-4">
 
             <CardHeader>
 
@@ -2232,7 +2232,7 @@ export default function SurveyDistribution() {
 
           {/* GROUP ANALYTICS */}
 
-          <Card className="border-slate-200 shadow-sm">
+          <Card className="border-slate-200 shadow-sm px-4">
 
             <CardHeader>
 
@@ -2454,7 +2454,7 @@ export default function SurveyDistribution() {
             STAKEHOLDER RESPONSE DETAILS
         ================================================== */}
 
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="border-slate-200 shadow-sm px-4">
 
           <CardHeader>
 
@@ -2989,7 +2989,7 @@ export default function SurveyDistribution() {
             SELECTION / DISTRIBUTION
         ================================================== */}
 
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="border-slate-200 shadow-sm px-4">
 
           <CardHeader>
 

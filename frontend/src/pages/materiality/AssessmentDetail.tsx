@@ -48,12 +48,14 @@ import type {
   MaterialTopic,
   MaterialSubTopic,
 } from "@/types/materiality/materiality";
+import type { ReportingPeriod } from "@/types/reporting-period";
 
 /* ============================================================
    TYPES
 ============================================================ */
 
 interface Assessment {
+  reporting_period_details: ReportingPeriod;
   id: string;
   company: string;
   name: string;
@@ -782,16 +784,13 @@ export default function AssessmentDetail() {
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500">
-                  <span>
-                    Financial Year:{" "}
-                    <strong className="font-medium text-slate-700">{assessment.financial_year}</strong>
-                  </span>
-                  <span>
-                    Period:{" "}
-                    <strong className="font-medium text-slate-700">
-                      {assessment.period_start} — {assessment.period_end}
-                    </strong>
-                  </span>
+                <span>
+  Reporting Period:{" "}
+  <strong className="font-medium text-slate-700">
+    {assessment.reporting_period_details?.name ??
+      "Not specified"}
+  </strong>
+</span>
                 </div>
               </div>
 
@@ -892,7 +891,7 @@ export default function AssessmentDetail() {
         )}
 
         {/* TOPIC LIBRARY */}
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="border-slate-200 shadow-sm px-4">
           <CardHeader className="border-b border-slate-100">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>

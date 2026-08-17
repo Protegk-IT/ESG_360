@@ -356,8 +356,10 @@ export default function MaterialityMatrixPage() {
     }));
 
     const axisNameStyle = { fontSize: 12, fontWeight: 600, color: "#334155" };
-    const axisLabelStyle = { fontSize: 11, color: "#64748b" };
-    const splitLineStyle = { lineStyle: { color: "#e2e8f0", type: "dashed" as const } };
+    const axisLabelStyle = { fontSize: 12, fontWeight: 600 as const, color: "#334155" };
+    const axisLineStyle = { lineStyle: { color: "#cbd5e1", width: 1 } };
+    const axisTickStyle = { lineStyle: { color: "#cbd5e1", width: 1 } };
+    const splitLineStyle = { lineStyle: { color: "#eef1f6", type: "solid" as const, width: 1 } };
 
     return {
       backgroundColor: "transparent",
@@ -374,7 +376,8 @@ export default function MaterialityMatrixPage() {
         nameGap: 32,
         nameTextStyle: axisNameStyle,
         axisLabel: axisLabelStyle,
-        axisLine: { lineStyle: { color: "#cbd5e1" } },
+        axisLine: axisLineStyle,
+        axisTick: axisTickStyle,
         splitLine: splitLineStyle,
       },
       yAxis: {
@@ -388,7 +391,8 @@ export default function MaterialityMatrixPage() {
         nameRotate: 90,
         nameTextStyle: axisNameStyle,
         axisLabel: axisLabelStyle,
-        axisLine: { lineStyle: { color: "#cbd5e1" } },
+        axisLine: axisLineStyle,
+        axisTick: axisTickStyle,
         splitLine: splitLineStyle,
       },
       tooltip: {
@@ -422,6 +426,25 @@ export default function MaterialityMatrixPage() {
           emphasis: { scale: 1.35, itemStyle: { shadowBlur: 10 } },
           animationDuration: 550,
           animationEasing: "elasticOut",
+          label: {
+            show: true,
+            position: "top",
+            distance: 7,
+            fontSize: 10,
+            fontWeight: 600,
+            color: "#1e293b",
+            textBorderColor: "#ffffff",
+            textBorderWidth: 3,
+            formatter: (params: unknown) => {
+              const p = params as { data: { name: string; code: string | null } };
+               const name = p.data.name;
+
+    return name.length > 24
+      ? `${name.slice(0, 24)}…`
+      : name;
+            },
+          },
+          labelLine: { show: false },
           markArea: {
             silent: true,
             data: [
@@ -658,7 +681,6 @@ export default function MaterialityMatrixPage() {
             </Button>
 
             <span className="mx-1 hidden h-6 w-px bg-border sm:inline-block" aria-hidden="true" />
-
             <Button size="sm" onClick={handleRunScoring} disabled={runningScoring} className="bg-emerald-600 hover:bg-emerald-700">
               <Target className="h-4 w-4 sm:mr-2" />
               {runningScoring ? "Running..." : "Run Scoring"}
@@ -750,13 +772,16 @@ export default function MaterialityMatrixPage() {
             )}
           </CardHeader>
 
-          <CardContent className="pt-0 py-5">
-            <div className="mx-auto grid max-w-2xl gap-8 sm:grid-cols-2  ">
+          <CardContent className="pb-5 pt-2 px-4">
+            <div className="mx-auto grid w-full max-w-4xl grid-cols-1 gap-y-8 sm:grid-cols-[1fr_auto_1fr] sm:gap-x-10">
               <ThresholdControl
                 label={`${primaryWord} Materiality Threshold (Y-Axis)`}
                 value={primaryThreshold}
                 onChange={setPrimaryThreshold}
               />
+
+              <div className="hidden w-px self-stretch bg-border sm:block" aria-hidden="true" />
+
               <ThresholdControl
                 label={`${secondaryWord} Materiality Threshold (X-Axis)`}
                 value={secondaryThreshold}
@@ -776,8 +801,8 @@ export default function MaterialityMatrixPage() {
         {/* MATRIX GRAPH */}
         <Card className="mm-fade-up" style={{ animationDelay: "120ms" }}>
           <div ref={matrixCardRef} className="bg-card">
-            <CardHeader className="space-y-1.5 pb-4">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between px-4">
+            <CardHeader className="space-y-1.5 pb-4 px-4">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <CardTitle className="text-base">Materiality Matrix</CardTitle>
                   <p className="mt-1.5 text-sm text-muted-foreground">Hover a point to see topic details.</p>
@@ -795,7 +820,7 @@ export default function MaterialityMatrixPage() {
             </CardHeader>
 
             <CardContent className="pt-1">
-              <div className="mx-auto w-full rounded-2xl border bg-white p-4 sm:p-7">
+              <div className="mx-auto w-full rounded-2xl border border-slate-200 bg-white p-4 sm:p-7">
                 <div ref={chartWrapperRef} className="aspect-[16/10] w-full sm:aspect-[16/9]">
                   <ReactECharts
                     ref={chartRef}
@@ -828,29 +853,69 @@ function ThresholdControl({
   value: number;
   onChange: (value: number) => void;
 }) {
+  const sliderLabels = [1, 2, 3, 4, 5];
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <Label className="text-sm font-medium">{label}</Label>
-        <span className="w-16 shrink-0 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-center text-sm font-semibold tabular-nums text-emerald-700">
+    <div className="w-full">
+      {/* =====================================================
+          LABEL + VALUE
+      ===================================================== */}
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <Label className="text-sm font-medium text-slate-600">
+          {label}
+        </Label>
+
+        <span
+          className="
+            min-w-[64px]
+            rounded-md
+            border
+            border-emerald-200
+            bg-emerald-50
+            px-2.5
+            py-1
+            text-center
+            text-sm
+            font-semibold
+            tabular-nums
+            text-emerald-600
+          "
+        >
           {value.toFixed(2)}
         </span>
       </div>
 
-      <Slider
-        min={1}
-        max={5}
-        step={0.25}
-        value={[value]}
-        onValueChange={(values) => {
-          const next = values[0];
-          if (typeof next === "number") onChange(next);
-        }}
-      />
+      {/* =====================================================
+          SLIDER
+      ===================================================== */}
+      <div className="relative px-[18px]">
+        <Slider
+          min={1}
+          max={5}
+          step={0.01}
+          value={[value]}
+          onValueChange={(values) => {
+            const next = values[0];
 
-      <div className="flex justify-between text-xs text-muted-foreground">
-        <span>1.00</span>
-        <span>5.00</span>
+            if (typeof next === "number") {
+              onChange(next);
+            }
+          }}
+        />
+
+        {/* ===================================================
+            SCALE LABELS
+        =================================================== */}
+        <div className="mt-1 flex justify-between text-sm text-slate-400">
+          {sliderLabels.map((number) => (
+            <span
+              key={number}
+              className="w-5 text-center font-normal"
+            >
+              {number}
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );

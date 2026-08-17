@@ -870,7 +870,7 @@ function StatusCard({
   return (
     <Card className="min-w-0 border-slate-200 shadow-sm">
       <CardHeader>
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between px-4">
           <div>
             <CardTitle className="text-lg">Scoring Status</CardTitle>
             <CardDescription>Current readiness of the materiality assessment.</CardDescription>
@@ -889,9 +889,9 @@ function StatusCard({
       </CardHeader>
 
       <CardContent>
-        <div className="grid gap-6 md:grid-cols-3">
-          <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-blue-50 p-2">
+        <div className="grid gap-6 md:grid-cols-3  px-4">
+          <div className="flex items-start gap-3 ">
+            <div className="rounded-lg bg-blue-50 p-2  ">
               <Users className="h-4 w-4 text-blue-600" />
             </div>
             <div>
@@ -933,7 +933,7 @@ function StatusCard({
 
         <Separator className="my-5" />
 
-        <div className="space-y-2">
+        <div className="space-y-2 px-3">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium">Scoring completion</span>
             <span className="text-muted-foreground">
@@ -1211,7 +1211,7 @@ function ResultsCard({
   onOpenOverride: (result: MaterialityResult) => void;
 }) {
   return (
-    <Card className="min-w-0 border-slate-200 shadow-sm">
+    <Card className="min-w-0 border-slate-200 shadow-sm px-4">
       <CardHeader>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>

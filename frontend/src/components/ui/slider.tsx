@@ -11,15 +11,23 @@ function Slider({
   max = 100,
   ...props
 }: React.ComponentProps<typeof SliderPrimitive.Root>) {
-  const _values = React.useMemo(
+  const values = React.useMemo(
     () =>
       Array.isArray(value)
         ? value
         : Array.isArray(defaultValue)
           ? defaultValue
-          : [min, max],
-    [value, defaultValue, min, max]
+          : [min],
+    [value, defaultValue, min]
   );
+
+  const currentValue =
+    typeof values[0] === "number" ? values[0] : min;
+
+  const percentage =
+    max > min
+      ? ((currentValue - min) / (max - min)) * 100
+      : 0;
 
   return (
     <SliderPrimitive.Root
@@ -29,82 +37,87 @@ function Slider({
       min={min}
       max={max}
       className={cn(
-        "relative flex h-6 w-full touch-none items-center select-none",
-        "data-disabled:opacity-50",
-        "data-vertical:h-full",
-        "data-vertical:min-h-40",
-        "data-vertical:w-6",
-        "data-vertical:flex-col",
+        "relative flex w-full touch-none select-none items-center",
+        "h-8",
+        "data-[disabled]:opacity-50",
         className
       )}
       {...props}
     >
-      {/* TRACK */}
+      {/* =====================================================
+          TRACK
+      ===================================================== */}
       <SliderPrimitive.Track
         data-slot="slider-track"
         className={cn(
-          "relative grow overflow-hidden rounded-full",
-          "border border-slate-200",
-          "bg-white",
-          "data-horizontal:h-2",
-          "data-horizontal:w-full",
-          "data-vertical:h-full",
-          "data-vertical:w-2"
+          "relative w-full grow overflow-hidden rounded-full",
+          "bg-[#f1f1f4]",
+          "border border-[#e8e8ec]",
+          "h-[10px]"
         )}
       >
-        {/* FILLED / PROGRESS PART */}
+        {/* ===================================================
+            FILLED AREA
+        =================================================== */}
         <SliderPrimitive.Range
           data-slot="slider-range"
-          className={cn(
-            "absolute rounded-full",
-            "bg-blue-600",
-            "data-horizontal:h-full",
-            "data-vertical:w-full"
-          )}
+          className="absolute h-full rounded-full bg-[#5b5bd6]"
+          style={{
+            width: `${percentage}%`,
+          }}
         />
       </SliderPrimitive.Track>
 
-      {/* THUMB */}
-      {Array.from(
-        { length: _values.length },
-        (_, index) => (
-          <SliderPrimitive.Thumb
-            data-slot="slider-thumb"
-            key={index}
-            className={cn(
-              "relative block size-7 shrink-0",
-              "rounded-full",
+      {/* =====================================================
+          THUMB
+      ===================================================== */}
+      {values.map((_, index) => (
+        <SliderPrimitive.Thumb
+          data-slot="slider-thumb"
+          key={index}
+          className={cn(
+            "absolute block",
+            "h-[22px] w-[22px]",
+            "top-1/2",
+        "-translate-y-1/2",
 
-              // White center
-              "bg-white",
+            // white center
+            "rounded-full",
+            "bg-white",
 
-              // Colored outline
-              "border-2 border-blue-400",
+            // teal outline
+            "border-[3px]",
+            "border-[#5b5bd6]",
 
-              // Very subtle shadow
-              "shadow-sm",
+            // subtle shadow
+            "shadow-[0_1px_4px_rgba(0,0,0,0.08)]",
 
-              // Smooth interaction
-              "transition-transform duration-150",
+            // smooth movement
+            "transition-transform",
+            "duration-150",
+            "ease-out",
 
-              // Hover
-              "hover:scale-105",
+            // hover
+            "hover:scale-[1.04]",
 
-              // Focus
-              "focus-visible:outline-none",
-              "focus-visible:ring-2",
-              "focus-visible:ring-blue-200",
+            // focus
+            "focus-visible:outline-none",
+            "focus-visible:ring-2",
+            "focus-visible:ring-[#55d8c6]/30",
+            "focus-visible:ring-offset-2",
 
-              // Active
-              "active:scale-100",
+            // active
+            "active:scale-100",
 
-              // Disabled
-              "disabled:pointer-events-none",
-              "disabled:opacity-50"
-            )}
-          />
-        )
-      )}
+            // disabled
+            "disabled:pointer-events-none",
+            "disabled:opacity-50"
+          )}
+          style={{
+            left: `${percentage}%`,
+          }}
+        />
+      ))}
     </SliderPrimitive.Root>
   );
 }
