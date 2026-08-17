@@ -17,9 +17,13 @@ from apps.accounts import viewsets
 from apps.companies.models import Company
 from django.utils import timezone
 from django.conf import settings
+import csv
+import io
+from django.http import HttpResponse
 
 from .services.survey_email import send_survey_invitation
 from .services.scoring import run_scoring
+from .services.pdf_export import build_summary_pdf
 
 from .models import (
     AssessmentTopic,
@@ -1915,7 +1919,146 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
         return Response(
             serializer.data,
             status=status.HTTP_200_OK,
-        )       
+        )
+
+
+    # =============================================================
+    # CSV EXPORT — scores and classifications
+    #
+    # GET:
+    # /api/materiality/assessments/<id>/export/csv/
+    # =============================================================
+ 
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="export/csv",
+    )
+    def export_csv(self, request, pk=None):
+ 
+        assessment = self.get_object()
+ 
+        assessment_topics = (
+            AssessmentTopic.objects
+            .filter(
+                assessment=assessment,
+                is_included=True,
+            )
+            .select_related(
+                "subtopic",
+                "subtopic__topic",
+                "subtopic__topic__category",
+                "override_by",
+            )
+            .order_by(
+                "display_order",
+            )
+        )
+ 
+        buffer = io.StringIO()
+ 
+        writer = csv.writer(buffer)
+ 
+        writer.writerow([
+            "Category",
+            "Topic",
+            "Sub-topic code",
+            "Sub-topic name",
+            "Primary score",
+            "Secondary score",
+            "Classification",
+            "Overridden",
+            "Override reason",
+            "Overridden by",
+        ])
+ 
+        for assessment_topic in assessment_topics:
+ 
+            subtopic = assessment_topic.subtopic
+            topic = subtopic.topic
+            category = topic.category
+ 
+            writer.writerow([
+                category.name,
+                topic.name,
+                subtopic.code,
+                subtopic.name,
+                (
+                    assessment_topic.primary_score
+                    if assessment_topic.primary_score is not None
+                    else ""
+                ),
+                (
+                    assessment_topic.secondary_score
+                    if assessment_topic.secondary_score is not None
+                    else ""
+                ),
+                assessment_topic.classification or "NOT_SCORED",
+                "Yes" if assessment_topic.is_override else "No",
+                assessment_topic.override_reason,
+                (
+                    assessment_topic.override_by.get_full_name()
+                    if assessment_topic.override_by
+                    and hasattr(assessment_topic.override_by, "get_full_name")
+                    else (
+                        str(assessment_topic.override_by)
+                        if assessment_topic.override_by
+                        else ""
+                    )
+                ),
+            ])
+ 
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type="text/csv",
+        )
+ 
+        filename = (
+            f"materiality-scores-"
+            f"{assessment.name.replace(' ', '-').lower()}.csv"
+        )
+ 
+        response["Content-Disposition"] = (
+            f'attachment; filename="{filename}"'
+        )
+ 
+        return response  
+
+
+
+    # =============================================================
+    # PDF EXPORT — summary document
+    #
+    # GET:
+    # /api/materiality/assessments/<id>/export/pdf/
+    # =============================================================
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="export/pdf",
+    )
+    def export_pdf(self, request, pk=None):
+
+        assessment = self.get_object()
+
+        pdf_bytes = build_summary_pdf(assessment)
+
+        response = HttpResponse(
+            pdf_bytes,
+            content_type="application/pdf",
+        )
+
+        filename = (
+            f"materiality-summary-"
+            f"{assessment.name.replace(' ', '-').lower()}.pdf"
+        )
+
+        response["Content-Disposition"] = (
+            f'attachment; filename="{filename}"'
+        )
+
+        return response             
     
 
 
