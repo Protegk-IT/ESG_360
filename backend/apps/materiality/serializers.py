@@ -21,6 +21,12 @@ from .models import (
     ScoreRun,
     ScoreRunTopic,
 )
+from .services.assessment_progress import (
+    get_assessment_progress,
+    get_assessment_current_step,
+    get_assessment_current_step_url,
+    is_assessment_completed,
+)
 
 
 class TopicCategorySerializer(serializers.ModelSerializer):
@@ -204,6 +210,15 @@ class MaterialityAssessmentSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+
+    progress_percentage = serializers.SerializerMethodField()
+
+    current_step = serializers.SerializerMethodField()
+
+    is_assessment_completed = serializers.SerializerMethodField()
+
+    current_step_url = serializers.SerializerMethodField()
+
     class Meta:
         model = MaterialityAssessment
         fields = [
@@ -224,6 +239,10 @@ class MaterialityAssessmentSerializer(serializers.ModelSerializer):
             "approved_by",
             "approved_at",
             "created_at",
+            "progress_percentage",
+            "current_step",
+            "is_assessment_completed",
+            "current_step_url",
         ]
 
         read_only_fields = [
@@ -235,6 +254,7 @@ class MaterialityAssessmentSerializer(serializers.ModelSerializer):
             "approved_by",
             "approved_at",
             "created_at",
+            
         ]
 
     def validate_reporting_period(self, reporting_period):
@@ -294,6 +314,20 @@ class MaterialityAssessmentSerializer(serializers.ModelSerializer):
             })
 
         return attrs
+
+    def get_progress_percentage(self, obj):
+        return get_assessment_progress(obj)
+
+    def get_current_step(self, obj):
+        return get_assessment_current_step(obj)
+
+    def get_is_assessment_completed(self, obj):
+        return is_assessment_completed(obj)
+
+    def get_current_step_url(self, obj):
+        return get_assessment_current_step_url(obj)
+
+    
 
     def update(self, instance, validated_data):
         if instance.is_locked:
