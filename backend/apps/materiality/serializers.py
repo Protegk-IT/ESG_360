@@ -859,6 +859,7 @@ class ScoreRunTopicSerializer(serializers.ModelSerializer):
             "classification",
             "is_override",
             "override_reason",
+            "group_breakdown"
         ]
         read_only_fields = fields
  

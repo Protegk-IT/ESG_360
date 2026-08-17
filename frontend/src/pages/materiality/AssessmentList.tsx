@@ -108,6 +108,9 @@ const getAssessmentColumns = ({
   onAddStakeholderGroup,
   onManageSurvey,
   onManageSurveyDistribution,
+  onScoring,
+  onMatrix
+  
 }: {
   onView: (id: string) => void;
   onEdit: (id: string) => void;
@@ -115,6 +118,8 @@ const getAssessmentColumns = ({
   onAddStakeholderGroup: (id: string) => void;
   onManageSurvey: (id: string) => void;
   onManageSurveyDistribution: (id: string) => void;
+  onScoring: (id: string) => void;
+  onMatrix: (id: string) => void;
 }): ColumnDef<MaterialityAssessment>[] => [
   /* ASSESSMENT NAME */
   {
@@ -166,7 +171,7 @@ const getAssessmentColumns = ({
   },
 
   /* ACTIONS */
-  {
+ {
   id: "actions",
   header: "Actions",
   cell: ({ row }) => {
@@ -196,6 +201,7 @@ const getAssessmentColumns = ({
           align="end"
           className="w-56"
         >
+          {/* MANAGE TOPICS */}
           <DropdownMenuItem
             onClick={() =>
               onView(assessment.id)
@@ -204,6 +210,7 @@ const getAssessmentColumns = ({
             Manage Topics
           </DropdownMenuItem>
 
+          {/* STAKEHOLDER GROUPS */}
           <DropdownMenuItem
             onClick={() =>
               onAddStakeholderGroup(
@@ -214,6 +221,7 @@ const getAssessmentColumns = ({
             Manage Stakeholder Groups
           </DropdownMenuItem>
 
+          {/* SURVEY */}
           <DropdownMenuItem
             onClick={() =>
               onManageSurvey(
@@ -223,18 +231,41 @@ const getAssessmentColumns = ({
           >
             Manage Survey
           </DropdownMenuItem>
+
+          {/* SURVEY DISTRIBUTION */}
           <DropdownMenuItem
-  onClick={() =>
-    onManageSurveyDistribution(
-      assessment.id
-    )
-  }
->
-  Survey Distribution
-</DropdownMenuItem>
+            onClick={() =>
+              onManageSurveyDistribution(
+                assessment.id
+              )
+            }
+          >
+            Survey Distribution
+          </DropdownMenuItem>
+
+          {/* SCORING */}
+          <DropdownMenuItem
+            onClick={() =>
+              onScoring(
+                assessment.id
+              )
+            }
+          >
+            Materiality Scoring
+          </DropdownMenuItem>
+
+            {/* MATERIALITY MATRIX */}
+          <DropdownMenuItem
+            onClick={() =>
+              onMatrix(assessment.id)
+            }
+          >
+            Materiality Matrix
+          </DropdownMenuItem>
 
           <DropdownMenuSeparator />
 
+          {/* DELETE */}
           <DropdownMenuItem
             className="
               text-red-600
@@ -253,7 +284,6 @@ const getAssessmentColumns = ({
   },
 },
 ];
-
 /* ==========================================================
    COMPONENT
 ========================================================== */
@@ -351,6 +381,26 @@ export default function AssessmentList() {
   [navigate]
 );
 
+const handleScoring = useCallback(
+  (assessmentId: string) => {
+    navigate(
+      `/materiality/assessments/${assessmentId}/scoring`
+    );
+  },
+  [navigate]
+);
+
+const handleMatrix = useCallback(
+  (assessmentId: string) => {
+    navigate(
+      `/materiality/assessments/${assessmentId}/matrix`
+    );
+  },
+  [navigate]
+);
+
+
+
  const handleManageSurveyDistribution =
   useCallback(
     (id: string) => {
@@ -377,6 +427,7 @@ export default function AssessmentList() {
     }
   };
 
+
   /* --------------------------- table columns --------------------------- */
 
   const columns = useMemo(
@@ -388,8 +439,10 @@ export default function AssessmentList() {
         onAddStakeholderGroup: handleAddStakeholderGroup,
         onManageSurvey:handleManageSurvey,
         onManageSurveyDistribution:handleManageSurveyDistribution,
+        onScoring:handleScoring,
+        onMatrix: handleMatrix,
       }),
-    [handleAssessmentClick, handleEdit, handleDelete, handleAddStakeholderGroup,handleManageSurvey,handleManageSurveyDistribution]
+    [handleAssessmentClick, handleEdit, handleDelete, handleAddStakeholderGroup,handleManageSurvey,handleManageSurveyDistribution,handleScoring,handleMatrix]
   );
 
   /* --------------------------- export csv --------------------------- */

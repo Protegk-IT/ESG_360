@@ -6,6 +6,7 @@ import OrganizationForm from "./pages/organizations/OrganizationsForm";
 import Departmentlist from "./pages/departments/DepartmentList";
 import DepartmentsForm from "./pages/departments/DepartmentsForm";
 import ReportingPeriodForm from "./pages/reporting_periods/ReportingPeriodForm";
+import ScoringDashboard from "./pages/materiality/ScoringDashboard";
 
 import { Toaster } from "@/components/ui/sonner";
 
@@ -35,6 +36,7 @@ import SurveyManager from "@/pages/materiality/SurveyManager";
 import SurveyDistribution from "@/pages/materiality/SurveyDistribution";
 import PublicSurvey from "./pages/materiality/PublicSurvey";
 import SurveyThankYou from "./pages/materiality/SurveyThankYou";
+import MaterialityMatrixPage from "./pages/materiality/MaterialityMatrixPage";
 
 export default function App() {
   return (
@@ -293,6 +295,18 @@ export default function App() {
 <Route
   path="/survey/:token/thank-you"
   element={<SurveyThankYou />}
+/>
+
+<Route
+  path="/materiality/assessments/:assessmentId/scoring"
+  element={<ScoringDashboard />}
+/>
+
+
+
+<Route
+  path="/materiality/assessments/:assessmentId/matrix"
+  element={<MaterialityMatrixPage />}
 />
 
   <Route path="*" element={<Navigate to="/" replace />} />

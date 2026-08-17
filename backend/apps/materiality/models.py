@@ -271,7 +271,7 @@ class MaterialityAssessment(BaseModel):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"{self.name} - {self.financial_year}"
+        return self.name or f"Assessment {self.pk}"
 
 # Another model to store     
 class AssessmentTopic(BaseModel):
@@ -894,6 +894,9 @@ class ScoreRun(BaseModel):
         auto_now_add=True,
     )
 
+    # NEW — per-group survey breakdown snapshot, keyed by dimension
+    
+
     class Meta:
         db_table = "score_run"
         ordering = ["-run_at"]
@@ -932,6 +935,8 @@ class ScoreRunTopic(BaseModel):
     classification = models.CharField(
         max_length=30,
     )
+
+    group_breakdown = models.JSONField(default=dict, blank=True)
 
     class Meta:
         db_table = "score_run_topic"
