@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import { useNavigate } from "react-router-dom";
 
 import AppShell from "@/components/layout/AppShell";
+
 import { DataTable } from "@/common/DataTable";
 import { DataTableToolbar } from "@/common/DataTableToolbar";
 import ConfirmDialog from "@/common/ConfirmDialog";
@@ -10,23 +17,17 @@ import AssessmentApi from "@/api/materiality/AssessmentApi";
 import AssessmentCreateDialog from "./AssessmentCreateDialog";
 
 import {
-  MoreHorizontal,
+  Check,
+  Circle,
+  Trash2,
 } from "lucide-react";
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import type {
   MaterialityAssessment,
   AssessmentStatus,
   AssessmentMode,
 } from "@/types/materiality/assessment";
 
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -34,8 +35,41 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
 import { type ColumnDef } from "@tanstack/react-table";
+
 import { Button } from "@/components/ui/button";
+
+
+/* ==========================================================
+   TYPES
+========================================================== */
+
+/*
+ * Your existing MaterialityAssessment type can continue
+ * to be used.
+
+ * These fields are optional so this UI works even before
+ * the backend serializer is updated.
+ *
+ * Recommended backend response:
+ *
+ * {
+ *   "progress_percentage": 57,
+ *   "current_step": "Manage Survey"
+ * }
+ */
+
+type AssessmentWithProgress =
+  MaterialityAssessment & {
+    progress_percentage?: number | null;
+    progress?: number | null;
+    current_step?: string | null;
+    current_step_url?: string | null;
+    completed_steps?: number | null;
+    total_steps?: number | null;
+  };
+
 
 /* ==========================================================
    STATUS LABELS
@@ -48,54 +82,352 @@ const STATUS_LABELS: Record<AssessmentStatus, string> = {
   APPROVED: "Approved",
 };
 
+
 /* ==========================================================
    MODE LABELS
 ========================================================== */
 
 const MODE_LABELS: Record<AssessmentMode, string> = {
-  SINGLE:"Single Materiality",
+  SINGLE: "Single Materiality",
   DOUBLE: "Double Materiality",
 };
 
+
 /* ==========================================================
-   STATUS BADGE
+   ASSESSMENT WORKFLOW
 ========================================================== */
 
-const getStatusBadge = (status: AssessmentStatus) => {
-  switch (status) {
-    case "DRAFT":
-      return (
-        <Badge className="border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-100">
-          Draft
-        </Badge>
-      );
+const ASSESSMENT_STEPS = [
+  "Assessment Overview",
+  "Manage Topics",
+  "Manage Stakeholder Groups",
+  "Manage Survey",
+  "Survey Distribution",
+  "Materiality Scoring",
+  "Materiality Matrix",
+];
 
-    case "IN_PROGRESS":
-      return (
-        <Badge className="border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-50">
-          In Progress
-        </Badge>
-      );
 
-    case "COMPLETED":
-      return (
-        <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
-          Completed
-        </Badge>
-      );
+/* ==========================================================
+   PROGRESS HELPER
+========================================================== */
 
-    case "APPROVED":
-      return (
-        <Badge className="border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-50">
-          Approved
-        </Badge>
-      );
-
-    default:
-      return <Badge variant="outline">{STATUS_LABELS[status]}</Badge>;
-  }
+const clampProgress = (value: number) => {
+  return Math.min(100, Math.max(0, Math.round(value)));
 };
 
+
+/* ==========================================================
+   GET PROGRESS
+========================================================== */
+
+const getAssessmentProgress = (
+  assessment: AssessmentWithProgress
+): number => {
+  /*
+   * COMPLETED / APPROVED
+   *
+   * These are always 100%.
+   */
+
+  if (
+    assessment.status === "COMPLETED" ||
+    assessment.status === "APPROVED"
+  ) {
+    return 100;
+  }
+
+
+  /*
+   * PRIMARY BACKEND VALUE
+   *
+   * Recommended field:
+   *
+   * progress_percentage
+   */
+
+  if (
+    typeof assessment.progress_percentage === "number"
+  ) {
+    return clampProgress(
+      assessment.progress_percentage
+    );
+  }
+
+
+  /*
+   * SECONDARY BACKEND VALUE
+   */
+
+  if (
+    typeof assessment.progress === "number"
+  ) {
+    return clampProgress(
+      assessment.progress
+    );
+  }
+
+
+  /*
+   * COMPLETED STEPS
+   *
+   * Example:
+   *
+   * completed_steps = 4
+   * total_steps = 7
+   *
+   * => 57%
+   */
+
+  if (
+    typeof assessment.completed_steps === "number" &&
+    typeof assessment.total_steps === "number" &&
+    assessment.total_steps > 0
+  ) {
+    return clampProgress(
+      (assessment.completed_steps /
+        assessment.total_steps) *
+        100
+    );
+  }
+
+
+  /*
+   * CURRENT STEP
+   *
+   * If backend returns:
+   *
+   * current_step: "Manage Survey"
+   *
+   * calculate progress from workflow.
+   */
+
+  if (assessment.current_step) {
+    const currentIndex =
+      ASSESSMENT_STEPS.indexOf(
+        assessment.current_step
+      );
+
+    if (currentIndex >= 0) {
+      return clampProgress(
+        (currentIndex /
+          ASSESSMENT_STEPS.length) *
+          100
+      );
+    }
+  }
+
+
+  /*
+   * SAFE FALLBACK
+   *
+   * We don't invent a fake percentage.
+   *
+   * DRAFT = 0
+   * IN_PROGRESS = 0 until backend progress exists
+   */
+
+  if (assessment.status === "DRAFT") {
+    return 0;
+  }
+
+  return 0;
+};
+
+
+/* ==========================================================
+   CURRENT STEP LABEL
+========================================================== */
+
+const getCurrentStepLabel = (
+  assessment: AssessmentWithProgress,
+  progress: number
+) => {
+  /*
+   * Completed
+   */
+
+  if (
+    assessment.status === "COMPLETED" ||
+    assessment.status === "APPROVED" ||
+    progress >= 100
+  ) {
+    return "Completed";
+  }
+
+
+  /*
+   * Backend current step
+   */
+
+  if (assessment.current_step) {
+    return assessment.current_step;
+  }
+
+
+  /*
+   * No progress information yet
+   */
+
+  if (progress === 0) {
+    return "Assessment started";
+  }
+
+
+  /*
+   * Calculate approximate step
+   */
+
+  const stepIndex = Math.min(
+    ASSESSMENT_STEPS.length - 1,
+    Math.floor(
+      (progress / 100) *
+        ASSESSMENT_STEPS.length
+    )
+  );
+
+  return ASSESSMENT_STEPS[stepIndex];
+};
+
+
+/* ==========================================================
+   PROGRESS COMPONENT
+========================================================== */
+
+function AssessmentProgress({
+  assessment,
+}: {
+  assessment: AssessmentWithProgress;
+}) {
+  const progress =
+    getAssessmentProgress(assessment);
+
+  const completed =
+    progress >= 100 ||
+    assessment.status === "COMPLETED" ||
+    assessment.status === "APPROVED";
+
+  const currentStep =
+    getCurrentStepLabel(
+      assessment,
+      progress
+    );
+
+  return (
+    <div className="min-w-[190px] max-w-[250px]">
+
+      {/* Percentage + Step */}
+
+      <div className="mb-1.5 flex items-center justify-between gap-3">
+
+        <div className="flex min-w-0 items-center gap-2">
+
+          {completed ? (
+            <div
+              className="
+                flex
+                h-5
+                w-5
+                shrink-0
+                items-center
+                justify-center
+                rounded-full
+                bg-emerald-100
+                text-emerald-600
+              "
+            >
+              <Check className="h-3 w-3" />
+            </div>
+          ) : (
+            <Circle
+              className="
+                h-4
+                w-4
+                shrink-0
+                text-[#4A3FD6]
+              "
+            />
+          )}
+
+          <span
+            className="
+              text-sm
+              font-semibold
+              text-[#22243A]
+            "
+          >
+            {progress}%
+          </span>
+
+        </div>
+
+        <span
+          className="
+            truncate
+            text-[11px]
+            font-medium
+            text-slate-500
+          "
+          title={currentStep}
+        >
+          {currentStep}
+        </span>
+
+      </div>
+
+
+      {/* Progress Bar */}
+
+      <div
+        className="
+          h-2
+          w-full
+          overflow-hidden
+          rounded-full
+          bg-slate-100
+        "
+      >
+        <div
+          className={`
+            h-full
+            rounded-full
+            transition-all
+            duration-500
+            ${
+              completed
+                ? "bg-emerald-500"
+                : "bg-[#4A3FD6]"
+            }
+          `}
+          style={{
+            width: `${progress}%`,
+          }}
+        />
+      </div>
+
+
+      {/* Completed label */}
+
+      {completed && (
+        <div
+          className="
+            mt-1.5
+            flex
+            items-center
+            gap-1
+            text-[11px]
+            font-medium
+            text-emerald-600
+          "
+        >
+          <Check className="h-3 w-3" />
+          Assessment completed
+        </div>
+      )}
+
+    </div>
+  );
+}
 
 
 /* ==========================================================
@@ -103,461 +435,692 @@ const getStatusBadge = (status: AssessmentStatus) => {
 ========================================================== */
 
 const getAssessmentColumns = ({
-  onView,
+  onContinue,
   onDelete,
-  onAddStakeholderGroup,
-  onManageSurvey,
-  onManageSurveyDistribution,
-  onScoring,
-  onMatrix
-  
 }: {
-  onView: (id: string) => void;
-  onEdit: (id: string) => void;
-  onDelete: (assessment: MaterialityAssessment) => void;
-  onAddStakeholderGroup: (id: string) => void;
-  onManageSurvey: (id: string) => void;
-  onManageSurveyDistribution: (id: string) => void;
-  onScoring: (id: string) => void;
-  onMatrix: (id: string) => void;
+  onContinue: (
+    id: string
+  ) => void;
+
+  onDelete: (
+    assessment: MaterialityAssessment
+  ) => void;
 }): ColumnDef<MaterialityAssessment>[] => [
-  /* ASSESSMENT NAME */
+
+  /* ========================================================
+     ASSESSMENT
+  ======================================================== */
+
   {
     accessorKey: "name",
+
     header: "Assessment",
+
     cell: ({ row }) => {
-      const assessment = row.original;
+      const assessment =
+        row.original;
+
       return (
-        <button
-          type="button"
-          onClick={() => onView(assessment.id)}
-          className="text-left font-medium text-[#22243A] hover:text-[#4A3FD6] hover:underline"
-        >
-          {assessment.name}
-        </button>
+        <div className="min-w-[220px]">
+
+          <button
+            type="button"
+            onClick={() =>
+              onContinue(
+                assessment.id
+              )
+            }
+            className="
+              text-left
+              font-semibold
+              text-[#22243A]
+              transition-colors
+              hover:text-[#4A3FD6]
+            "
+          >
+            {assessment.name}
+          </button>
+
+          <p
+            className="
+              mt-1
+              text-xs
+              text-slate-500
+            "
+          >
+            {MODE_LABELS[
+              assessment.mode
+            ]}
+          </p>
+
+        </div>
       );
     },
   },
 
-  /* REPORTING PERIOD */
-/* REPORTING PERIOD */
-{
-  id: "reporting_period",
-  header: "Reporting Period",
-  cell: ({ row }) => {
-    const period = row.original.reporting_period_details;
 
-    return (
-      <span className="text-sm text-[#22243A]">
-        {period?.name || "—"}
-      </span>
-    );
-  },
-},
-  /* MODE */
+  /* ========================================================
+     REPORTING PERIOD
+  ======================================================== */
+
   {
-    accessorKey: "mode",
-    header: "Mode",
-    cell: ({ row }) => (
-      <span className="text-sm text-[#4B5563]">{MODE_LABELS[row.original.mode]}</span>
-    ),
-  },
+    id: "reporting_period",
 
-  /* STATUS */
-  {
-    accessorKey: "status",
-    header: "Status",
-    cell: ({ row }) => getStatusBadge(row.original.status),
-  },
+    header: "Reporting Period",
 
-  /* ACTIONS */
- {
-  id: "actions",
-  header: "Actions",
-  cell: ({ row }) => {
-    const assessment = row.original;
+    cell: ({ row }) => {
+      const period =
+        row.original
+          .reporting_period_details;
 
-    return (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="
-              h-8
-              gap-2
-              px-3
-              text-xs
-              font-medium
-            "
-          >
-            Actions
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-
-        <DropdownMenuContent
-          align="end"
-          className="w-56"
+      return (
+        <span
+          className="
+            text-sm
+            text-[#22243A]
+          "
         >
-          {/* MANAGE TOPICS */}
-          <DropdownMenuItem
-            onClick={() =>
-              onView(assessment.id)
-            }
-          >
-            Manage Topics
-          </DropdownMenuItem>
+          {period?.name || "—"}
+        </span>
+      );
+    },
+  },
 
-          {/* STAKEHOLDER GROUPS */}
-          <DropdownMenuItem
-            onClick={() =>
-              onAddStakeholderGroup(
-                assessment.id
-              )
-            }
-          >
-            Manage Stakeholder Groups
-          </DropdownMenuItem>
 
-          {/* SURVEY */}
-          <DropdownMenuItem
-            onClick={() =>
-              onManageSurvey(
-                assessment.id
-              )
-            }
-          >
-            Manage Survey
-          </DropdownMenuItem>
+  /* ========================================================
+     PROGRESS
+  ======================================================== */
 
-          {/* SURVEY DISTRIBUTION */}
-          <DropdownMenuItem
-            onClick={() =>
-              onManageSurveyDistribution(
-                assessment.id
-              )
-            }
-          >
-            Survey Distribution
-          </DropdownMenuItem>
+  {
+    id: "progress",
 
-          {/* SCORING */}
-          <DropdownMenuItem
-            onClick={() =>
-              onScoring(
-                assessment.id
-              )
-            }
-          >
-            Materiality Scoring
-          </DropdownMenuItem>
+    header: "Progress",
 
-            {/* MATERIALITY MATRIX */}
-          <DropdownMenuItem
-            onClick={() =>
-              onMatrix(assessment.id)
-            }
-          >
-            Materiality Matrix
-          </DropdownMenuItem>
+    cell: ({ row }) => {
+      const assessment =
+        row.original as AssessmentWithProgress;
 
-          <DropdownMenuSeparator />
+      return (
+        <AssessmentProgress
+          assessment={assessment}
+        />
+      );
+    },
+  },
+
+
+  /* ========================================================
+     ACTION
+  ======================================================== */
+
+  {
+    id: "action",
+
+    header: "Action",
+
+    cell: ({ row }) => {
+      const assessment =
+        row.original as AssessmentWithProgress;
+
+      const progress =
+        getAssessmentProgress(
+          assessment
+        );
+
+      const completed =
+        progress >= 100 ||
+        assessment.status ===
+          "COMPLETED" ||
+        assessment.status ===
+          "APPROVED";
+
+      return (
+        <div className="flex items-center gap-2">
+
+          {/* CONTINUE / COMPLETED */}
+
+          {completed ? (
+            <div
+              className="
+                inline-flex
+                items-center
+                gap-1.5
+                rounded-lg
+                border
+                border-emerald-200
+                bg-emerald-50
+                px-3
+                py-2
+                text-xs
+                font-semibold
+                text-emerald-700
+              "
+            >
+              <Check className="h-3.5 w-3.5" />
+
+              Completed
+            </div>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() =>
+                onContinue(
+                  assessment.id
+                )
+              }
+              className="
+                h-9
+                rounded-lg
+                bg-[#4A3FD6]
+                px-4
+                text-xs
+                font-semibold
+                text-white
+                shadow-sm
+                transition-all
+                hover:bg-[#3F34C2]
+                hover:shadow
+              "
+            >
+              Continue
+            </Button>
+          )}
+
 
           {/* DELETE */}
-          <DropdownMenuItem
-            className="
-              text-red-600
-              focus:bg-red-50
-              focus:text-red-700
-            "
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
             onClick={() =>
-              onDelete(assessment)
+              onDelete(
+                assessment
+              )
             }
+            className="
+              h-9
+              w-9
+              rounded-lg
+              text-slate-400
+              transition-colors
+              hover:bg-red-50
+              hover:text-red-600
+            "
+            aria-label={`Delete ${assessment.name}`}
           >
-            Delete Assessment
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    );
+            <Trash2
+              className="
+                h-4
+                w-4
+              "
+            />
+          </Button>
+
+        </div>
+      );
+    },
   },
-},
 ];
+
+
 /* ==========================================================
    COMPONENT
 ========================================================== */
 
 export default function AssessmentList() {
-  const navigate = useNavigate();
+  const navigate =
+    useNavigate();
 
-  /* --------------------------- navigation --------------------------- */
 
-  const handleAssessmentClick = useCallback(
-    (id: string) => {
-      navigate(`/materiality/assessments/${id}/select-topics/`);
-    },
-    [navigate]
-  );
+  /* ========================================================
+     STATES
+  ======================================================== */
 
-  const handleEdit = useCallback(
-    (id: string) => {
-      navigate(`/materiality/assessments/${id}/edit`);
-    },
-    [navigate]
-  );
+  const [
+    assessments,
+    setAssessments,
+  ] = useState<
+    MaterialityAssessment[]
+  >([]);
 
-  /* --------------------------- states --------------------------- */
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
 
-  const [assessments, setAssessments] = useState<MaterialityAssessment[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [
+    search,
+    setSearch,
+  ] = useState("");
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
-  const [modeFilter, setModeFilter] = useState("All");
+  const [
+    modeFilter,
+    setModeFilter,
+  ] = useState("All");
 
-  const [selectedAssessment, setSelectedAssessment] =
-    useState<MaterialityAssessment | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [
+    selectedAssessment,
+    setSelectedAssessment,
+  ] =
+    useState<MaterialityAssessment | null>(
+      null
+    );
 
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [
+    deleting,
+    setDeleting,
+  ] = useState(false);
 
-  /* --------------------------- load assessments --------------------------- */
+  const [
+    createDialogOpen,
+    setCreateDialogOpen,
+  ] = useState(false);
 
-  const loadAssessments = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await AssessmentApi.getAll();
-      setAssessments(response.data);
-    } catch (error) {
-      console.error("Failed to load materiality assessments:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+
+  /* ========================================================
+     LOAD ASSESSMENTS
+  ======================================================== */
+
+  const loadAssessments =
+    useCallback(async () => {
+      try {
+        setLoading(true);
+
+        const response =
+          await AssessmentApi.getAll();
+
+        setAssessments(
+          response.data
+        );
+      } catch (error) {
+        console.error(
+          "Failed to load materiality assessments:",
+          error
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, []);
+
 
   useEffect(() => {
-    loadAssessments();
+    void loadAssessments();
   }, [loadAssessments]);
 
- 
-  /* --------------------------- filter assessments --------------------------- */
 
-  const filteredAssessments = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
+  /* ========================================================
+     CONTINUE ASSESSMENT
+  ======================================================== */
 
-    return assessments.filter((assessment) => {
-      const matchesSearch =
-        !keyword ||
-        assessment.name.toLowerCase().includes(keyword) ||
-        assessment.financial_year.toLowerCase().includes(keyword);
-
-      const matchesStatus = statusFilter === "All" || assessment.status === statusFilter;
-      const matchesMode = modeFilter === "All" || assessment.mode === modeFilter;
-
-      return matchesSearch && matchesStatus && matchesMode;
-    });
-  }, [assessments, search, statusFilter, modeFilter]);
-
-  /* --------------------------- delete --------------------------- */
-
-  const handleDelete = useCallback((assessment: MaterialityAssessment) => {
-    setSelectedAssessment(assessment);
-  }, []);
-
-  const handleAddStakeholderGroup = useCallback(
-    (id: string) => {
-      navigate(`/materiality/assessments/${id}/stakeholders/`);
-    },
-    [navigate]
-  );
-
-  const handleManageSurvey = useCallback(
+const handleContinue = useCallback(
   (id: string) => {
-    navigate(
-      `/materiality/assessments/${id}/survey`
+    const assessment = assessments.find(
+      (item) => item.id === id
     );
-  },
-  [navigate]
-);
 
-const handleScoring = useCallback(
-  (assessmentId: string) => {
-    navigate(
-      `/materiality/assessments/${assessmentId}/scoring`
-    );
-  },
-  [navigate]
-);
-
-const handleMatrix = useCallback(
-  (assessmentId: string) => {
-    navigate(
-      `/materiality/assessments/${assessmentId}/matrix`
-    );
-  },
-  [navigate]
-);
-
-
-
- const handleManageSurveyDistribution =
-  useCallback(
-    (id: string) => {
-      navigate(
-        `/materiality/assessments/${id}/survey/distribution`
-      );
-    },
-    [navigate]
-  );
-
-
-  const confirmDelete = async () => {
-    if (!selectedAssessment) return;
-
-    try {
-      setDeleting(true);
-      await AssessmentApi.delete(selectedAssessment.id);
-      await loadAssessments();
-      setSelectedAssessment(null);
-    } catch (error) {
-      console.error("Failed to delete assessment:", error);
-    } finally {
-      setDeleting(false);
+    if (!assessment?.current_step_url) {
+      return;
     }
-  };
+
+    navigate(assessment.current_step_url);
+  },
+  [assessments, navigate]
+);
+
+  /* ========================================================
+     DELETE
+  ======================================================== */
+
+  const handleDelete =
+    useCallback(
+      (
+        assessment: MaterialityAssessment
+      ) => {
+        setSelectedAssessment(
+          assessment
+        );
+      },
+      []
+    );
 
 
-  /* --------------------------- table columns --------------------------- */
+  /* ========================================================
+     FILTER
+  ======================================================== */
 
-  const columns = useMemo(
-    () =>
-      getAssessmentColumns({
-        onView: handleAssessmentClick,
-        onEdit: handleEdit,
-        onDelete: handleDelete,
-        onAddStakeholderGroup: handleAddStakeholderGroup,
-        onManageSurvey:handleManageSurvey,
-        onManageSurveyDistribution:handleManageSurveyDistribution,
-        onScoring:handleScoring,
-        onMatrix: handleMatrix,
-      }),
-    [handleAssessmentClick, handleEdit, handleDelete, handleAddStakeholderGroup,handleManageSurvey,handleManageSurveyDistribution,handleScoring,handleMatrix]
-  );
+  const filteredAssessments =
+    useMemo(() => {
+      const keyword =
+        search
+          .trim()
+          .toLowerCase();
 
-  /* --------------------------- export csv --------------------------- */
+      return assessments.filter(
+        (assessment) => {
 
-  const exportAssessments = useCallback(() => {
-    const header = [
-      "Assessment",
-      "Financial Year",
-      "Period Start",
-      "Period End",
-      "Mode",
-      "Status",
-      "Locked",
-    ];
+          const matchesSearch =
+            !keyword ||
+            assessment.name
+              .toLowerCase()
+              .includes(keyword) ||
+            assessment.financial_year
+              .toLowerCase()
+              .includes(keyword);
 
-    const rows = filteredAssessments.map((assessment) => [
-      assessment.name,
-      assessment.financial_year,
-      assessment.period_start,
-      assessment.period_end,
-      MODE_LABELS[assessment.mode],
-      STATUS_LABELS[assessment.status],
-      assessment.is_locked ? "Yes" : "No",
+          const matchesMode =
+            modeFilter === "All" ||
+            assessment.mode ===
+              modeFilter;
+
+          return (
+            matchesSearch &&
+            matchesMode
+          );
+        }
+      );
+    }, [
+      assessments,
+      search,
+      modeFilter,
     ]);
 
-    const csv = [header, ...rows]
-      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","))
-      .join("\n");
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
+  /* ========================================================
+     CONFIRM DELETE
+  ======================================================== */
 
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "materiality-assessments.csv";
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
+  const confirmDelete =
+    async () => {
+      if (!selectedAssessment) {
+        return;
+      }
 
-    URL.revokeObjectURL(url);
-  }, [filteredAssessments]);
+      try {
+        setDeleting(true);
 
-  /* --------------------------- return --------------------------- */
+        await AssessmentApi.delete(
+          selectedAssessment.id
+        );
+
+        await loadAssessments();
+
+        setSelectedAssessment(
+          null
+        );
+      } catch (error) {
+        console.error(
+          "Failed to delete assessment:",
+          error
+        );
+      } finally {
+        setDeleting(false);
+      }
+    };
+
+
+  /* ========================================================
+     TABLE COLUMNS
+  ======================================================== */
+
+  const columns =
+    useMemo(
+      () =>
+        getAssessmentColumns({
+          onContinue:
+            handleContinue,
+
+          onDelete:
+            handleDelete,
+        }),
+      [
+        handleContinue,
+        handleDelete,
+      ]
+    );
+
+
+  /* ========================================================
+     EXPORT CSV
+  ======================================================== */
+
+  const exportAssessments =
+    useCallback(() => {
+
+      const header = [
+        "Assessment",
+        "Reporting Period",
+        "Mode",
+        "Progress",
+        "Status",
+      ];
+
+      const rows =
+        filteredAssessments.map(
+          (assessment) => {
+
+            const assessmentWithProgress =
+              assessment as AssessmentWithProgress;
+
+            const progress =
+              getAssessmentProgress(
+                assessmentWithProgress
+              );
+
+            return [
+              assessment.name,
+              assessment
+                .reporting_period_details
+                ?.name ?? "",
+              MODE_LABELS[
+                assessment.mode
+              ],
+              `${progress}%`,
+              STATUS_LABELS[
+                assessment.status
+              ],
+            ];
+          }
+        );
+
+      const csv = [
+        header,
+        ...rows,
+      ]
+        .map((row) =>
+          row
+            .map(
+              (value) =>
+                `"${String(
+                  value
+                ).replace(
+                  /"/g,
+                  '""'
+                )}"`
+            )
+            .join(",")
+        )
+        .join("\n");
+
+      const blob =
+        new Blob(
+          [csv],
+          {
+            type:
+              "text/csv;charset=utf-8;",
+          }
+        );
+
+      const url =
+        URL.createObjectURL(
+          blob
+        );
+
+      const anchor =
+        document.createElement(
+          "a"
+        );
+
+      anchor.href = url;
+
+      anchor.download =
+        "materiality-assessments.csv";
+
+      document.body.appendChild(
+        anchor
+      );
+
+      anchor.click();
+
+      document.body.removeChild(
+        anchor
+      );
+
+      URL.revokeObjectURL(
+        url
+      );
+    }, [
+      filteredAssessments,
+    ]);
+
+
+  /* ========================================================
+     RETURN
+  ======================================================== */
 
   return (
     <AppShell
       title="Materiality Assessments"
       description="Create and manage materiality assessments for your organization."
     >
+
       <div className="space-y-6">
-        {/* DATA TABLE */}
+
+        {/* ==================================================
+            TABLE
+        ================================================== */}
+
         <DataTable
           columns={columns}
           data={filteredAssessments}
           loading={loading}
           emptyMessage="No materiality assessments found."
+
           toolbar={
             <DataTableToolbar
               search={search}
-              onSearchChange={setSearch}
+              onSearchChange={
+                setSearch
+              }
+
               addLabel="Create Assessment"
-              onAdd={() => setCreateDialogOpen(true)}
-              onExport={exportAssessments}
+
+              onAdd={() =>
+                setCreateDialogOpen(
+                  true
+                )
+              }
+
+              onExport={
+                exportAssessments
+              }
             >
-              {/* MODE FILTER */}
-              <Select value={modeFilter} onValueChange={setModeFilter}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Assessment Mode" />
+
+              {/* ==========================================
+                  MODE FILTER
+              ========================================== */}
+
+              <Select
+                value={modeFilter}
+                onValueChange={
+                  setModeFilter
+                }
+              >
+                <SelectTrigger
+                  className="w-48"
+                >
+                  <SelectValue
+                    placeholder="Assessment Mode"
+                  />
                 </SelectTrigger>
+
                 <SelectContent>
-                  <SelectItem value="All">All Modes</SelectItem>
-                  <SelectItem value="FINANCIAL">Single Materiality</SelectItem>
-                  <SelectItem value="DOUBLE">Double Materiality</SelectItem>
+
+                  <SelectItem value="All">
+                    All Modes
+                  </SelectItem>
+
+                  <SelectItem value="SINGLE">
+                    Single Materiality
+                  </SelectItem>
+
+                  <SelectItem value="DOUBLE">
+                    Double Materiality
+                  </SelectItem>
+
                 </SelectContent>
               </Select>
 
-              {/* STATUS FILTER */}
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Status</SelectItem>
-                  <SelectItem value="DRAFT">Draft</SelectItem>
-                  <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                  <SelectItem value="COMPLETED">Completed</SelectItem>
-                  <SelectItem value="APPROVED">Approved</SelectItem>
-                </SelectContent>
-              </Select>
             </DataTableToolbar>
           }
         />
 
-        {/* CREATE ASSESSMENT DIALOG */}
+
+        {/* ==================================================
+            CREATE ASSESSMENT
+        ================================================== */}
+
         <AssessmentCreateDialog
-          open={createDialogOpen}
-          onClose={() => setCreateDialogOpen(false)}
-          onSaved={loadAssessments}
+          open={
+            createDialogOpen
+          }
+          onClose={() =>
+            setCreateDialogOpen(
+              false
+            )
+          }
+          onSaved={
+            loadAssessments
+          }
         />
 
-        {/* DELETE CONFIRMATION */}
+
+        {/* ==================================================
+            DELETE CONFIRMATION
+        ================================================== */}
+
         <ConfirmDialog
-          open={selectedAssessment !== null}
+          open={
+            selectedAssessment !==
+            null
+          }
+
           title="Delete Assessment"
+
           description={
             selectedAssessment
               ? `Are you sure you want to delete "${selectedAssessment.name}"? This action cannot be undone.`
               : ""
           }
+
           confirmText="Delete Assessment"
+
           loading={deleting}
-          onConfirm={confirmDelete}
-          onCancel={() => setSelectedAssessment(null)}
+
+          onConfirm={
+            confirmDelete
+          }
+
+          onCancel={() =>
+            setSelectedAssessment(
+              null
+            )
+          }
         />
+
       </div>
+
     </AppShell>
   );
 }

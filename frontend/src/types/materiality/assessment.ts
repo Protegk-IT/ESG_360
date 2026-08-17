@@ -12,6 +12,7 @@ export type AssessmentStatus =
 
 
 export interface MaterialityAssessment {
+  is_assessment_completed: unknown;
   reporting_period_name: string;
   id: string;
 
@@ -54,6 +55,13 @@ export interface MaterialityAssessment {
   created_at: string;
 
   updated_at?: string;
+
+  progress_percentage?: number | null;
+  progress?: number | null;
+  current_step?: string | null;
+  current_step_url?: string | null;
+  completed_steps?: number | null;
+  total_steps?: number | null;
 }
 
 

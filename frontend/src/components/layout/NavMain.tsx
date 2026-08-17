@@ -36,9 +36,28 @@ export interface SidebarItem {
 
 interface NavMainProps {
   items: SidebarItem[];
+  isAssessmentMode?: boolean;
+  assessmentId?: string | null;
 }
 
 // Explicit JS-driven color states (no dependency on data-* variant support).
+const isPathActive = (
+  pathname: string,
+  url?: string
+) => {
+  if (!url) {
+    return false;
+  }
+
+  if (url === "/materiality/assessments") {
+    return pathname === url;
+  }
+
+  return (
+    pathname === url ||
+    pathname.startsWith(`${url}/`)
+  );
+};
 const baseItem =
   "h-11 w-full rounded-xl px-4 text-sm font-medium transition-colors duration-150";
 const restState = "text-gray-600 hover:bg-blue-50 hover:text-blue-700";
@@ -49,7 +68,9 @@ const baseSubItem =
 const restSubState = "text-gray-500 hover:bg-blue-50 hover:text-blue-700";
 const activeSubState = "bg-blue-50 text-blue-700 font-medium";
 
-export function NavMain({ items }: NavMainProps) {
+export function NavMain({
+  items,
+}: NavMainProps) {
   const location = useLocation();
 
   // Accordion-style: only one section open at a time.
@@ -67,8 +88,10 @@ export function NavMain({ items }: NavMainProps) {
         <SidebarMenu className="space-y-2">
           {items.map((item) => {
             if (!item.items) {
-              const isActive = location.pathname === item.url;
-
+              const isActive = isPathActive(
+  location.pathname,
+  item.url
+);
               return (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
@@ -92,9 +115,13 @@ export function NavMain({ items }: NavMainProps) {
               );
             }
 
-            const isParentActive = item.items.some(
-              (sub) => location.pathname === sub.url
-            );
+           const isParentActive =
+  item.items?.some((sub) =>
+    isPathActive(
+      location.pathname,
+      sub.url
+    )
+  ) ?? false;
             const isOpen = openTitle === item.title;
 
             return (
@@ -147,18 +174,20 @@ export function NavMain({ items }: NavMainProps) {
                               aria-hidden="true"
                               className="pointer-events-none absolute -left-4 top-1/2 h-px w-3 -translate-y-1/2 bg-gray-200"
                             />
-                            <SidebarMenuSubButton
-                              asChild
-                              isActive={isSubActive}
-                              className={cn(
-                                baseSubItem,
-                                isSubActive ? activeSubState : restSubState
-                              )}
-                            >
-                              <Link to={sub.url}>
-                                <span>{sub.title}</span>
-                              </Link>
-                            </SidebarMenuSubButton>
+                        <SidebarMenuSubButton
+  asChild
+  isActive={isSubActive}
+  className={cn(
+    baseSubItem,
+    isSubActive
+      ? activeSubState
+      : restSubState
+  )}
+>
+  <Link to={sub.url}>
+    <span>{sub.title}</span>
+  </Link>
+</SidebarMenuSubButton>
                           </SidebarMenuSubItem>
                         );
                       })}
