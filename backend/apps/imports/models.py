@@ -1,5 +1,3 @@
-import uuid
-
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -21,12 +19,6 @@ class ImportBatch(BaseModel):
         VALIDATED = "VALIDATED", "Validated"
         FAILED = "FAILED", "Failed"
         COMMITTED = "COMMITTED", "Committed"
-
-    id = models.UUIDField(
-        primary_key=True,
-        default=uuid.uuid4,
-        editable=False,
-    )
 
     import_type = models.CharField(
         max_length=50,
@@ -96,6 +88,52 @@ class ImportBatch(BaseModel):
                 {"committed_at": "Committed batches must have committed_at set."}
             )
 
+    def save(self, *args, **kwargs):
+        """
+        Prevent committed batches from being modified directly.
+
+        Committed batches are immutable. Any lifecycle changes must happen
+        through ImportBatchService before the batch reaches COMMITTED.
+        """
+
+        if self.pk:
+            existing = (
+                type(self)
+                .objects
+                .filter(pk=self.pk)
+                .values_list("status", flat=True)
+                .first()
+            )
+
+            if existing == self.Status.COMMITTED:
+                raise ValidationError(
+                    "A committed import batch cannot be modified."
+                )
+
+        super().save(*args, **kwargs)
+
+
+    def delete(self, *args, **kwargs):
+        """
+        Prevent committed batches from being deleted.
+        """
+
+        if self.pk:
+            existing = (
+                type(self)
+                .objects
+                .filter(pk=self.pk)
+                .values_list("status", flat=True)
+                .first()
+            )
+
+            if existing == self.Status.COMMITTED:
+                raise ValidationError(
+                    "A committed import batch cannot be deleted."
+                )
+
+        return super().delete(*args, **kwargs)
+
     def __str__(self):
         return f"{self.file_name} ({self.import_type})"
 
@@ -107,11 +145,6 @@ class ImportRow(BaseModel):
         SKIPPED = "SKIPPED", "Skipped"
         COMMITTED = "COMMITTED", "Committed"
 
-    id = models.UUIDField(
-        primary_key=True,
-        default=uuid.uuid4,
-        editable=False,
-    )
 
     batch = models.ForeignKey(
         ImportBatch,

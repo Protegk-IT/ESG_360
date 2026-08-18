@@ -11,6 +11,8 @@ class ImportBatchSerializer(serializers.ModelSerializer):
             "import_type",
             "file_name",
             "file_path",
+            "org_node",
+            "reporting_period",
             "module_code",
             "status",
             "total_rows",

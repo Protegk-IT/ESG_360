@@ -3,21 +3,29 @@ import tempfile
 import uuid
 from datetime import date, datetime
 from unittest.mock import patch
-
+import uuid
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from apps.organizations.models import OrgNode
+from apps.periods.models import ReportingPeriod
+from apps.companies.models import Company
 
 from openpyxl import Workbook
+
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from django.db import close_old_connections
 
 from rest_framework.test import APIClient
 
 from apps.imports.handlers import (
     FakeAnswersImportHandler,
     ImportHandlerRegistry,
+    ImportHandler
 )
 from apps.imports.models import ImportBatch, ImportRow
 from apps.imports.parser import ExcelParser, ImportFileError
@@ -29,6 +37,37 @@ from apps.imports.services import (
 
 User = get_user_model()
 
+class TestDestinationCommitHandler(ImportHandler):
+    """
+    Test-only handler that performs a real database write and then
+    raises an exception.
+
+    The purpose is to verify that ImportBatchService.commit()
+    rolls back destination-side database writes together with
+    the batch transaction.
+    """
+
+    @staticmethod
+    def validate_row(data):
+        return data, {}
+
+    @staticmethod
+    def validate_batch(rows):
+        return None
+
+    @staticmethod
+    def commit(batch):
+        from apps.modules.models import Module
+
+        Module.objects.create(
+            code=f"rollback-test-{batch.pk}",
+            name="Rollback Test Module",
+            is_enabled=True,
+        )
+
+        raise RuntimeError(
+            "Destination write failed after database write"
+        )
 
 # ============================================================================
 # Shared helpers
@@ -487,13 +526,54 @@ class ImportBatchModelTests(
                 module_code="DOES_NOT_EXIST",
             )
 
+    def test_committed_batch_cannot_be_modified_directly(self):
+        batch = self.create_validated_batch()
+
+        ImportBatchService.commit(batch)
+
+        batch.refresh_from_db()
+
+        batch.file_name = "changed.xlsx"
+
+        with self.assertRaisesMessage(
+            ValidationError,
+            "A committed import batch cannot be modified.",
+        ):
+            batch.save()
+
+        batch.refresh_from_db()
+
+        self.assertEqual(
+            batch.file_name,
+            "test.xlsx",
+        )
+
+
+    def test_committed_batch_cannot_be_deleted_directly(self):
+        batch = self.create_validated_batch()
+
+        ImportBatchService.commit(batch)
+
+        batch.refresh_from_db()
+
+        with self.assertRaisesMessage(
+            ValidationError,
+            "A committed import batch cannot be deleted.",
+        ):
+            batch.delete()
+
+        self.assertTrue(
+            ImportBatch.objects.filter(
+                pk=batch.pk
+            ).exists()
+        )
 
 # ============================================================================
 # File parsing tests
 # ============================================================================
 
 
-class ExcelParserTests(TestCase):
+class ExcelParserTests(ImportTestMixin,TestCase):
     """Focused spreadsheet parser coverage."""
 
     def setUp(self):
@@ -681,7 +761,53 @@ class ExcelParserTests(TestCase):
             12.5,
         )
 
+    def test_file_like_object_is_supported(self):
+        uploaded_file = self.create_excel_file(
+            rows=[
+                {
+                    "facility_code": "FAC-001",
+                    "quantity": 10,
+                }
+            ]
+        )
 
+        result = self.parser.parse(uploaded_file)
+
+        self.assertEqual(
+            len(result),
+            1,
+        )
+
+        self.assertEqual(
+            result[0]["row_number"],
+            2,
+        )
+
+        self.assertEqual(
+            result[0]["raw_data"]["facility_code"],
+            "FAC-001",
+        )
+
+        self.assertEqual(
+            result[0]["raw_data"]["quantity"],
+            10,
+        )
+
+    def test_file_size_limit_is_enforced(self):
+        oversized_file = SimpleUploadedFile(
+            "large.xlsx",
+            b"x" * (ExcelParser.MAX_FILE_SIZE + 1),
+            content_type=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+        )
+
+        with self.assertRaisesMessage(
+            ImportFileError,
+            "The uploaded file is too large. Maximum allowed size is 10 MB.",
+        ):
+            self.parser.parse(oversized_file)
 # ============================================================================
 # Validation lifecycle tests
 # ============================================================================
@@ -693,10 +819,7 @@ class ExcelParserTests(TestCase):
     ),
     MEDIA_ROOT=tempfile.gettempdir(),
 )
-class ImportValidationTests(
-    ImportTestMixin,
-    TestCase,
-):
+class ImportValidationTests(ImportTestMixin,TestCase,):
     """Focused upload and validation lifecycle tests."""
 
     def setUp(self):
@@ -1061,8 +1184,128 @@ class ImportCommitServiceTests(
             ImportBatchService.commit(
                 batch
             )
+    def test_concurrent_commit_executes_handler_only_once(self):
+        batch = self.create_validated_batch()
 
+        with patch.object(
+            FakeAnswersImportHandler,
+            "commit",
+        ) as commit_mock:
 
+            first_result = ImportBatchService.commit(
+                batch
+            )
+
+            with self.assertRaises(ValidationError):
+                ImportBatchService.commit(
+                    batch
+                )
+
+        commit_mock.assert_called_once()
+
+        batch.refresh_from_db()
+
+        self.assertEqual(
+            batch.status,
+            ImportBatch.Status.COMMITTED,
+        )
+
+        self.assertIsNotNone(
+            batch.committed_at,
+        )
+
+    def test_commit_re_reads_batch_before_executing_handler(self):
+        batch = self.create_validated_batch()
+
+        with patch.object(
+            FakeAnswersImportHandler,
+            "commit",
+        ) as commit_mock:
+
+            # Pass a stale object whose status is still VALIDATED.
+            stale_batch = ImportBatch.objects.get(
+                pk=batch.pk
+            )
+
+            # Simulate another transaction/request having already
+            # committed the batch in the database.
+            ImportBatch.objects.filter(
+                pk=batch.pk
+            ).update(
+                status=ImportBatch.Status.COMMITTED,
+                committed_at=timezone.now(),
+            )
+
+            with self.assertRaisesMessage(
+                ValidationError,
+                "This batch has already been committed.",
+            ):
+                ImportBatchService.commit(
+                    stale_batch
+                )
+
+        # The handler must NOT execute because commit()
+        # re-reads the current database state.
+        commit_mock.assert_not_called()
+
+        batch.refresh_from_db()
+
+        self.assertEqual(
+            batch.status,
+            ImportBatch.Status.COMMITTED,
+        )
+
+    def test_commit_rolls_back_destination_database_write(self):
+        from apps.modules.models import Module
+        batch = self.create_validated_batch()
+
+        ImportHandlerRegistry.clear()
+
+        ImportHandlerRegistry.register(
+            ImportBatch.ImportType.ANSWERS,
+            TestDestinationCommitHandler,
+        )
+
+        destination_code = f"rollback-test-{batch.pk}"
+
+        self.assertFalse(
+            Module.objects.filter(
+                code=destination_code
+            ).exists()
+        )
+
+        with self.assertRaisesMessage(
+            RuntimeError,
+            "Destination write failed after database write",
+        ):
+            ImportBatchService.commit(batch)
+
+        # Destination-side database write must be rolled back.
+        self.assertFalse(
+            Module.objects.filter(
+                code=destination_code
+            ).exists()
+        )
+
+        # ImportBatch state must also be rolled back.
+        batch.refresh_from_db()
+
+        self.assertEqual(
+            batch.status,
+            ImportBatch.Status.VALIDATED,
+        )
+
+        self.assertIsNone(
+            batch.committed_at,
+        )
+
+        # ImportRow state must remain unchanged.
+        row = batch.rows.get()
+
+        self.assertEqual(
+            row.status,
+            ImportRow.Status.VALID,
+        )
 # ============================================================================
 # API tests
 # ============================================================================
@@ -1215,15 +1458,11 @@ class ImportBatchAPITests(
                 {
                     "row_number": 3,
                     "raw_data": {
-                        "facility_code": "",
+                        "facility_code": "FAC-002",
                         "quantity": 20,
                     },
-                    "status": ImportRow.Status.ERROR,
-                    "errors": {
-                        "facility_code": [
-                            "This field is required."
-                        ]
-                    },
+                    "status": ImportRow.Status.VALID,
+                    "errors": {},
                 },
             ],
         )
@@ -1232,7 +1471,7 @@ class ImportBatchAPITests(
             user=self.uploader,
         )
 
-        batch_response = self.client.get(
+        response = self.client.get(
             reverse(
                 "import-batch-detail",
                 kwargs={
@@ -1242,27 +1481,27 @@ class ImportBatchAPITests(
         )
 
         self.assertEqual(
-            batch_response.status_code,
+            response.status_code,
             200,
         )
 
-        expected_batch_fields = {
-            "id",
-            "import_type",
-            "file_name",
-            "file_path",
-            "module_code",
-            "status",
-            "total_rows",
-            "valid_rows",
-            "error_rows",
-            "uploaded_at",
-            "committed_at",
-        }
-
         self.assertEqual(
-            set(batch_response.data.keys()),
-            expected_batch_fields,
+            set(response.data.keys()),
+            {
+                "id",
+                "import_type",
+                "file_name",
+                "file_path",
+                "module_code",
+                "org_node",
+                "reporting_period",
+                "status",
+                "total_rows",
+                "valid_rows",
+                "error_rows",
+                "uploaded_at",
+                "committed_at",
+            },
         )
 
         rows_response = self.client.get(
@@ -1279,23 +1518,45 @@ class ImportBatchAPITests(
             200,
         )
 
+        # Rows endpoint is paginated.
         self.assertEqual(
-            len(rows_response.data),
+            set(rows_response.data.keys()),
+            {
+                "count",
+                "next",
+                "previous",
+                "results",
+            },
+        )
+
+        self.assertEqual(
+            rows_response.data["count"],
             2,
         )
 
-        expected_row_fields = {
-            "id",
-            "batch",
-            "row_number",
-            "raw_data",
-            "status",
-            "errors",
-        }
+        self.assertIsNone(
+            rows_response.data["next"],
+        )
+
+        self.assertIsNone(
+            rows_response.data["previous"],
+        )
 
         self.assertEqual(
-            set(rows_response.data[0].keys()),
-            expected_row_fields,
+            len(rows_response.data["results"]),
+            2,
+        )
+
+        self.assertEqual(
+            set(rows_response.data["results"][0].keys()),
+            {
+                "id",
+                "batch",
+                "row_number",
+                "raw_data",
+                "status",
+                "errors",
+            },
         )
 
     def test_unsupported_concrete_import_handler_returns_clear_error(self,):
@@ -1334,6 +1595,66 @@ class ImportBatchAPITests(
             str(response.data),
         )
 
+    def test_upload_without_production_handler_never_commits(self):
+        ImportHandlerRegistry.clear()
+
+        user = self.uploader
+
+        uploaded_file = self.create_excel_file(
+            rows=[
+                {
+                    "facility_code": "FAC-001",
+                    "quantity": 10,
+                }
+            ]
+        )
+
+        self.client.force_authenticate(user=user)
+
+        upload_response = self.client.post(
+            reverse("import-batch-upload"),
+            {
+                "file": uploaded_file,
+                "import_type": ImportBatch.ImportType.ANSWERS,
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(upload_response.status_code, 201)
+
+        batch_id = upload_response.data["id"]
+
+        batch = ImportBatch.objects.get(pk=batch_id)
+
+        self.assertEqual(
+            batch.status,
+            ImportBatch.Status.UPLOADED,
+        )
+
+        validate_response = self.client.post(
+            reverse(
+                "import-batch-validate",
+                kwargs={"id": batch_id},
+            )
+        )
+
+        self.assertEqual(
+            validate_response.status_code,
+            400,
+        )
+
+        self.assertIn(
+            "No import handler is registered",
+            str(validate_response.data),
+        )
+
+        batch.refresh_from_db()
+
+        self.assertNotEqual(
+            batch.status,
+            ImportBatch.Status.COMMITTED,
+        )
+
     def test_unrelated_normal_user_cannot_inspect_batch_rows(self):
         owner = self.create_user()
         other_user = self.create_user()
@@ -1358,4 +1679,335 @@ class ImportBatchAPITests(
         self.assertEqual(
             response.status_code,
             404,
+        )
+
+    def test_upload_accepts_and_persists_org_node_and_reporting_period(self):
+        company = Company.objects.create(
+            company_name="Test Company",
+            company_code="TEST001",
+            contact_person="Test User",
+            email="test@example.com",
+            mobile_number="9876543210",
+        )
+
+        org_node = OrgNode.objects.create(
+            company=company,
+            node_type="BUSINESS_UNIT",
+            code="TEST-ORG",
+            name="Test Organization Node",
+        )
+
+        reporting_period = ReportingPeriod.objects.create(
+            name="FY 2026",
+            period_type="ANNUAL",
+            start_date=date(2026, 4, 1),
+            end_date=date(2027, 3, 31),
+        )
+
+        uploaded_file = self.create_excel_file()
+
+        self.client.force_authenticate(
+            user=self.uploader,
+        )
+
+        response = self.client.post(
+            reverse("import-batch-upload"),
+            {
+                "file": uploaded_file,
+                "import_type": ImportBatch.ImportType.ANSWERS,
+                "org_node": str(org_node.pk),
+                "reporting_period": str(reporting_period.pk),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            201,
+        )
+
+        batch = ImportBatch.objects.get(
+            pk=response.data["id"]
+        )
+
+        self.assertEqual(
+            batch.org_node_id,
+            org_node.pk,
+        )
+
+        self.assertEqual(
+            batch.reporting_period_id,
+            reporting_period.pk,
+        )
+
+        self.assertEqual(
+            response.data["org_node"],
+            org_node.pk,
+        )
+
+        self.assertEqual(
+            response.data["reporting_period"],
+            reporting_period.pk,
+        )
+
+    def test_upload_rejects_unknown_org_node(self):
+        uploaded_file = self.create_excel_file()
+
+        self.client.force_authenticate(
+            user=self.uploader,
+        )
+
+        response = self.client.post(
+            reverse("import-batch-upload"),
+            {
+                "file": uploaded_file,
+                "import_type": ImportBatch.ImportType.ANSWERS,
+                "org_node": str(uuid.uuid4()),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            404,
+        )
+
+        self.assertFalse(
+            ImportBatch.objects.exists()
+        )
+
+    def test_upload_rejects_unknown_reporting_period(self):
+        uploaded_file = self.create_excel_file()
+
+        self.client.force_authenticate(
+            user=self.uploader,
+        )
+
+        response = self.client.post(
+            reverse("import-batch-upload"),
+            {
+                "file": uploaded_file,
+                "import_type": ImportBatch.ImportType.ANSWERS,
+                "reporting_period": str(uuid.uuid4()),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            404,
+        )
+
+        self.assertFalse(
+            ImportBatch.objects.exists()
+        )
+
+    def test_batch_rows_are_paginated(self):
+        batch = self.create_batch_directly(
+            user=self.uploader,
+            rows=[
+                {
+                    "row_number": index + 2,
+                    "raw_data": {
+                        "facility_code": f"FAC-{index + 1:03d}",
+                        "quantity": index + 1,
+                    },
+                    "status": ImportRow.Status.VALID,
+                    "errors": {},
+                }
+                for index in range(25)
+            ],
+        )
+
+        self.client.force_authenticate(
+            user=self.uploader,
+        )
+
+        response = self.client.get(
+            reverse(
+                "import-batch-rows",
+                kwargs={
+                    "batch_id": batch.pk,
+                },
+            )
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            response.data["count"],
+            25,
+        )
+
+        self.assertEqual(
+            len(response.data["results"]),
+            20,
+        )
+
+        self.assertIsNotNone(
+            response.data["next"],
+        )
+
+
+    def test_batch_rows_can_be_filtered_by_status(self):
+        batch = self.create_batch_directly(
+            user=self.uploader,
+            rows=[
+                {
+                    "row_number": 2,
+                    "raw_data": {
+                        "facility_code": "FAC-001",
+                        "quantity": 10,
+                    },
+                    "status": ImportRow.Status.VALID,
+                    "errors": {},
+                },
+                {
+                    "row_number": 3,
+                    "raw_data": {
+                        "facility_code": "",
+                        "quantity": 10,
+                    },
+                    "status": ImportRow.Status.ERROR,
+                    "errors": {
+                        "facility_code": [
+                            "This field is required."
+                        ]
+                    },
+                },
+                {
+                    "row_number": 4,
+                    "raw_data": {
+                        "facility_code": "",
+                        "quantity": 20,
+                    },
+                    "status": ImportRow.Status.ERROR,
+                    "errors": {
+                        "facility_code": [
+                            "This field is required."
+                        ]
+                    },
+                },
+            ],
+        )
+
+        self.client.force_authenticate(
+            user=self.uploader,
+        )
+
+        response = self.client.get(
+            reverse(
+                "import-batch-rows",
+                kwargs={
+                    "batch_id": batch.pk,
+                },
+            ),
+            {
+                "status": ImportRow.Status.ERROR,
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            response.data["count"],
+            2,
+        )
+
+        self.assertEqual(
+            len(response.data["results"]),
+            2,
+        )
+
+        for row in response.data["results"]:
+            self.assertEqual(
+                row["status"],
+                ImportRow.Status.ERROR,
+            )
+
+
+    def test_batch_rows_reject_invalid_status_filter(self):
+        batch = self.create_batch_directly(
+            user=self.uploader,
+        )
+
+        self.client.force_authenticate(
+            user=self.uploader,
+        )
+
+        response = self.client.get(
+            reverse(
+                "import-batch-rows",
+                kwargs={
+                    "batch_id": batch.pk,
+                },
+            ),
+            {
+                "status": "INVALID_STATUS",
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            400,
+        )
+
+        self.assertIn(
+            "status",
+            response.data,
+        )
+
+
+    def test_batch_rows_support_custom_page_size(self):
+        batch = self.create_batch_directly(
+            user=self.uploader,
+            rows=[
+                {
+                    "row_number": index + 2,
+                    "raw_data": {
+                        "facility_code": f"FAC-{index + 1:03d}",
+                        "quantity": index + 1,
+                    },
+                    "status": ImportRow.Status.VALID,
+                    "errors": {},
+                }
+                for index in range(10)
+            ],
+        )
+
+        self.client.force_authenticate(
+            user=self.uploader,
+        )
+
+        response = self.client.get(
+            reverse(
+                "import-batch-rows",
+                kwargs={
+                    "batch_id": batch.pk,
+                },
+            ),
+            {
+                "page_size": 5,
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            200,
+        )
+
+        self.assertEqual(
+            response.data["count"],
+            10,
+        )
+
+        self.assertEqual(
+            len(response.data["results"]),
+            5,
         )

@@ -221,10 +221,9 @@ class ImportBatchService:
         """
         Commit a previously validated batch.
 
-        The registered handler performs the concrete destination
-        work.
-
-        The entire operation is wrapped in one transaction.
+        The batch row is locked and re-read inside the transaction so
+        concurrent commit requests cannot both execute the destination
+        handler.
 
         If the handler raises an exception:
 
@@ -235,86 +234,106 @@ class ImportBatchService:
         - commit ActivityLog is rolled back
         """
 
-        if batch.status == ImportBatch.Status.COMMITTED:
+        # ---------------------------------------------------------
+        # Lock and re-read the batch inside the transaction.
+        # ---------------------------------------------------------
+        #
+        # This is important for concurrent commit requests.
+        #
+        # Two requests may have received the same VALIDATED batch
+        # object before entering this method. Therefore we must NOT
+        # rely on the passed-in object's status.
+        #
+        locked_batch = (
+            ImportBatch.objects
+            .select_for_update()
+            .get(pk=batch.pk)
+        )
+
+        # ---------------------------------------------------------
+        # Check the current database state.
+        # ---------------------------------------------------------
+
+        if locked_batch.status == ImportBatch.Status.COMMITTED:
             raise ValidationError(
                 "This batch has already been committed."
             )
 
-        if batch.status != ImportBatch.Status.VALIDATED:
+        if locked_batch.status != ImportBatch.Status.VALIDATED:
             raise ValidationError(
                 "Only a validated batch can be committed. "
-                f"Current status: {batch.status}."
+                f"Current status: {locked_batch.status}."
             )
 
+        # ---------------------------------------------------------
         # Get the concrete handler.
+        # ---------------------------------------------------------
         #
-        # If there is no registered handler, this fails safely
-        # and the batch remains VALIDATED.
+        # If there is no registered handler, this fails safely.
+        # Because the batch is inside the transaction, no commit
+        # state is persisted.
+        #
+
         handler = ImportHandlerRegistry.get_handler(
-            batch.import_type
+            locked_batch.import_type
         )
 
         # ---------------------------------------------------------
-        # Destination-specific commit
+        # Destination-specific commit.
         # ---------------------------------------------------------
         #
-        # The concrete future importer owns destination writes.
+        # The concrete importer owns destination writes.
         #
-        # This foundation does not know anything about:
-        #
-        # - Answers
-        # - Datapoints
-        # - Framework Nodes
-        # - Stakeholders
-        # - Emission Factors
-        #
-        handler.commit(batch)
+
+        handler.commit(locked_batch)
 
         # ---------------------------------------------------------
-        # Mark batch as committed
+        # Mark batch as committed.
         # ---------------------------------------------------------
 
-        batch.status = ImportBatch.Status.COMMITTED
+        locked_batch.status = ImportBatch.Status.COMMITTED
 
-        batch.committed_at = timezone.now()
+        locked_batch.committed_at = timezone.now()
 
-        batch.save(
+        locked_batch.save(
             update_fields=[
                 "status",
                 "committed_at",
             ]
         )
 
-        # All valid rows become committed.
-        batch.rows.filter(
+        # ---------------------------------------------------------
+        # Mark valid rows as committed.
+        # ---------------------------------------------------------
+
+        locked_batch.rows.filter(
             status=ImportRow.Status.VALID
         ).update(
             status=ImportRow.Status.COMMITTED
         )
 
         # ---------------------------------------------------------
-        # Activity logging
+        # Activity logging.
         # ---------------------------------------------------------
 
         ImportBatchService._log_activity(
-            batch=batch,
+            batch=locked_batch,
             action="APPROVE",
             changes={
                 "event": "IMPORT_BATCH_COMMITTED",
-                "status": batch.status,
-                "total_rows": batch.total_rows,
-                "valid_rows": batch.valid_rows,
-                "error_rows": batch.error_rows,
+                "status": locked_batch.status,
+                "total_rows": locked_batch.total_rows,
+                "valid_rows": locked_batch.valid_rows,
+                "error_rows": locked_batch.error_rows,
                 "committed_at": (
-                    batch.committed_at.isoformat()
-                    if batch.committed_at
+                    locked_batch.committed_at.isoformat()
+                    if locked_batch.committed_at
                     else None
                 ),
             },
         )
 
-        return batch
-
+        return locked_batch
 
 class ImportUploadService:
     """
@@ -467,64 +486,81 @@ class ImportUploadService:
         try:
 
             # -----------------------------------------------------
-            # Resolve physical file path
+            # Open spreadsheet directly from Django storage
             # -----------------------------------------------------
 
-            file_path = default_storage.path(
-                storage_path
-            )
+            with default_storage.open(
+                storage_path,
+                "rb",
+            ) as stored_file:
 
-            # -----------------------------------------------------
-            # Parse spreadsheet
-            # -----------------------------------------------------
+                parser = ExcelParser()
 
-            parser = ExcelParser()
+                # -------------------------------------------------
+                # Create ImportBatch before creating ImportRows
+                # -------------------------------------------------
 
-            parsed_rows = parser.parse(
-                file_path
-            )
+                batch = ImportBatch.objects.create(
+                    import_type=import_type,
+                    file_name=uploaded_file.name,
+                    file_path=storage_path,
+                    uploaded_by=uploaded_by,
+                    module_code=module_code,
+                    org_node=org_node,
+                    reporting_period=reporting_period,
+                    status=ImportBatch.Status.UPLOADED,
+                    total_rows=0,
+                )
 
-            # -----------------------------------------------------
-            # Create ImportBatch
-            # -----------------------------------------------------
+                # -------------------------------------------------
+                # Parse rows incrementally
+                # -------------------------------------------------
 
-            batch = ImportBatch.objects.create(
-                import_type=import_type,
-                file_name=uploaded_file.name,
-                file_path=storage_path,
-                uploaded_by=uploaded_by,
-                module_code=module_code,
-                org_node=org_node,
-                reporting_period=reporting_period,
-                status=ImportBatch.Status.UPLOADED,
-                total_rows=len(parsed_rows),
-            )
+                rows_buffer = []
+                total_rows = 0
 
-            # -----------------------------------------------------
-            # Create ImportRows
-            # -----------------------------------------------------
+                for row in parser.parse(stored_file):
 
-            ImportRow.objects.bulk_create(
-                [
-                    ImportRow(
-                        batch=batch,
-                        row_number=row["row_number"],
-                        raw_data=row["raw_data"],
-                        status=ImportRow.Status.VALID,
+                    rows_buffer.append(
+                        ImportRow(
+                            batch=batch,
+                            row_number=row["row_number"],
+                            raw_data=row["raw_data"],
+                            status=ImportRow.Status.VALID,
+                        )
                     )
-                    for row in parsed_rows
-                ]
-            )
+
+                    total_rows += 1
+
+                    # Insert rows in chunks of 1000
+                    if len(rows_buffer) >= 1000:
+                        ImportRow.objects.bulk_create(
+                            rows_buffer
+                        )
+                        rows_buffer.clear()
+
+                # -------------------------------------------------
+                # Insert remaining rows
+                # -------------------------------------------------
+
+                if rows_buffer:
+                    ImportRow.objects.bulk_create(
+                        rows_buffer
+                    )
+
+                # -------------------------------------------------
+                # Update total row count
+                # -------------------------------------------------
+
+                batch.total_rows = total_rows
+
+                batch.save(
+                    update_fields=["total_rows"]
+                )
 
             # -----------------------------------------------------
             # Activity logging
             # -----------------------------------------------------
-            #
-            # One activity event for the whole batch.
-            #
-            # We intentionally DO NOT create an ActivityLog
-            # entry for every ImportRow.
-            #
 
             ImportUploadService._log_activity(
                 batch=batch,
@@ -546,11 +582,6 @@ class ImportUploadService:
             # -----------------------------------------------------
             # Cleanup uploaded file on failure
             # -----------------------------------------------------
-            #
-            # If parsing or database creation fails, remove the
-            # stored file so that an orphaned file is not left
-            # in storage.
-            #
 
             if default_storage.exists(storage_path):
                 default_storage.delete(
