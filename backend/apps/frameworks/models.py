@@ -322,18 +322,17 @@ class FrameworkNode(BaseModel):
 
 
 
-
-'''
- class DatapointMapping(BaseModel):
+class DatapointMapping(BaseModel):
     """
-    Connects an M7 framework node to the canonical M4 Datapoint.
+    Maps a framework node to a canonical M4 Datapoint.
 
-    M7 does not duplicate or redefine Datapoint.
+    M7 does not define or duplicate Datapoint.
     """
 
     class MappingType(models.TextChoices):
         DIRECT = "DIRECT", "Direct"
-        CALCULATED = "CALCULATED", "Calculated"
+        NARRATIVE = "NARRATIVE", "Narrative / Manual"
+        CALCULATED = "CALCULATED", "Calculated / Derived"
 
     class Aggregation(models.TextChoices):
         NONE = "NONE", "None"
@@ -352,6 +351,7 @@ class FrameworkNode(BaseModel):
         related_name="datapoint_mappings",
     )
 
+    # M4 canonical datapoint.
     datapoint = models.ForeignKey(
         "datapoints.Datapoint",
         on_delete=models.PROTECT,
@@ -375,7 +375,7 @@ class FrameworkNode(BaseModel):
         default="",
         help_text=(
             "Optional future transformation metadata. "
-            "Not executed by M7."
+            "M7 does not execute calculations."
         ),
     )
 
@@ -410,6 +410,11 @@ class FrameworkNode(BaseModel):
                 ],
                 name="uq_framework_node_datapoint",
             ),
+            models.UniqueConstraint(
+                fields=["framework_node"],
+                condition=models.Q(is_primary=True),
+                name="uq_primary_mapping_per_node",
+            ),
         ]
 
         indexes = [
@@ -442,7 +447,7 @@ class FrameworkNode(BaseModel):
         if not self.datapoint_id:
             return
 
-        # Only active canonical datapoints may be mapped.
+        # Only active M4 canonical datapoints may be mapped.
         if not self.datapoint.is_active:
             raise ValidationError(
                 {
@@ -453,14 +458,6 @@ class FrameworkNode(BaseModel):
                 }
             )
 
-        
-
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
-'''
-    
-
-
-
-       

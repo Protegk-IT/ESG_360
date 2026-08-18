@@ -10,6 +10,7 @@ from apps.frameworks.models import (
     Framework,
     FrameworkNode,
     FrameworkVersion,
+    DatapointMapping,
 )
 
 from apps.frameworks.serializers import (
@@ -17,6 +18,8 @@ from apps.frameworks.serializers import (
     FrameworkNodeSerializer,
     FrameworkTreeNodeSerializer,
     FrameworkVersionSerializer,
+    DatapointMappingSerializer,
+    
 )
 
 
@@ -254,3 +257,93 @@ class FrameworkVersionTreeView(APIView):
                 "tree": serializer.data,
             }
         )
+
+class DatapointMappingListCreateView(
+    generics.ListCreateAPIView
+):
+    """
+    List or create datapoint mappings.
+
+    Query parameters:
+        framework_node
+        datapoint
+        mapping_type
+        confidence
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    serializer_class = DatapointMappingSerializer
+
+    def get_queryset(self):
+        queryset = (
+            DatapointMapping.objects
+            .select_related(
+                "framework_node",
+                "framework_node__framework_version",
+                "datapoint",
+            )
+            .order_by(
+                "framework_node__path",
+                "datapoint__code",
+            )
+        )
+
+        framework_node = self.request.query_params.get(
+            "framework_node"
+        )
+
+        datapoint = self.request.query_params.get(
+            "datapoint"
+        )
+
+        mapping_type = self.request.query_params.get(
+            "mapping_type"
+        )
+
+        confidence = self.request.query_params.get(
+            "confidence"
+        )
+
+        if framework_node:
+            queryset = queryset.filter(
+                framework_node_id=framework_node
+            )
+
+        if datapoint:
+            queryset = queryset.filter(
+                datapoint_id=datapoint
+            )
+
+        if mapping_type:
+            queryset = queryset.filter(
+                mapping_type=mapping_type
+            )
+
+        if confidence:
+            queryset = queryset.filter(
+                confidence=confidence
+            )
+
+        return queryset
+
+
+class DatapointMappingDetailView(
+    generics.RetrieveUpdateDestroyAPIView
+):
+    """
+    Retrieve, update or delete a datapoint mapping.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    queryset = (
+        DatapointMapping.objects
+        .select_related(
+            "framework_node",
+            "framework_node__framework_version",
+            "datapoint",
+        )
+    )
+
+    serializer_class = DatapointMappingSerializer    

@@ -1,10 +1,10 @@
 from django.contrib import admin
 
 from .models import (
-    #DatapointMapping,
     Framework,
     FrameworkNode,
     FrameworkVersion,
+    DatapointMapping,
 )
 
 
@@ -87,7 +87,6 @@ class FrameworkNodeAdmin(admin.ModelAdmin):
         "display_order",
     )
 
-'''
 @admin.register(DatapointMapping)
 class DatapointMappingAdmin(admin.ModelAdmin):
     list_display = (
@@ -113,4 +112,10 @@ class DatapointMappingAdmin(admin.ModelAdmin):
         "confidence",
         "is_primary",
     )
-'''
+
+    autocomplete_fields = (
+        "framework_node",
+        "datapoint",
+    )
+
+

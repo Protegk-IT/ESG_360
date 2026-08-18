@@ -7,6 +7,8 @@ from .views import (
     FrameworkVersionDetailView,
     FrameworkVersionListView,
     FrameworkVersionTreeView,
+    DatapointMappingListCreateView,
+    DatapointMappingDetailView,
 )
 
 
@@ -57,6 +59,19 @@ urlpatterns = [
         "nodes/<uuid:pk>/",
         FrameworkNodeDetailView.as_view(),
         name="framework-node-detail",
+    ),
+
+
+    path(
+    "mappings/",
+    DatapointMappingListCreateView.as_view(),
+    name="mapping-list-create",
+    ),
+
+    path(
+    "mappings/<uuid:pk>/",
+    DatapointMappingDetailView.as_view(),
+    name="mapping-detail",
     ),
 ]
 

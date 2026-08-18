@@ -4,6 +4,7 @@ from apps.frameworks.models import (
     Framework,
     FrameworkNode,
     FrameworkVersion,
+    DatapointMapping,
 )
 
 
@@ -134,3 +135,82 @@ class FrameworkTreeNodeSerializer(serializers.ModelSerializer):
             many=True,
             context=self.context,
         ).data
+
+
+class DatapointMappingSerializer(serializers.ModelSerializer):
+    framework_node_code = serializers.CharField(
+        source="framework_node.code",
+        read_only=True,
+    )
+
+    datapoint_code = serializers.CharField(
+        source="datapoint.code",
+        read_only=True,
+    )
+
+    datapoint_label = serializers.CharField(
+        source="datapoint.label",
+        read_only=True,
+    )
+
+    datapoint_data_type = serializers.CharField(
+        source="datapoint.data_type",
+        read_only=True,
+    )
+
+    class Meta:
+        model = DatapointMapping
+
+        fields = [
+            "id",
+            "framework_node",
+            "framework_node_code",
+            "datapoint",
+            "datapoint_code",
+            "datapoint_label",
+            "datapoint_data_type",
+            "mapping_type",
+            "aggregation",
+            "transform_expression",
+            "is_primary",
+            "confidence",
+            "mapping_note",
+            "reviewed_at",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "framework_node_code",
+            "datapoint_code",
+            "datapoint_label",
+            "datapoint_data_type",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate(self, attrs):
+        mapping_type = attrs.get(
+            "mapping_type",
+            DatapointMapping.MappingType.DIRECT,
+        )
+
+        aggregation = attrs.get(
+            "aggregation",
+            DatapointMapping.Aggregation.NONE,
+        )
+
+        if (
+            mapping_type == DatapointMapping.MappingType.DIRECT
+            and aggregation != DatapointMapping.Aggregation.NONE
+        ):
+            raise serializers.ValidationError(
+                {
+                    "aggregation": (
+                        "Direct mappings cannot use aggregation."
+                    )
+                }
+            )
+
+        return attrs
+    
