@@ -195,6 +195,7 @@ class MaterialityAssessment(BaseModel):
         ("IN_PROGRESS", "In Progress"),
         ("COMPLETED", "Completed"),
         ("APPROVED", "Approved"),
+        ("SCORED", "Scored"),
     ]
 
     company = models.ForeignKey(
@@ -227,13 +228,13 @@ class MaterialityAssessment(BaseModel):
     primary_threshold = models.DecimalField(
         max_digits=5,
         decimal_places=2,
-        default=0,
+        default=3.50,
     )
 
     secondary_threshold = models.DecimalField(
         max_digits=5,
         decimal_places=2,
-        default=0,
+        default=3.50,
     )
 
     scale_min = models.IntegerField(default=1)
@@ -720,6 +721,72 @@ class SurveyInvitation(BaseModel):
 
     def __str__(self):
         return f"{self.survey.title} - {self.stakeholder.name}"
+
+
+class SurveyGroupLink(BaseModel):
+    """A reusable public link for anonymous respondents in one stakeholder group."""
+
+    survey = models.ForeignKey(Survey, on_delete=models.CASCADE, related_name="group_links")
+    stakeholder_group = models.ForeignKey(
+        StakeholderGroup, on_delete=models.CASCADE, related_name="survey_links"
+    )
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "survey_group_link"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["survey", "stakeholder_group"],
+                name="unique_survey_stakeholder_group_link",
+            ),
+        ]
+
+
+class SurveySubmission(BaseModel):
+    """One respondent's in-progress or submitted answer set.
+
+    Invitations produce identified submissions; group links produce anonymous
+    submissions.  The opaque response token prevents one anonymous browser
+    from overwriting another respondent's answers.
+    """
+
+    SOURCE_CHOICES = [("IDENTIFIED", "Identified invitation"), ("ANONYMOUS", "Anonymous group link")]
+
+    survey = models.ForeignKey(Survey, on_delete=models.CASCADE, related_name="submissions")
+    stakeholder_group = models.ForeignKey(
+        StakeholderGroup, on_delete=models.PROTECT, related_name="survey_submissions"
+    )
+    invitation = models.OneToOneField(
+        SurveyInvitation,
+        on_delete=models.CASCADE,
+        related_name="submission",
+        null=True,
+        blank=True,
+    )
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES)
+    response_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    opened_at = models.DateTimeField(null=True, blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "survey_submission"
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(source="IDENTIFIED", invitation__isnull=False)
+                    | models.Q(source="ANONYMOUS", invitation__isnull=True)
+                ),
+                name="survey_submission_source_matches_invitation",
+            ),
+        ]
+
+    def clean(self):
+        if self.invitation_id:
+            if self.invitation.survey_id != self.survey_id:
+                raise ValidationError("Invitation must belong to this survey.")
+            if self.invitation.stakeholder.group_id != self.stakeholder_group_id:
+                raise ValidationError("Invitation must belong to this stakeholder group.")
 # ============================================================
 # PHASE 5
 # SURVEY RESPONSE
@@ -731,6 +798,16 @@ class SurveyResponse(BaseModel):
         SurveyInvitation,
         on_delete=models.CASCADE,
         related_name="responses",
+        null=True,
+        blank=True,
+    )
+
+    submission = models.ForeignKey(
+        SurveySubmission,
+        on_delete=models.CASCADE,
+        related_name="responses",
+        null=True,
+        blank=True,
     )
 
     question = models.ForeignKey(
@@ -758,6 +835,10 @@ class SurveyResponse(BaseModel):
             models.UniqueConstraint(
                 fields=["invitation", "question"],
                 name="unique_invitation_question_response",
+            ),
+            models.UniqueConstraint(
+                fields=["submission", "question"],
+                name="unique_submission_question_response",
             ),
         ]
 
@@ -925,16 +1006,23 @@ class ScoreRunTopic(BaseModel):
     primary_score = models.DecimalField(
         max_digits=5,
         decimal_places=2,
+        null=True,
+        blank=True,
     )
 
     secondary_score = models.DecimalField(
         max_digits=5,
         decimal_places=2,
+        null=True,
+        blank=True,
     )
 
     classification = models.CharField(
         max_length=30,
     )
+
+    is_override = models.BooleanField(default=False)
+    override_reason = models.TextField(blank=True)
 
     group_breakdown = models.JSONField(default=dict, blank=True)
 

@@ -78,6 +78,7 @@ type AssessmentWithProgress =
 const STATUS_LABELS: Record<AssessmentStatus, string> = {
   DRAFT: "Draft",
   IN_PROGRESS: "In Progress",
+  SCORED: "Scored",
   COMPLETED: "Completed",
   APPROVED: "Approved",
 };
@@ -131,6 +132,7 @@ const getAssessmentProgress = (
    */
 
   if (
+    assessment.status === "SCORED" ||
     assessment.status === "COMPLETED" ||
     assessment.status === "APPROVED"
   ) {
@@ -248,6 +250,7 @@ const getCurrentStepLabel = (
    */
 
   if (
+    assessment.status === "SCORED" ||
     assessment.status === "COMPLETED" ||
     assessment.status === "APPROVED" ||
     progress >= 100
@@ -304,6 +307,7 @@ function AssessmentProgress({
 
   const completed =
     progress >= 100 ||
+    assessment.status === "SCORED" ||
     assessment.status === "COMPLETED" ||
     assessment.status === "APPROVED";
 
@@ -569,6 +573,7 @@ const getAssessmentColumns = ({
 
       const completed =
         progress >= 100 ||
+        assessment.status === "SCORED" ||
         assessment.status ===
           "COMPLETED" ||
         assessment.status ===
@@ -580,26 +585,16 @@ const getAssessmentColumns = ({
           {/* CONTINUE / COMPLETED */}
 
           {completed ? (
-            <div
-              className="
-                inline-flex
-                items-center
-                gap-1.5
-                rounded-lg
-                border
-                border-emerald-200
-                bg-emerald-50
-                px-3
-                py-2
-                text-xs
-                font-semibold
-                text-emerald-700
-              "
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => onContinue(assessment.id)}
+              className="h-9 rounded-lg border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
             >
-              <Check className="h-3.5 w-3.5" />
-
-              Completed
-            </div>
+              <Check className="mr-1.5 h-3.5 w-3.5" />
+              View
+            </Button>
           ) : (
             <Button
               type="button"

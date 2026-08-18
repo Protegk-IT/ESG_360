@@ -24,13 +24,19 @@ export const getAssessmentNav = (
     },
     {
       title: "Manage Topics",
-      url: `${base}/select-topics/`,
+      url: `${base}/select-topics`,
       icon: Network,
     },
 
     {
-      title: "Manage Stakeholder Groups",
-      url: `${base}/stakeholders/`,
+      title: "Stakeholder Groups",
+      url: `${base}/groups`,
+      icon: Users,
+    },
+
+    {
+      title: "Stakeholders",
+      url: `${base}/stakeholders`,
       icon: Users,
     },
 

@@ -115,6 +115,15 @@ export interface SurveyInvitationResult {
   survey_url: string;
 }
 
+export interface SurveyGroupLink {
+  group_id: string;
+  group_name: string;
+  token: string;
+  is_active: boolean;
+  survey_url: string;
+  anonymous_submitted_count: number;
+}
+
 
 export interface SendSurveyResponse {
   success: boolean;
@@ -213,9 +222,9 @@ export interface PublicSurveyQuestion {
  * the public survey GET endpoint.
  */
 export interface PublicSurveyInvitation {
-  id: string;
+  id: string | null;
 
-  status: SurveyInvitationStatus;
+  status: SurveyInvitationStatus | null;
 
   first_opened_at: string | null;
 
@@ -254,6 +263,8 @@ export interface PublicSurveyInfo {
  */
 export interface PublicSurveyData {
   success: boolean;
+  response_token: string;
+  respondent_type: "IDENTIFIED" | "ANONYMOUS";
 
   survey: PublicSurveyInfo;
 

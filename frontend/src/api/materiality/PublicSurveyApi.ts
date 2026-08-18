@@ -8,9 +8,10 @@ const BASE_URL =
   "/public/materiality/survey";
 
 const PublicSurveyApi = {
-  getSurvey(token: string) {
+  getSurvey(token: string, responseToken?: string) {
     return api.get<PublicSurveyGetResponse>(
-      `${BASE_URL}/${token}/`
+      `${BASE_URL}/${token}/`,
+      { params: responseToken ? { response_token: responseToken } : undefined }
     );
   },
 
@@ -20,17 +21,18 @@ const PublicSurveyApi = {
       question: string;
       value: number;
       comment?: string;
-    }
+    },
+    responseToken?: string,
   ) {
     return api.post(
       `${BASE_URL}/${token}/answer/`,
-      data
+      { ...data, response_token: responseToken }
     );
   },
 
-  submitSurvey(token: string) {
+  submitSurvey(token: string, responseToken?: string) {
     return api.post(
-      `${BASE_URL}/${token}/submit/`
+      `${BASE_URL}/${token}/submit/`, { response_token: responseToken }
     );
   },
 };

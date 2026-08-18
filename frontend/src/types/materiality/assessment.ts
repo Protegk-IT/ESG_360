@@ -7,6 +7,7 @@ export type AssessmentMode =
 export type AssessmentStatus =
   | "DRAFT"
   | "IN_PROGRESS"
+  | "SCORED"
   | "COMPLETED"
   | "APPROVED";
 
@@ -97,6 +98,7 @@ export const ASSESSMENT_STATUS_LABELS: Record<
 > = {
   DRAFT: "Draft",
   IN_PROGRESS: "In Progress",
+  SCORED: "Scored",
   COMPLETED: "Completed",
   APPROVED: "Approved",
 };

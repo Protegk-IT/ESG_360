@@ -134,7 +134,10 @@ export default function PublicSurvey() {
         setLoading(true);
         setLoadError(null);
 
-        const response = await PublicSurveyApi.getSurvey(surveyToken);
+        const response = await PublicSurveyApi.getSurvey(
+          surveyToken,
+          window.localStorage.getItem(`materiality-response:${surveyToken}`) ?? undefined,
+        );
         const result = response.data;
 
         if (isAlreadySubmittedResponse(result)) {
@@ -143,6 +146,7 @@ export default function PublicSurvey() {
         }
 
         setData(result);
+        window.localStorage.setItem(`materiality-response:${surveyToken}`, result.response_token);
 
         const initialResponses: Record<string, ResponseState> = {};
 
@@ -265,11 +269,15 @@ export default function PublicSurvey() {
     try {
       setSavingQuestion(question.id);
 
-      await PublicSurveyApi.saveResponse(surveyToken, {
+      const response = await PublicSurveyApi.saveResponse(surveyToken, {
         question: question.id,
         value,
         comment: previousResponse.comment,
-      });
+      }, window.localStorage.getItem(`materiality-response:${surveyToken}`) ?? undefined);
+      const responseToken = response.data.response_token;
+      if (responseToken) {
+        window.localStorage.setItem(`materiality-response:${surveyToken}`, responseToken);
+      }
     } catch (error) {
       console.error("Failed to save survey answer:", error);
       updateResponse(question.id, { value: previousResponse.value });
@@ -295,7 +303,10 @@ export default function PublicSurvey() {
     try {
       setSubmitting(true);
 
-      await PublicSurveyApi.submitSurvey(surveyToken);
+      await PublicSurveyApi.submitSurvey(
+        surveyToken,
+        window.localStorage.getItem(`materiality-response:${surveyToken}`) ?? undefined,
+      );
 
       setSubmitOpen(false);
       toast.success("Survey submitted successfully.");

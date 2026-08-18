@@ -30,7 +30,7 @@ def build_summary_pdf(assessment) -> bytes:
     latest score run stats, and a scored sub-topic table. Returns
     raw PDF bytes ready to hand to an HttpResponse.
     """
-    from apps.materiality.models import AssessmentTopic, ScoreRun
+    from apps.materiality.models import ScoreRun
 
     buffer = io.BytesIO()
 
@@ -120,18 +120,11 @@ def build_summary_pdf(assessment) -> bytes:
     # SCORE TABLE
     # =========================================================
 
-    assessment_topics = (
-        AssessmentTopic.objects
-        .filter(
-            assessment=assessment,
-            is_included=True,
-        )
-        .select_related(
-            "subtopic",
-            "subtopic__topic",
-            "subtopic__topic__category",
-        )
-        .order_by("display_order")
+    topic_results = (
+        latest_run.topic_results.select_related(
+            "assessment_topic__subtopic__topic__category",
+        ).order_by("assessment_topic__display_order")
+        if latest_run else []
     )
 
     table_data = [[
@@ -143,24 +136,25 @@ def build_summary_pdf(assessment) -> bytes:
         "Override",
     ]]
 
-    for assessment_topic in assessment_topics:
+    for result in topic_results:
+        assessment_topic = result.assessment_topic
         subtopic = assessment_topic.subtopic
 
         table_data.append([
             subtopic.topic.category.name,
             subtopic.name,
             (
-                str(assessment_topic.primary_score)
-                if assessment_topic.primary_score is not None
+                str(result.primary_score)
+                if result.primary_score is not None
                 else "-"
             ),
             (
-                str(assessment_topic.secondary_score)
-                if assessment_topic.secondary_score is not None
+                str(result.secondary_score)
+                if result.secondary_score is not None
                 else "-"
             ),
-            assessment_topic.classification or "NOT_SCORED",
-            "Yes" if assessment_topic.is_override else "No",
+            result.classification,
+            "Yes" if result.is_override else "No",
         ])
 
     table = Table(table_data, repeatRows=1)

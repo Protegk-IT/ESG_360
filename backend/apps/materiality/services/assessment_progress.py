@@ -73,9 +73,9 @@ def is_stakeholder_groups_complete(assessment):
 # ============================================================
 
 def is_stakeholders_complete(assessment):
-    return assessment.stakeholder_groups.filter(
-        stakeholders__isnull=False
-    ).exists()
+    # Stakeholders are optional: a group may collect anonymous responses
+    # through its shareable link.
+    return assessment.stakeholder_groups.exists()
 
 
 # ============================================================
@@ -107,7 +107,7 @@ def is_distribution_complete(assessment):
     if not survey:
         return False
 
-    return survey.invitations.exists()
+    return survey.invitations.exists() or survey.group_links.exists()
 
 
 # ============================================================
@@ -124,9 +124,8 @@ def is_scoring_complete(assessment):
     if topic_count == 0:
         return False
 
-    # /*
-    #  * Internal scoring must exist for every included topic.
-    #  */
+    if assessment.mode == "SINGLE":
+        return ScoreRun.objects.filter(assessment=assessment).exists()
 
     internal_score_count = InternalScore.objects.filter(
         assessment_topic__assessment=assessment,
@@ -141,9 +140,7 @@ def is_scoring_complete(assessment):
     #  * actually been executed.
     #  */
 
-    return ScoreRun.objects.filter(
-        assessment=assessment
-    ).exists()
+    return ScoreRun.objects.filter(assessment=assessment).exists()
 
 
 # ============================================================
@@ -278,7 +275,9 @@ def get_assessment_current_step_url(assessment):
         "Survey Distribution": f"{base}/survey/distribution",
         "Materiality Scoring": f"{base}/scoring",
         "Materiality Matrix": f"{base}/matrix",
-        "Completed": f"{base}/results",
+        # There is no separate /results route in the current platform; the
+        # matrix page is the stable final, read-only-friendly result view.
+        "Completed": f"{base}/matrix",
     }
 
     for step in steps:

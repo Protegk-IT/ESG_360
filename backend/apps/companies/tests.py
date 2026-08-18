@@ -1,7 +1,10 @@
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
 from django.test import TestCase
 
 from .models import City, Company, Country, Department, State
+from apps.organizations.models import OrgNode
+from apps.periods.models import ReportingPeriod
 from .serializers import CompanySerializer, DepartmentSerializer
 
 
@@ -95,3 +98,16 @@ class CompanySerializerValidationTests(TestCase):
         self.assertEqual(data["country_name"], "India")
         self.assertEqual(data["state_name"], "Maharashtra")
         self.assertEqual(data["city_name"], "Pune")
+
+
+class DemoFoundationSeedTests(TestCase):
+    def test_seed_demo_foundation_is_idempotent(self):
+        call_command("seed_demo_foundation", verbosity=0)
+        call_command("seed_demo_foundation", verbosity=0)
+
+        company = Company.objects.get(company_code="SAHY")
+        self.assertEqual(company.org_nodes.count(), 8)
+        self.assertEqual(company.departments.count(), 7)
+        self.assertEqual(OrgNode.objects.get(company=company, code="PLT-CHK").path, "/SAHY/BU-PREC/PLT-CHK/")
+        self.assertEqual(ReportingPeriod.objects.filter(name="FY 2025-26").count(), 1)
+        self.assertEqual(ReportingPeriod.objects.filter(parent__name="FY 2025-26").count(), 7)

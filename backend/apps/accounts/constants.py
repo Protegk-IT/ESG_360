@@ -68,6 +68,10 @@ PERMISSIONS = [
 
     ("materiality.run", "Run materiality assessment", "materiality", "CREATE"),
 
+    ("materiality.view", "View materiality assessments", "materiality", "VIEW"),
+
+    ("materiality.manage", "Manage materiality assessments", "materiality", "MANAGE"),
+
     ("materiality.approve", "Approve materiality", "materiality", "APPROVE"),
 
     ("report.create_run", "Create report run", "report", "CREATE"),
@@ -185,6 +189,8 @@ ROLE_PERMISSIONS = {
         "evidence.upload",
         "data.approve",
         "materiality.run",
+        "materiality.view",
+        "materiality.manage",
         "materiality.approve",
         "report.create_run",
         "disclosure.assign",

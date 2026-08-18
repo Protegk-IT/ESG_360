@@ -33,6 +33,7 @@ import {
 } from "@/common/DataTableToolbar";
 
 import StakeholderApi from "@/api/materiality/StakeholderApi";
+import AssessmentApi from "@/api/materiality/AssessmentApi";
 
 import StakeholderGroupDialog from "./StakeholderGroupDialog";
 import StakeholderDialog from "./StakeholderDialog";
@@ -43,6 +44,7 @@ import type {
   Stakeholder,
   StakeholderFormData,
 } from "@/types/materiality/stakeholder";
+import type { MaterialityAssessment } from "@/types/materiality/assessment";
 
 import {
   AlertCircle,
@@ -55,6 +57,9 @@ import {
   UserPlus,
   Users,
   ArrowLeft,
+  Download,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -161,6 +166,11 @@ export default function AssessmentStakeholders() {
     null
   );
 
+  const [editingStakeholder, setEditingStakeholder] = useState<Stakeholder | null>(null);
+
+  const [assessment, setAssessment] = useState<MaterialityAssessment | null>(null);
+  const isReadOnly = Boolean(assessment?.is_locked);
+
 
   /* ========================================================
      CSV INPUT
@@ -189,9 +199,11 @@ export default function AssessmentStakeholders() {
         const [
           groupsResponse,
           stakeholdersResponse,
+          assessmentResponse,
         ] = await Promise.all([
           StakeholderApi.getGroups(id),
           StakeholderApi.getStakeholders(id),
+          AssessmentApi.getById(id),
         ]);
 
         setGroups(
@@ -201,6 +213,7 @@ export default function AssessmentStakeholders() {
         setStakeholders(
           stakeholdersResponse.data
         );
+        setAssessment(assessmentResponse.data);
 
       } catch (err) {
 
@@ -476,9 +489,18 @@ const handleSaveGroup = async (
   ) => {
 
     setSelectedGroup(group);
+    setEditingStakeholder(null);
 
     setStakeholderDialogOpen(true);
 
+  };
+
+  const handleEditStakeholder = (stakeholder: Stakeholder) => {
+    const group = groups.find((item) => item.id === stakeholder.group);
+    if (!group) return;
+    setSelectedGroup(group);
+    setEditingStakeholder(stakeholder);
+    setStakeholderDialogOpen(true);
   };
 
 
@@ -499,17 +521,19 @@ const handleSaveGroup = async (
 
         setSavingStakeholder(true);
 
-        await StakeholderApi.createStakeholder(
-          id,
-          data
-        );
+        if (editingStakeholder) {
+          await StakeholderApi.updateStakeholder(id, editingStakeholder.id, data);
+        } else {
+          await StakeholderApi.createStakeholder(id, data);
+        }
 
         toast.success(
-            "Stakeholder has been added successfully.",
+            editingStakeholder ? "Stakeholder updated successfully." : "Stakeholder has been added successfully.",
         );
 
         setStakeholderDialogOpen(false);
         setSelectedGroup(null);
+        setEditingStakeholder(null);
 
         await loadData();
 
@@ -534,6 +558,22 @@ const handleSaveGroup = async (
 
       }
     };
+
+  const handleDeleteStakeholder = async (stakeholder: Stakeholder) => {
+    if (!id || !window.confirm(`Delete ${stakeholder.name}? This is only allowed before an invitation exists.`)) {
+      return;
+    }
+    try {
+      await StakeholderApi.deleteStakeholder(id, stakeholder.id);
+      toast.success("Stakeholder deleted successfully.");
+      await loadData();
+    } catch (err) {
+      console.error("Failed to delete stakeholder:", err);
+      toast.error("Unable to delete stakeholder.", {
+        description: "Stakeholders with invitation history are retained for auditability.",
+      });
+    }
+  };
 
 
   /* ========================================================
@@ -578,12 +618,10 @@ const handleSaveGroup = async (
 
       setImporting(true);
 
-     
+      const response = await StakeholderApi.importStakeholders(id, file);
 
       toast.success(
-        
-          "Stakeholders imported",
-        
+          response.data?.message ?? "Stakeholders imported",
       );
 
       await loadData();
@@ -608,6 +646,22 @@ const handleSaveGroup = async (
 
       event.target.value = "";
 
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    if (!id) return;
+    try {
+      const response = await StakeholderApi.downloadTemplate(id);
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: "text/csv" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "stakeholder-import-template.csv";
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to download stakeholder template:", err);
+      toast.error("Unable to download the CSV template.");
     }
   };
 
@@ -748,6 +802,15 @@ const handleSaveGroup = async (
 
             <Button
               variant="outline"
+              onClick={handleDownloadTemplate}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Download CSV Template
+            </Button>
+
+            {!isReadOnly && <Button
+              variant="outline"
               onClick={handleImportClick}
               disabled={importing}
               className="gap-2"
@@ -772,10 +835,10 @@ const handleSaveGroup = async (
 
               Import CSV
 
-            </Button>
+            </Button>}
 
 
-            <Button
+            {!isReadOnly && <Button
               onClick={handleAddGroup}
               className="
                 gap-2
@@ -794,7 +857,7 @@ const handleSaveGroup = async (
 
               Add Stakeholder Group
 
-            </Button>
+            </Button>}
 
           </div>
 
@@ -1141,7 +1204,7 @@ const handleSaveGroup = async (
                     to this assessment.
                   </p>
 
-                  <Button
+                  {!isReadOnly && <Button
                     onClick={
                       handleAddGroup
                     }
@@ -1162,7 +1225,7 @@ const handleSaveGroup = async (
 
                     Add Stakeholder Group
 
-                  </Button>
+                  </Button>}
 
                 </div>
               )}
@@ -1432,7 +1495,7 @@ const handleSaveGroup = async (
                             <div
                               className="
                                 hidden
-                                grid-cols-[1.2fr_1.5fr_1.2fr_1.2fr]
+                                grid-cols-[1.2fr_1.5fr_1.2fr_1.2fr_auto]
                                 gap-4
                                 border-b
                                 border-slate-200
@@ -1460,6 +1523,10 @@ const handleSaveGroup = async (
 
                               <span>
                                 Designation
+                              </span>
+
+                              <span>
+                                Action
                               </span>
 
                             </div>
@@ -1492,7 +1559,7 @@ const handleSaveGroup = async (
                                         gap-2
                                         px-4
                                         py-3
-                                        md:grid-cols-[1.2fr_1.5fr_1.2fr_1.2fr]
+                                        md:grid-cols-[1.2fr_1.5fr_1.2fr_1.2fr_auto]
                                         md:items-center
                                         md:gap-4
                                       "
@@ -1542,7 +1609,6 @@ const handleSaveGroup = async (
                                         }
                                       </p>
 
-
                                       <p
                                         className="
                                           text-xs
@@ -1567,6 +1633,15 @@ const handleSaveGroup = async (
                                           "—"
                                         }
                                       </p>
+
+                                      {!isReadOnly && <div className="flex gap-1">
+                                        <Button type="button" variant="ghost" size="icon" aria-label={`Edit ${stakeholder.name}`} onClick={() => handleEditStakeholder(stakeholder)}>
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </Button>
+                                        <Button type="button" variant="ghost" size="icon" aria-label={`Delete ${stakeholder.name}`} className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => void handleDeleteStakeholder(stakeholder)}>
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </div>}
 
                                     </div>
                                   )
@@ -1635,7 +1710,7 @@ const handleSaveGroup = async (
                               "
                             >
 
-                              <Button
+                              {!isReadOnly && <Button
                                 variant="outline"
                                 size="sm"
                                 className="
@@ -1660,7 +1735,7 @@ const handleSaveGroup = async (
 
                                 Add Stakeholder
 
-                              </Button>
+                              </Button>}
 
                             </div>
 
@@ -1777,6 +1852,7 @@ const handleSaveGroup = async (
               );
 
               setSelectedGroup(null);
+              setEditingStakeholder(null);
 
             }
 
@@ -1793,6 +1869,7 @@ const handleSaveGroup = async (
           saving={
             savingStakeholder
           }
+          stakeholder={editingStakeholder}
         />
       )}
 

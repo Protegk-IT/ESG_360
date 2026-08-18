@@ -870,16 +870,6 @@ class ScoreRunTopicSerializer(serializers.ModelSerializer):
         read_only=True,
     )
  
-    is_override = serializers.BooleanField(
-        source="assessment_topic.is_override",
-        read_only=True,
-    )
- 
-    override_reason = serializers.CharField(
-        source="assessment_topic.override_reason",
-        read_only=True,
-    )
- 
     class Meta:
         model = ScoreRunTopic
         fields = [
@@ -996,4 +986,4 @@ class AssessmentTopicOverrideSerializer(serializers.ModelSerializer):
             self.context["request"].user
         )
  
-        return super().save(**kwargs)    
+        return super().save(**kwargs)

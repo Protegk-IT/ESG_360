@@ -209,7 +209,7 @@ export default function App() {
   <Route
     path="/periods/:id/edit"
     element={
-      <ProtectedRoute permission="reporting_period.edit">
+      <ProtectedRoute permission="materiality.view">
         <ReportingPeriodForm />
       </ProtectedRoute>
     }
@@ -229,7 +229,7 @@ export default function App() {
   <Route
   path="/materiality/assessments"
   element={
-    <ProtectedRoute permission="materiality.assessment.view">
+    <ProtectedRoute permission="materiality.view">
       <AssessmentList />
     </ProtectedRoute>
   }
@@ -238,16 +238,7 @@ export default function App() {
  <Route
   path="/materiality/assessments/:id/select-topics"
   element={
-    <ProtectedRoute permission="materiality.assessment.view">
-      <AssessmentDetail />
-    </ProtectedRoute>
-  }
-/>
-
- <Route
-  path="/materiality/assessments/:id/select-topics"
-  element={
-    <ProtectedRoute permission="materiality.assessment.view">
+    <ProtectedRoute permission="materiality.view">
       <AssessmentDetail />
     </ProtectedRoute>
   }
@@ -256,26 +247,26 @@ export default function App() {
  <Route
   path="/materiality/assessments/:id/groups"
   element={
-    // <ProtectedRoute permission="materiality.assessment.view">
+    <ProtectedRoute permission="materiality.view">
       <StakeholderGroups />
-    // </ProtectedRoute>
+    </ProtectedRoute>
   }
 />
 
 <Route
   path="/materiality/assessments/:id/stakeholders"
-  element={<AssessmentStakeholders />}
+  element={<ProtectedRoute permission="materiality.view"><AssessmentStakeholders /></ProtectedRoute>}
 />
 
 
 <Route
   path="/materiality/assessments/:id/survey"
-  element={<SurveyManager />}
+  element={<ProtectedRoute permission="materiality.view"><SurveyManager /></ProtectedRoute>}
 />
 
 <Route
   path="/materiality/assessments/:id/survey/distribution"
-  element={<SurveyDistribution />}
+  element={<ProtectedRoute permission="materiality.view"><SurveyDistribution /></ProtectedRoute>}
 />
 
 <Route
@@ -291,14 +282,14 @@ export default function App() {
 
 <Route
   path="/materiality/assessments/:assessmentId/scoring"
-  element={<ScoringDashboard />}
+  element={<ProtectedRoute permission="materiality.view"><ScoringDashboard /></ProtectedRoute>}
 />
 
 
 
 <Route
   path="/materiality/assessments/:assessmentId/matrix"
-  element={<MaterialityMatrixPage />}
+  element={<ProtectedRoute permission="materiality.view"><MaterialityMatrixPage /></ProtectedRoute>}
 />
 
   <Route path="*" element={<Navigate to="/" replace />} />

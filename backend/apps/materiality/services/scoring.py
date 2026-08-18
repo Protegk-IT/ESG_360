@@ -201,14 +201,15 @@ def _survey_dimension_scores(assessment, assessment_topic, dimension):
             question__assessment_topic=assessment_topic,
             question__dimension=dimension,
             question__survey__assessment=assessment,
+            submission__submitted_at__isnull=False,
             value__isnull=False,
         )
-        .select_related("invitation__stakeholder__group")
+        .select_related("submission__stakeholder_group")
     )
 
     values_by_group: dict = {}
     for r in responses:
-        gid = r.invitation.stakeholder.group_id
+        gid = r.submission.stakeholder_group_id
         values_by_group.setdefault(gid, []).append(r.value)
 
     return [
@@ -330,7 +331,7 @@ def run_scoring(assessment, user):
     """
     from apps.materiality.models import (
         AssessmentTopic, ScoreRun, ScoreRunTopic, StakeholderGroup,
-        SurveyInvitation,
+        SurveyInvitation, SurveySubmission,
     )
 
     if assessment.is_locked:
@@ -350,7 +351,7 @@ def run_scoring(assessment, user):
     results = [score_assessment_topic(assessment, t) for t in topics]
 
     invited_count = SurveyInvitation.objects.filter(survey__assessment=assessment).count()
-    response_count = SurveyInvitation.objects.filter(
+    response_count = SurveySubmission.objects.filter(
         survey__assessment=assessment, submitted_at__isnull=False,
     ).count()
 
@@ -386,10 +387,12 @@ def run_scoring(assessment, user):
         score_run_topics.append(ScoreRunTopic(
             score_run=score_run,
             assessment_topic=topic,
-            primary_score=result.primary_score if result.primary_score is not None else Decimal("0.00"),
-            secondary_score=result.secondary_score if result.secondary_score is not None else Decimal("0.00"),
+            primary_score=result.primary_score,
+            secondary_score=result.secondary_score,
             classification=result.classification,
             group_breakdown=result.group_breakdown,  # NEW
+            is_override=result.is_override,
+            override_reason=topic.override_reason if result.is_override else "",
         ))
 
     ScoreRunTopic.objects.bulk_create(score_run_topics)

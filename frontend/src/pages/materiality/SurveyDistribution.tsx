@@ -10,15 +10,18 @@ import { useParams } from "react-router-dom";
 import AppShell from "@/components/layout/AppShell";
 
 import SurveyApi from "@/api/materiality/surveyApi";
+import AssessmentApi from "@/api/materiality/AssessmentApi";
 
 import type {
   SurveyInvitationResult,
   Survey,
+  SurveyGroupLink,
 } from "@/types/materiality/survey";
 
 import type {
   Stakeholder,
 } from "@/types/materiality/stakeholder";
+import type { MaterialityAssessment } from "@/types/materiality/assessment";
 
 import {
   Card,
@@ -116,6 +119,9 @@ export default function SurveyDistribution() {
     setSurvey,
   ] = useState<Survey | null>(null);
 
+  const [assessment, setAssessment] = useState<MaterialityAssessment | null>(null);
+  const isReadOnly = Boolean(assessment?.is_locked);
+
 
   /* ========================================================
      STAKEHOLDERS
@@ -135,6 +141,10 @@ export default function SurveyDistribution() {
     invitations,
     setInvitations,
   ] = useState<SurveyInvitationResult[]>([]);
+
+  const [groupLinks, setGroupLinks] = useState<SurveyGroupLink[]>([]);
+
+  const [preparingLinks, setPreparingLinks] = useState(false);
 
 
   /* ========================================================
@@ -269,6 +279,8 @@ export default function SurveyDistribution() {
       setSurvey(
         response.data
       );
+      const assessmentResponse = await AssessmentApi.getById(id);
+      setAssessment(assessmentResponse.data);
     },
     [id]
   );
@@ -296,6 +308,16 @@ export default function SurveyDistribution() {
       [id]
     );
 
+  const loadDistributionLinks = useCallback(async () => {
+    if (!id) return;
+    const [invitationsResponse, groupLinksResponse] = await Promise.all([
+      SurveyApi.getInvitations(id),
+      SurveyApi.getGroupLinks(id),
+    ]);
+    setInvitations(invitationsResponse.data);
+    setGroupLinks(groupLinksResponse.data);
+  }, [id]);
+
 
   /* ========================================================
      INITIAL LOAD
@@ -314,6 +336,7 @@ export default function SurveyDistribution() {
           await Promise.all([
             loadSurvey(),
             loadStakeholders(),
+            loadDistributionLinks(),
           ]);
 
         } catch (err) {
@@ -340,6 +363,7 @@ export default function SurveyDistribution() {
   }, [
     loadSurvey,
     loadStakeholders,
+    loadDistributionLinks,
   ]);
 
 
@@ -357,6 +381,7 @@ export default function SurveyDistribution() {
         await Promise.all([
           loadSurvey(),
           loadStakeholders(),
+          loadDistributionLinks(),
         ]);
 
       } catch (err) {
@@ -376,6 +401,21 @@ export default function SurveyDistribution() {
 
       }
     };
+
+  const handlePrepareDistribution = async () => {
+    if (!id) return;
+    try {
+      setPreparingLinks(true);
+      const response = await SurveyApi.prepareDistribution(id);
+      toast.success(response.data?.message ?? "Distribution links are ready.");
+      await loadDistributionLinks();
+    } catch (err) {
+      console.error("Failed to prepare distribution links:", err);
+      toast.error("Unable to prepare distribution links.");
+    } finally {
+      setPreparingLinks(false);
+    }
+  };
 
 
   /* ========================================================
@@ -817,9 +857,7 @@ export default function SurveyDistribution() {
           );
 
 
-        setInvitations(
-          response.data.invitations
-        );
+        await loadDistributionLinks();
 
 
         setSelectedStakeholderIds(
@@ -1161,12 +1199,22 @@ export default function SurveyDistribution() {
 
             </Button>
 
+            {!isReadOnly && <Button
+              type="button"
+              variant="outline"
+              disabled={preparingLinks}
+              onClick={() => void handlePrepareDistribution()}
+            >
+              {preparingLinks ? "Preparing links…" : "Prepare links"}
+            </Button>}
+
 
             <Button
               type="button"
               disabled={
                 selectedCount === 0 ||
-                !survey
+                !survey ||
+                isReadOnly
               }
               onClick={() =>
                 setSendDialogOpen(true)
@@ -2450,7 +2498,40 @@ export default function SurveyDistribution() {
           </Card>
 
         </div>
-                {/* ==================================================
+
+        {/* ==================================================
+            COPYABLE DISTRIBUTION LINKS
+        ================================================== */}
+        <Card className="border-slate-200 shadow-sm px-4">
+          <CardHeader>
+            <CardTitle className="text-base font-semibold text-[#22243A]">Shareable survey links</CardTitle>
+            <CardDescription>
+              Individual links identify one invited stakeholder. Group links accept independent anonymous respondents.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-5 lg:grid-cols-2">
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-slate-700">Individual invitation links</p>
+              {invitations.length ? invitations.map((invitation) => (
+                <div key={invitation.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
+                  <div className="min-w-0"><p className="truncate text-sm font-medium text-slate-800">{invitation.stakeholder_name}</p><p className="truncate text-xs text-slate-500">{invitation.stakeholder_email}</p></div>
+                  <Button type="button" size="sm" variant="outline" className="shrink-0 gap-1" onClick={() => handleCopyLink(invitation.survey_url)}><Copy className="h-3.5 w-3.5" />Copy</Button>
+                </div>
+              )) : <p className="text-sm text-slate-500">No known stakeholders are available yet.</p>}
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-slate-700">Anonymous stakeholder-group links</p>
+              {groupLinks.length ? groupLinks.map((groupLink) => (
+                <div key={groupLink.group_id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
+                  <div className="min-w-0"><p className="truncate text-sm font-medium text-slate-800">{groupLink.group_name}</p><p className="text-xs text-slate-500">Reusable by multiple anonymous respondents · {groupLink.anonymous_submitted_count} submitted</p></div>
+                  <Button type="button" size="sm" variant="outline" className="shrink-0 gap-1" onClick={() => handleCopyLink(groupLink.survey_url)}><Copy className="h-3.5 w-3.5" />Copy</Button>
+                </div>
+              )) : <p className="text-sm text-slate-500">No stakeholder groups are available yet.</p>}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ==================================================
             STAKEHOLDER RESPONSE DETAILS
         ================================================== */}
 

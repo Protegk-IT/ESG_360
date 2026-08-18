@@ -50,6 +50,21 @@ const StakeholderApi = {
     );
   },
 
+  updateStakeholder(
+    assessmentId: string,
+    stakeholderId: string,
+    data: Partial<StakeholderFormData>
+  ) {
+    return api.patch<Stakeholder>(
+      `${BASE_URL}/${assessmentId}/stakeholders/${stakeholderId}/`,
+      data
+    );
+  },
+
+  deleteStakeholder(assessmentId: string, stakeholderId: string) {
+    return api.delete(`${BASE_URL}/${assessmentId}/stakeholders/${stakeholderId}/`);
+  },
+
   /* ========================================================
      CSV IMPORT
   ======================================================== */
@@ -70,6 +85,13 @@ const StakeholderApi = {
           "Content-Type": "multipart/form-data",
         },
       }
+    );
+  },
+
+  downloadTemplate(assessmentId: string) {
+    return api.get(
+      `${BASE_URL}/${assessmentId}/stakeholder-import-template/`,
+      { responseType: "blob" }
     );
   },
 };

@@ -13,6 +13,8 @@ from rest_framework.views import APIView
 from rest_framework.exceptions import ValidationError,NotFound
 
 from apps.accounts.viewsets import RBACModelViewSet
+from apps.accounts.permissions import HasRolePermission
+from apps.accounts.services.rbac import RBACService
 from apps.accounts import viewsets
 from apps.companies.models import Company
 from django.utils import timezone
@@ -38,6 +40,8 @@ from .models import (
     ScaleOption,
     SurveyQuestion,
     SurveyInvitation,
+    SurveyGroupLink,
+    SurveySubmission,
     SurveyResponse,
     InternalScore, 
     ScoreRun,
@@ -63,7 +67,44 @@ from .serializers import (
     AssessmentTopicOverrideSerializer,
 )
 
+class HasCompanyWideMaterialityPermission(HasRolePermission):
+    """Materiality assessments are company/reporting-period level records.
+
+    Until an assessment has an explicit OrgNode owner, an assignment scoped to
+    a child node must not expose the whole company assessment.  A null scope
+    is the platform's explicit company-wide grant.
+    """
+
+    def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+        if request.user.is_superuser:
+            return True
+        code = view.get_required_permission()
+        assignments = RBACService.get_assignments_for_permission(
+            request.user, code, module_code="materiality"
+        )
+        # A null scope is explicitly company-wide.  The legal-entity root is
+        # the equivalent represented through the organisation tree, and also
+        # covers the whole company.  Any lower node remains too narrow for a
+        # company-level assessment.
+        return assignments.filter(org_node__isnull=True).exists() or assignments.filter(
+            org_node__node_type="LEGAL_ENTITY", org_node__parent__isnull=True
+        ).exists()
+
+
+class MaterialityPermissionMixin:
+    """RBAC for non-viewset materiality catalogue endpoints."""
+
+    def get_required_permission(self):
+        return "materiality.view" if self.request.method in ("GET", "HEAD", "OPTIONS") else "materiality.manage"
+
+    def get_permissions(self):
+        return [IsAuthenticated(), HasCompanyWideMaterialityPermission()]
+
+
 class TopicCategoryListCreateView(
+    MaterialityPermissionMixin,
     generics.ListCreateAPIView
 ):
     """
@@ -75,8 +116,6 @@ class TopicCategoryListCreateView(
     """
 
     serializer_class = TopicCategorySerializer
-    permission_classes = [IsAuthenticated]
-
     def get_queryset(self):
         return TopicCategory.objects.all().order_by(
             "display_order",
@@ -85,6 +124,7 @@ class TopicCategoryListCreateView(
 
 
 class MaterialTopicListCreateView(
+    MaterialityPermissionMixin,
     generics.ListCreateAPIView
 ):
     """
@@ -97,8 +137,6 @@ class MaterialTopicListCreateView(
     """
 
     serializer_class = MaterialTopicSerializer
-    permission_classes = [IsAuthenticated]
-
     def get_queryset(self):
         user = self.request.user
 
@@ -155,6 +193,7 @@ class MaterialTopicListCreateView(
 
 
 class MaterialSubTopicListCreateView(
+    MaterialityPermissionMixin,
     generics.ListCreateAPIView
 ):
     """
@@ -167,8 +206,6 @@ class MaterialSubTopicListCreateView(
     """
 
     serializer_class = MaterialSubTopicSerializer
-    permission_classes = [IsAuthenticated]
-
     def get_queryset(self):
         user = self.request.user
 
@@ -267,13 +304,52 @@ from .serializers import (
 )
 
 
-class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
+class MaterialityAssessmentViewSet(RBACModelViewSet):
 
     queryset = MaterialityAssessment.objects.all()
 
     serializer_class = MaterialityAssessmentSerializer
 
-    permission_classes = [IsAuthenticated]
+    module_code = "materiality"
+    permission_classes = (IsAuthenticated, HasCompanyWideMaterialityPermission)
+    ACTION_PERMISSION_MAP = {
+        "list": "view", "retrieve": "view", "create": "manage", "update": "manage",
+        "partial_update": "manage", "destroy": "manage",
+        "reporting_periods": "view", "topics": "view", "groups": "manage", "group_detail": "manage",
+        "stakeholders": "manage", "stakeholder_detail": "manage",
+        "import_stakeholders": "manage", "stakeholder_template": "view",
+        "survey": "manage", "survey_questions": "manage", "generate_survey": "manage",
+        "send_survey": "manage", "survey_status": "view", "open_survey": "manage",
+        "close_survey": "manage", "group_links": "view", "survey_invitations": "view", "prepare_distribution": "manage", "scales": "manage",
+        "internal_scores": "manage", "run_score": "run", "results": "view",
+        "override_topic": "manage", "score_runs": "view", "export_csv": "view", "export_pdf": "view",
+        "select_topics": "manage",
+    }
+
+    READ_ACTIONS = {
+        "topics", "groups", "stakeholders", "survey", "survey_questions", "scales",
+        "internal_scores", "group_links", "survey_invitations",
+    }
+
+    def get_required_permission(self):
+        if self.action in self.READ_ACTIONS and self.request.method in {"GET", "HEAD", "OPTIONS"}:
+            return "materiality.view"
+        return super().get_required_permission()
+
+    @staticmethod
+    def _assert_assessment_writable(assessment):
+        if assessment.is_locked:
+            raise ValidationError("This assessment is approved and locked; it is read-only.")
+
+    @staticmethod
+    def _survey_url(token):
+        return f"{settings.FRONTEND_URL.rstrip('/')}/survey/{token}"
+
+    @staticmethod
+    def _ensure_invitation(survey, stakeholder):
+        return SurveyInvitation.objects.get_or_create(
+            survey=survey, stakeholder=stakeholder, defaults={"status": "NOT_SENT"},
+        )[0]
 
     def get_serializer_class(self):
         if self.action == "groups":
@@ -464,6 +540,10 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
     def select_topics(self, request, pk=None):
 
         assessment = self.get_object()
+        self._assert_assessment_writable(assessment)
+
+        if Survey.objects.filter(assessment=assessment).exists():
+            raise ValidationError("Topics cannot change after a survey has been generated.")
 
         serializer = SelectAssessmentTopicsSerializer(
             data=request.data
@@ -571,20 +651,42 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
 
             return Response(serializer.data)
 
+        self._assert_assessment_writable(assessment)
         serializer = StakeholderGroupSerializer(
             data=request.data
         )
 
         serializer.is_valid(raise_exception=True)
 
-        serializer.save(
+        group = serializer.save(
             assessment=assessment
         )
 
+        survey = Survey.objects.filter(assessment=assessment).first()
+        if survey:
+            SurveyGroupLink.objects.get_or_create(survey=survey, stakeholder_group=group)
+
         return Response(
-            serializer.data,
+            StakeholderGroupSerializer(group).data,
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=True, methods=["patch", "delete"], url_path=r"groups/(?P<group_id>[^/.]+)")
+    def group_detail(self, request, pk=None, group_id=None):
+        assessment = self.get_object()
+        self._assert_assessment_writable(assessment)
+        group = StakeholderGroup.objects.filter(id=group_id, assessment=assessment).first()
+        if not group:
+            raise NotFound("Stakeholder group does not belong to this assessment.")
+        if request.method == "DELETE":
+            if group.survey_submissions.filter(submitted_at__isnull=False).exists():
+                raise ValidationError("A stakeholder group with submitted responses cannot be deleted.")
+            group.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        serializer = StakeholderGroupSerializer(group, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
     @action(
     detail=True,
@@ -608,6 +710,7 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
 
             return Response(serializer.data)
 
+        self._assert_assessment_writable(assessment)
         serializer = StakeholderSerializer(
             data=request.data,
             context={
@@ -617,12 +720,54 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
 
         serializer.is_valid(raise_exception=True)
 
-        serializer.save()
+        stakeholder = serializer.save()
+        survey = Survey.objects.filter(assessment=assessment).first()
+        if survey:
+            self._ensure_invitation(survey, stakeholder)
 
         return Response(
-            serializer.data,
+            StakeholderSerializer(stakeholder).data,
             status=status.HTTP_201_CREATED,
     )
+
+    @action(detail=True, methods=["patch", "delete"], url_path=r"stakeholders/(?P<stakeholder_id>[^/.]+)")
+    def stakeholder_detail(self, request, pk=None, stakeholder_id=None):
+        assessment = self.get_object()
+        self._assert_assessment_writable(assessment)
+        stakeholder = Stakeholder.objects.filter(
+            id=stakeholder_id, group__assessment=assessment,
+        ).select_related("group").first()
+        if not stakeholder:
+            raise NotFound("Stakeholder does not belong to this assessment.")
+
+        invitations = stakeholder.survey_invitations.all()
+        protected_invitations = invitations.filter(
+            models.Q(sent_at__isnull=False)
+            | models.Q(first_opened_at__isnull=False)
+            | models.Q(submitted_at__isnull=False)
+            | models.Q(submission__isnull=False)
+        )
+        if request.method == "DELETE":
+            if protected_invitations.exists():
+                raise ValidationError(
+                    "This stakeholder cannot be deleted because survey invitation history exists. "
+                    "Keep the record for auditability."
+                )
+            # A generated but never-used manual link has no respondent history.
+            # Remove it with the stakeholder so a replacement can be added cleanly.
+            invitations.delete()
+            stakeholder.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        if "group" in request.data and str(request.data["group"]) != str(stakeholder.group_id) and protected_invitations.exists():
+            raise ValidationError("A stakeholder with invitation history cannot be moved to another group.")
+        if "email" in request.data and str(request.data["email"]).strip().lower() != stakeholder.email.lower() and protected_invitations.exists():
+            raise ValidationError("Email cannot change after a survey invitation has been created.")
+        serializer = StakeholderSerializer(
+            stakeholder, data=request.data, partial=True, context={"assessment": assessment},
+        )
+        serializer.is_valid(raise_exception=True)
+        return Response(StakeholderSerializer(serializer.save()).data)
 
     @action(
         detail=True,
@@ -636,6 +781,7 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
         # -----------------------------------------
 
         assessment = self.get_object()
+        self._assert_assessment_writable(assessment)
 
         # -----------------------------------------
         # 2. Get uploaded file
@@ -666,9 +812,8 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
                 "file": "CSV file must be UTF-8 encoded."
             })
 
-        reader = csv.DictReader(
-            io.StringIO(decoded_file)
-        )
+        csv_lines = [line for line in decoded_file.splitlines() if not line.lstrip().startswith("#")]
+        reader = csv.DictReader(io.StringIO("\n".join(csv_lines)))
 
         if not reader.fieldnames:
             raise ValidationError({
@@ -810,6 +955,9 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
                     })
 
                 stakeholder = serializer.save()
+                survey = Survey.objects.filter(assessment=assessment).first()
+                if survey:
+                    self._ensure_invitation(survey, stakeholder)
 
                 created_stakeholders.append(
                     stakeholder
@@ -829,6 +977,18 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
             },
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=True, methods=["get"], url_path="stakeholder-import-template")
+    def stakeholder_template(self, request, pk=None):
+        assessment = self.get_object()
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = 'attachment; filename="stakeholder-import-template.csv"'
+        writer = csv.writer(response)
+        writer.writerow(["# Fill in one row per stakeholder. 'group' must be one of these stakeholder-group UUIDs:"])
+        for group in StakeholderGroup.objects.filter(assessment=assessment).order_by("name"):
+            writer.writerow([f"# {group.name}: {group.id}"])
+        writer.writerow(["group", "name", "email", "organisation", "designation"])
+        return response
 
 
     @action(detail=True,methods=["get", "patch"],url_path="survey",)
@@ -853,6 +1013,7 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
             )
 
         # PATCH
+        self._assert_assessment_writable(assessment)
         serializer = SurveySerializer(
             survey,
             data=request.data,
@@ -869,6 +1030,96 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
             serializer.data,
             status=status.HTTP_200_OK,
         )
+
+    @action(detail=True, methods=["get"], url_path="survey/status")
+    def survey_status(self, request, pk=None):
+        survey = Survey.objects.filter(assessment=self.get_object()).first()
+        if not survey:
+            raise NotFound("Survey has not been generated for this assessment.")
+        return Response(SurveySerializer(survey).data)
+
+    @action(detail=True, methods=["post"], url_path="survey/open")
+    def open_survey(self, request, pk=None):
+        assessment = self.get_object()
+        self._assert_assessment_writable(assessment)
+        survey = Survey.objects.filter(assessment=assessment).first()
+        if not survey:
+            raise ValidationError("Survey has not been generated for this assessment.")
+        if survey.status == "CLOSED":
+            raise ValidationError("A closed survey cannot be reopened; create a new assessment if another collection round is required.")
+        survey.status = "OPEN"
+        survey.opens_at = survey.opens_at or timezone.now()
+        survey.save(update_fields=["status", "opens_at"])
+        return Response(SurveySerializer(survey).data)
+
+    @action(detail=True, methods=["post"], url_path="survey/close")
+    def close_survey(self, request, pk=None):
+        assessment = self.get_object()
+        self._assert_assessment_writable(assessment)
+        survey = Survey.objects.filter(assessment=assessment).first()
+        if not survey:
+            raise ValidationError("Survey has not been generated for this assessment.")
+        survey.status = "CLOSED"
+        survey.closes_at = timezone.now()
+        survey.save(update_fields=["status", "closes_at"])
+        return Response(SurveySerializer(survey).data)
+
+    @action(detail=True, methods=["get"], url_path="survey/group-links")
+    def group_links(self, request, pk=None):
+        survey = Survey.objects.filter(assessment=self.get_object()).first()
+        if not survey:
+            raise ValidationError("Survey has not been generated for this assessment.")
+        anonymous_counts = {
+            row["stakeholder_group_id"]: row["submitted_count"]
+            for row in SurveySubmission.objects.filter(
+                survey=survey, source="ANONYMOUS", submitted_at__isnull=False,
+            ).values("stakeholder_group_id").annotate(submitted_count=models.Count("id"))
+        }
+        links = []
+        for link in SurveyGroupLink.objects.filter(survey=survey).select_related("stakeholder_group"):
+            links.append({"group_id": link.stakeholder_group_id, "group_name": link.stakeholder_group.name, "token": str(link.token),
+                          "is_active": link.is_active, "survey_url": self._survey_url(link.token),
+                          "anonymous_submitted_count": anonymous_counts.get(link.stakeholder_group_id, 0)})
+        return Response(links)
+
+    @action(detail=True, methods=["get"], url_path="survey/invitations")
+    def survey_invitations(self, request, pk=None):
+        survey = Survey.objects.filter(assessment=self.get_object()).first()
+        if not survey:
+            raise ValidationError("Survey has not been generated for this assessment.")
+        invitations = SurveyInvitation.objects.filter(survey=survey).select_related("stakeholder")
+        return Response([
+            {
+                "id": invitation.id,
+                "stakeholder_id": invitation.stakeholder_id,
+                "stakeholder_name": invitation.stakeholder.name,
+                "stakeholder_email": invitation.stakeholder.email,
+                "status": invitation.status,
+                "sent_at": invitation.sent_at,
+                "token": str(invitation.token),
+                "survey_url": self._survey_url(invitation.token),
+            }
+            for invitation in invitations
+        ])
+
+    @action(detail=True, methods=["post"], url_path="survey/prepare-distribution")
+    @transaction.atomic
+    def prepare_distribution(self, request, pk=None):
+        """Idempotently provision copyable links without sending email."""
+        assessment = self.get_object()
+        self._assert_assessment_writable(assessment)
+        survey = Survey.objects.filter(assessment=assessment).first()
+        if not survey:
+            raise ValidationError("Survey has not been generated for this assessment.")
+        for group in StakeholderGroup.objects.filter(assessment=assessment):
+            SurveyGroupLink.objects.get_or_create(survey=survey, stakeholder_group=group)
+        for stakeholder in Stakeholder.objects.filter(group__assessment=assessment):
+            self._ensure_invitation(survey, stakeholder)
+        return Response({
+            "message": "Distribution links are ready. No email invitations were sent.",
+            "group_link_count": SurveyGroupLink.objects.filter(survey=survey).count(),
+            "invitation_count": SurveyInvitation.objects.filter(survey=survey).count(),
+        })
     
     @action(
         detail=True,
@@ -912,6 +1163,8 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
         # =========================================================
         # POST
         # =========================================================
+
+        self._assert_assessment_writable(assessment)
 
         serializer = ScaleDefinitionSerializer(
             data=request.data
@@ -1072,6 +1325,8 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
         # PATCH
         # -----------------------------------------
 
+        self._assert_assessment_writable(assessment)
+
         question_id = request.data.get("id")
 
         if not question_id:
@@ -1139,6 +1394,7 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
         # =========================================================
 
         assessment = self.get_object()
+        self._assert_assessment_writable(assessment)
 
         # =========================================================
         # 2. CHECK WHETHER SURVEY ALREADY EXISTS
@@ -1288,7 +1544,7 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
         survey = Survey.objects.create(
             assessment=assessment,
             title=f"{assessment.name} Survey",
-            status="DRAFT",
+            status="READY",
         )
 
         # =========================================================
@@ -1368,6 +1624,11 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
             questions
         )
 
+        for group in StakeholderGroup.objects.filter(assessment=assessment):
+            SurveyGroupLink.objects.get_or_create(survey=survey, stakeholder_group=group)
+        for stakeholder in Stakeholder.objects.filter(group__assessment=assessment):
+            self._ensure_invitation(survey, stakeholder)
+
         # =========================================================
         # 9. SURVEY LENGTH WARNING
         # =========================================================
@@ -1438,6 +1699,7 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
         # ========================================================
 
         assessment = self.get_object()
+        self._assert_assessment_writable(assessment)
 
         # ========================================================
         # 2. GET SURVEY
@@ -1451,6 +1713,9 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
             raise ValidationError(
                 "Survey has not been generated for this assessment."
             )
+
+        if survey.status != "OPEN":
+            raise ValidationError("Open the survey before sending invitations.")
 
         # ========================================================
         # 3. GET STAKEHOLDER IDS
@@ -1937,23 +2202,12 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
     def export_csv(self, request, pk=None):
  
         assessment = self.get_object()
- 
-        assessment_topics = (
-            AssessmentTopic.objects
-            .filter(
-                assessment=assessment,
-                is_included=True,
-            )
-            .select_related(
-                "subtopic",
-                "subtopic__topic",
-                "subtopic__topic__category",
-                "override_by",
-            )
-            .order_by(
-                "display_order",
-            )
-        )
+        latest_run = ScoreRun.objects.filter(assessment=assessment).order_by("-run_at").first()
+        if not latest_run:
+            raise ValidationError("Run scoring before exporting results.")
+        topic_results = latest_run.topic_results.select_related(
+            "assessment_topic__subtopic__topic__category"
+        ).order_by("assessment_topic__display_order")
  
         buffer = io.StringIO()
  
@@ -1972,7 +2226,8 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
             "Overridden by",
         ])
  
-        for assessment_topic in assessment_topics:
+        for result in topic_results:
+            assessment_topic = result.assessment_topic
  
             subtopic = assessment_topic.subtopic
             topic = subtopic.topic
@@ -1984,28 +2239,19 @@ class MaterialityAssessmentViewSet(viewsets.ModelViewSet):
                 subtopic.code,
                 subtopic.name,
                 (
-                    assessment_topic.primary_score
-                    if assessment_topic.primary_score is not None
+                    result.primary_score
+                    if result.primary_score is not None
                     else ""
                 ),
                 (
-                    assessment_topic.secondary_score
-                    if assessment_topic.secondary_score is not None
+                    result.secondary_score
+                    if result.secondary_score is not None
                     else ""
                 ),
-                assessment_topic.classification or "NOT_SCORED",
-                "Yes" if assessment_topic.is_override else "No",
-                assessment_topic.override_reason,
-                (
-                    assessment_topic.override_by.get_full_name()
-                    if assessment_topic.override_by
-                    and hasattr(assessment_topic.override_by, "get_full_name")
-                    else (
-                        str(assessment_topic.override_by)
-                        if assessment_topic.override_by
-                        else ""
-                    )
-                ),
+                result.classification,
+                "Yes" if result.is_override else "No",
+                result.override_reason,
+                "",
             ])
  
         response = HttpResponse(
@@ -2817,5 +3063,167 @@ class PublicSurveySubmitView(APIView):
         )
 
 
-    
-    
+# Public-survey v2 ----------------------------------------------------------
+# A link token identifies a survey audience, not an anonymous person.  Each
+# anonymous browser receives a separate opaque response token, so concurrent
+# people using the same group link never overwrite one another's drafts.
+
+def _public_link(token, lock=False):
+    try:
+        token = uuid.UUID(str(token))
+    except (ValueError, TypeError, AttributeError):
+        raise NotFound(GENERIC_SURVEY_ACCESS_ERROR)
+    invitation_qs = SurveyInvitation.objects.select_related("survey", "stakeholder__group")
+    group_qs = SurveyGroupLink.objects.select_related("survey", "stakeholder_group")
+    if lock:
+        invitation_qs, group_qs = invitation_qs.select_for_update(), group_qs.select_for_update()
+    invitation = invitation_qs.filter(token=token).first()
+    group_link = None if invitation else group_qs.filter(token=token, is_active=True).first()
+    if not invitation and not group_link:
+        raise NotFound(GENERIC_SURVEY_ACCESS_ERROR)
+    survey = invitation.survey if invitation else group_link.survey
+    now = timezone.now()
+    if survey.status != "OPEN" or (survey.opens_at and survey.opens_at > now) or (survey.closes_at and survey.closes_at < now):
+        raise NotFound(GENERIC_SURVEY_ACCESS_ERROR)
+    return invitation, group_link
+
+
+def _public_submission(request, invitation, group_link, lock=False):
+    if invitation:
+        submission, _ = SurveySubmission.objects.get_or_create(
+            invitation=invitation,
+            defaults={
+                "survey": invitation.survey,
+                "stakeholder_group": invitation.stakeholder.group,
+                "source": "IDENTIFIED",
+                "opened_at": timezone.now(),
+            },
+        )
+        return submission
+    token = request.query_params.get("response_token") or request.data.get("response_token")
+    if token:
+        try:
+            submission = SurveySubmission.objects.filter(
+                response_token=uuid.UUID(str(token)), survey=group_link.survey,
+                stakeholder_group=group_link.stakeholder_group, source="ANONYMOUS",
+            ).first()
+        except (ValueError, TypeError, AttributeError):
+            submission = None
+        if submission:
+            return submission
+    return SurveySubmission.objects.create(
+        survey=group_link.survey,
+        stakeholder_group=group_link.stakeholder_group,
+        source="ANONYMOUS",
+        opened_at=timezone.now(),
+    )
+
+
+def _public_payload(submission):
+    survey = submission.survey
+    responses = {r.question_id: r for r in SurveyResponse.objects.filter(submission=submission)}
+    questions = SurveyQuestion.objects.filter(survey=survey).select_related(
+        "assessment_topic__subtopic__topic__category", "scale"
+    ).prefetch_related("scale__options").order_by("display_order")
+    question_data = []
+    for question in questions:
+        saved = responses.get(question.id)
+        subtopic = question.assessment_topic.subtopic
+        question_data.append({
+            "id": question.id, "assessment_topic": question.assessment_topic_id,
+            "category_name": subtopic.topic.category.name, "topic_name": subtopic.topic.name,
+            "subtopic_name": subtopic.name, "dimension": question.dimension,
+            "question_text": question.question_text, "help_text": question.help_text,
+            "display_order": question.display_order, "is_required": question.is_required,
+            "scale": {"id": question.scale_id, "dimension": question.scale.dimension,
+                      "name": question.scale.name,
+                      "options": [{"id": o.id, "value": o.value, "label": o.label, "description": o.description} for o in question.scale.options.all()]},
+            "response": None if not saved else {"id": saved.id, "question": saved.question_id,
+                "value": saved.value, "comment": saved.comment, "answered_at": saved.answered_at},
+        })
+    return {
+        "success": True, "response_token": str(submission.response_token),
+        "respondent_type": submission.source,
+        "survey": {"id": survey.id, "title": survey.title, "intro_text": survey.intro_text,
+                   "closing_text": survey.closing_text, "status": survey.status,
+                   "opens_at": survey.opens_at, "closes_at": survey.closes_at},
+        "invitation": {"id": submission.invitation_id, "status": submission.invitation.status if submission.invitation_id else None,
+                       "first_opened_at": submission.invitation.first_opened_at if submission.invitation_id else submission.opened_at,
+                       "submitted_at": submission.submitted_at, "is_submitted": bool(submission.submitted_at)},
+        "stakeholder_group": {"id": submission.stakeholder_group_id, "name": submission.stakeholder_group.name},
+        "questions": question_data,
+    }
+
+
+class PublicSurveyView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
+
+    @transaction.atomic
+    def get(self, request, token):
+        invitation, group_link = _public_link(token, lock=True)
+        submission = _public_submission(request, invitation, group_link, lock=True)
+        if submission.submitted_at:
+            return Response({"success": True, "submitted": True, "submitted_at": submission.submitted_at})
+        if invitation and not invitation.first_opened_at:
+            invitation.first_opened_at, invitation.status = timezone.now(), "OPENED"
+            invitation.save(update_fields=["first_opened_at", "status"])
+        return Response(_public_payload(submission))
+
+
+class PublicSurveyAnswerView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
+
+    @transaction.atomic
+    def post(self, request, token):
+        invitation, group_link = _public_link(token, lock=True)
+        submission = _public_submission(request, invitation, group_link, lock=True)
+        if submission.submitted_at:
+            raise ValidationError({"detail": "This survey has already been submitted."})
+        question_id, value = request.data.get("question"), request.data.get("value")
+        question = SurveyQuestion.objects.select_related("scale").filter(id=question_id, survey=submission.survey).first()
+        if not question:
+            raise ValidationError({"question": "Question does not belong to this survey."})
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            raise ValidationError({"value": "Value must be a number."})
+        if not ScaleOption.objects.filter(scale=question.scale, value=value).exists():
+            raise ValidationError({"value": "Value is not valid for this question's scale."})
+        response, created = SurveyResponse.objects.update_or_create(
+            submission=submission, question=question,
+            defaults={"invitation": invitation, "value": value,
+                      "comment": str(request.data.get("comment", "")).strip(), "answered_at": timezone.now()},
+        )
+        return Response({"success": True, "id": response.id, "question": response.question_id,
+                         "value": response.value, "comment": response.comment, "answered_at": response.answered_at,
+                         "response_token": str(submission.response_token)},
+                        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+class PublicSurveySubmitView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
+
+    @transaction.atomic
+    def post(self, request, token):
+        invitation, group_link = _public_link(token, lock=True)
+        submission = _public_submission(request, invitation, group_link, lock=True)
+        if submission.submitted_at:
+            return Response({"success": True, "submitted": True, "submitted_at": submission.submitted_at})
+        required = set(SurveyQuestion.objects.filter(survey=submission.survey, is_required=True).values_list("id", flat=True))
+        answered = set(SurveyResponse.objects.filter(submission=submission, question_id__in=required).values_list("question_id", flat=True))
+        missing = required - answered
+        if missing:
+            return Response({"success": False, "message": "All required questions must be answered before submitting.", "missing_question_ids": list(missing)}, status=status.HTTP_400_BAD_REQUEST)
+        now = timezone.now()
+        submission.submitted_at = now
+        submission.save(update_fields=["submitted_at"])
+        if invitation:
+            invitation.status, invitation.submitted_at = "SUBMITTED", now
+            invitation.save(update_fields=["status", "submitted_at"])
+        return Response({"success": True, "submitted": True, "submitted_at": now})

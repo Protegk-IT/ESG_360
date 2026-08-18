@@ -14,9 +14,15 @@ import os
 from pathlib import Path
 import sys
 from django.core.exceptions import ImproperlyConfigured
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Local secrets/configuration stay in backend/.env (gitignored). Deployment
+# environments can still supply real environment variables, which take
+# precedence over values in this file.
+load_dotenv(BASE_DIR / ".env", override=False)
 
 
  

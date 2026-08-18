@@ -10,6 +10,7 @@ import type {
 import type {
   Stakeholder,
 } from "@/types/materiality/stakeholder";
+import type { SurveyGroupLink, SurveyInvitationResult } from "@/types/materiality/survey";
 
 
 const BASE_URL =
@@ -59,6 +60,22 @@ const SurveyApi = {
     );
   },
 
+  getInvitations(assessmentId: string) {
+    return api.get<SurveyInvitationResult[]>(
+      `${BASE_URL}/${assessmentId}/survey/invitations/`
+    );
+  },
+
+  getGroupLinks(assessmentId: string) {
+    return api.get<SurveyGroupLink[]>(
+      `${BASE_URL}/${assessmentId}/survey/group-links/`
+    );
+  },
+
+  prepareDistribution(assessmentId: string) {
+    return api.post(`${BASE_URL}/${assessmentId}/survey/prepare-distribution/`);
+  },
+
   sendSurvey(
     assessmentId: string,
     stakeholderIds: string[]
@@ -79,14 +96,22 @@ const SurveyApi = {
     );
   },
 
+  openSurvey(assessmentId: string) {
+    return api.post<Survey>(`${BASE_URL}/${assessmentId}/survey/open/`);
+  },
+
+  closeSurvey(assessmentId: string) {
+    return api.post<Survey>(`${BASE_URL}/${assessmentId}/survey/close/`);
+  },
+
 updateQuestion(
   assessmentId: string,
   questionId: string,
   data: Partial<SurveyQuestion>
 ) {
   return api.patch<SurveyQuestion>(
-    `${BASE_URL}/${assessmentId}/survey/questions/${questionId}/`,
-    data
+    `${BASE_URL}/${assessmentId}/survey/questions/`,
+    { ...data, id: questionId }
   );
 },
 };

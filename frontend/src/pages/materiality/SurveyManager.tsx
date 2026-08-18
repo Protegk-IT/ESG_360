@@ -86,7 +86,6 @@ import {
   FileText,
   Loader2,
   Pencil,
-  RefreshCw,
   Sparkles,
 } from "lucide-react";
 
@@ -359,6 +358,23 @@ export default function SurveyManager() {
     }
   };
 
+  const handleSurveyLifecycle = async (next: "open" | "close") => {
+    if (!id || !survey) return;
+    try {
+      setSavingSurvey(true);
+      const response = next === "open"
+        ? await SurveyApi.openSurvey(id)
+        : await SurveyApi.closeSurvey(id);
+      setSurvey(response.data);
+      toast.success(next === "open" ? "Survey is now open for responses." : "Survey has been closed.");
+    } catch (err) {
+      console.error("Failed to update survey lifecycle:", err);
+      toast.error("Unable to update survey status.");
+    } finally {
+      setSavingSurvey(false);
+    }
+  };
+
   /* ========================================================
      SAVE SURVEY SETTINGS
   ======================================================== */
@@ -524,30 +540,16 @@ export default function SurveyManager() {
                 {questionCount} question{questionCount === 1 ? "" : "s"} · ~{estimatedMinutes} min
               </Badge>
 
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleGenerateQuestions}
-                      disabled={generating}
-                      className="gap-2 border-[#DDD8FF] text-[#4A3FD6] hover:bg-[#F7F5FF]"
-                    >
-                      {generating ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-4 w-4" />
-                      )}
-                      Regenerate
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-[220px] text-xs">
-                    Rebuilds the generated question set from the current included assessment topics.
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              {survey.status !== "OPEN" && survey.status !== "CLOSED" && (
+                <Button type="button" size="sm" onClick={() => void handleSurveyLifecycle("open")} disabled={savingSurvey}>
+                  Open survey
+                </Button>
+              )}
+              {survey.status === "OPEN" && (
+                <Button type="button" variant="outline" size="sm" onClick={() => void handleSurveyLifecycle("close")} disabled={savingSurvey}>
+                  Close survey
+                </Button>
+              )}
 
             </div>
           )}
