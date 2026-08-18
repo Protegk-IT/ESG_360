@@ -31,6 +31,7 @@ urlpatterns = [
     path("api/materiality/", include("apps.materiality.urls")),
     path("api/public/materiality/", include(materiality_public_urls)),
     path("api/imports/", include("apps.imports.urls")),
+    path("api/datapoints/", include("apps.datapoints.urls")),
 ]
 
 if settings.DEBUG:
