@@ -19,7 +19,7 @@ from apps.frameworks.serializers import (
     FrameworkTreeNodeSerializer,
     FrameworkVersionSerializer,
     DatapointMappingSerializer,
-    
+
 )
 
 
@@ -346,4 +346,4 @@ class DatapointMappingDetailView(
         )
     )
 
-    serializer_class = DatapointMappingSerializer    
+    serializer_class = DatapointMappingSerializer 
