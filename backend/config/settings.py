@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'apps.accounts',
     'apps.companies',
     'apps.organizations',
+    "apps.frameworks",
     'apps.periods',
     "apps.materiality",
     'apps.datapoints',
