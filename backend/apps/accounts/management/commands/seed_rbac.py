@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand
 from apps.accounts.constants import (
     PERMISSIONS,
+    DEPRECATED_PERMISSION_CODES,
     ROLES,
     ROLE_PERMISSIONS,
 )
@@ -28,6 +29,16 @@ class Command(BaseCommand):
         )
 
     def seed_permissions(self):
+
+        deprecated_permissions = Permission.objects.filter(
+            code__in=DEPRECATED_PERMISSION_CODES
+        )
+        removed_count = deprecated_permissions.count()
+        deprecated_permissions.delete()
+        if removed_count:
+            self.stdout.write(self.style.WARNING(
+                f"Removed {removed_count} deprecated permission record(s)."
+            ))
 
         for index, permission in enumerate(PERMISSIONS, start=1):
 

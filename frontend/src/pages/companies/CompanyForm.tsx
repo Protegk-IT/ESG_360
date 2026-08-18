@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { AxiosError } from "axios";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { toast } from "sonner";
 
 import CompanyApi from "@/api/companies/CompanyApi";
+import { getApiErrorMessage } from "@/services/errors";
 
 import type {
   CompanyPayload,
@@ -44,9 +44,6 @@ import {
 } from "@/components/ui/select";
 
 import { Separator } from "@/components/ui/separator";
-
-type ValidationErrors =
-  Record<string, string[]>;
 
 export default function CompanyForm() {
 
@@ -186,28 +183,6 @@ export default function CompanyForm() {
       LOAD MASTER DATA
   ========================================================== */
 
-  const loadCountries =
-    async () => {
-
-      try {
-
-        const response =
-          await CompanyApi.getCountries();
-
-        setCountries(
-          response.data
-        );
-
-      } catch {
-
-        toast.error(
-          "Unable to load countries."
-        );
-
-      }
-
-    };
-
   const loadStates =
     async (
       countryId: string
@@ -281,135 +256,54 @@ export default function CompanyForm() {
   /* ==========================================================
       LOAD COMPANY (EDIT)
   ========================================================== */
-/* ==========================================================
-    LOAD COMPANY
-========================================================== */
-
-const loadCompany = async () => {
-  try {
-    setLoading(true);
-
-    const response = await CompanyApi.getProfile();
-
-    const company = response.data;
-
-    setFormData({
-      company_logo: null,
-
-      company_name: company.company_name ?? "",
-      company_code: company.company_code ?? "",
-      about_company: company.about_company ?? "",
-
-      date_of_incorporation:
-        company.date_of_incorporation ?? "",
-
-      cin_number: company.cin_number ?? "",
-      gst_number: company.gst_number ?? "",
-
-      listed_company: company.listed_company,
-
-      stock_exchanges:
-        company.stock_exchanges ?? "",
-
-      paid_up_capital:
-        company.paid_up_capital ?? "",
-
-      turnover:
-        company.turnover ?? "",
-
-      ownership_form:
-        company.ownership_form ?? "",
-
-      registered_address:
-        company.registered_address ?? "",
-
-      corporate_address:
-        company.corporate_address ?? "",
-
-      country: company.country ?? "",
-      state: company.state ?? "",
-      city: company.city ?? "",
-
-      contact_person:
-        company.contact_person ?? "",
-
-      email: company.email ?? "",
-
-      mobile_number:
-        company.mobile_number ?? "",
-
-      website: company.website ?? "",
-
-      employee_count:
-        company.employee_count ?? 0,
-
-      financial_year_start_month:
-        company.financial_year_start_month ?? 4,
-
-      is_active: company.is_active,
-    });
-
-    if (company.country) {
-      await loadStates(company.country);
-    }
-
-    if (company.state) {
-      await loadCities(company.state);
-    }
-  } catch (error) {
-    console.error(error);
-
-    toast.error("Unable to load company.");
-  } finally {
-    setLoading(false);
-  }
-};
-
   /* ==========================================================
       INITIAL LOAD
   ========================================================== */
-
   useEffect(() => {
+    let cancelled = false;
 
-    void loadCountries();
+    async function loadInitialData() {
+      try {
+        setLoading(true);
+        const [countriesResponse, companyResponse] = await Promise.all([
+          CompanyApi.getCountries(),
+          CompanyApi.getProfile(),
+        ]);
+        const company = companyResponse.data;
+        const [statesResponse, citiesResponse] = await Promise.all([
+          company.country ? CompanyApi.getStates(company.country) : Promise.resolve({ data: [] as State[] }),
+          company.state ? CompanyApi.getCities(company.state) : Promise.resolve({ data: [] as City[] }),
+        ]);
 
+        if (cancelled) return;
+        setCountries(countriesResponse.data);
+        setStates(statesResponse.data);
+        setCities(citiesResponse.data);
+        setFormData({
+          company_logo: null,
+          company_name: company.company_name ?? "", company_code: company.company_code ?? "",
+          about_company: company.about_company ?? "", date_of_incorporation: company.date_of_incorporation ?? "",
+          cin_number: company.cin_number ?? "", gst_number: company.gst_number ?? "",
+          listed_company: company.listed_company, stock_exchanges: company.stock_exchanges ?? "",
+          paid_up_capital: company.paid_up_capital ?? "", turnover: company.turnover ?? "",
+          ownership_form: company.ownership_form ?? "", registered_address: company.registered_address ?? "",
+          corporate_address: company.corporate_address ?? "", country: company.country ?? "",
+          state: company.state ?? "", city: company.city ?? "", contact_person: company.contact_person ?? "",
+          email: company.email ?? "", mobile_number: company.mobile_number ?? "", website: company.website ?? "",
+          employee_count: company.employee_count ?? 0, financial_year_start_month: company.financial_year_start_month ?? 4,
+          is_active: company.is_active,
+        });
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) toast.error("Unable to load company.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void loadInitialData();
+    return () => { cancelled = true; };
   }, []);
-
-  useEffect(() => {
-
-    if (
-      formData.country
-    ) {
-
-      void loadStates(
-        formData.country
-      );
-
-    }
-
-  }, [
-    formData.country,
-  ]);
-
-  useEffect(() => {
-
-    if (
-      formData.state
-    ) {
-
-      void loadCities(
-        formData.state
-      );
-
-    }
-
-  }, [
-    formData.state,
-  ]);
-
-useEffect(() => {
-  void loadCompany();
-}, []);
 
     /* ==========================================================
       SAME AS REGISTERED ADDRESS
@@ -530,34 +424,8 @@ toast.success(
         "/companies"
       );
 
-    }catch (error: unknown) {
-
-  const axiosError =
-    error as AxiosError<ValidationErrors>;
-
-  if (axiosError.response?.data) {
-
-    Object.entries(
-      axiosError.response.data
-    ).forEach(
-      ([field, messages]) => {
-
-        toast.error(
-          `${field}: ${messages.join(", ")}`
-        );
-
-      }
-    );
-
-  } else {
-
-    toast.error(
-      "Something went wrong."
-    );
-
-  }
-
-
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Unable to update company."));
     } finally {
 
       setLoading(false);
@@ -818,7 +686,18 @@ toast.success(
               <Label>Country</Label>
               <Select
                 value={formData.country}
-                onValueChange={(value) => updateField("country", value)}
+                onValueChange={(value) => {
+                  // Radix can emit an empty value while its options mount;
+                  // that must not erase a hydrated company location.
+                  if (!value) return;
+                  setFormData((previous) => ({
+                    ...previous,
+                    country: value,
+                    state: "",
+                    city: "",
+                  }));
+                  void loadStates(value);
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select Country" />
@@ -838,7 +717,11 @@ toast.success(
               <Label>State</Label>
               <Select
                 value={formData.state}
-                onValueChange={(value) => updateField("state", value)}
+                onValueChange={(value) => {
+                  if (!value) return;
+                  setFormData((previous) => ({ ...previous, state: value, city: "" }));
+                  void loadCities(value);
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select State" />
@@ -858,7 +741,9 @@ toast.success(
               <Label>City</Label>
               <Select
                 value={formData.city}
-                onValueChange={(value) => updateField("city", value)}
+                onValueChange={(value) => {
+                  if (value) updateField("city", value);
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select City" />
@@ -1059,7 +944,7 @@ toast.success(
               : "Creating..."
             : id
             ? "Update Company"
-            : "Create Company"}
+            : "Save Changes"}
         </Button>
       </CardContent>
     </Card>
@@ -1069,4 +954,3 @@ toast.success(
   );
 
 }
-

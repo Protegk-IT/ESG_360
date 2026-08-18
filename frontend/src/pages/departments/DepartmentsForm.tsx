@@ -11,8 +11,6 @@ import AppShell from "@/components/layout/AppShell";
 import DepartmentApi from "@/api/departments/DepartmentApi";
 import CompanyApi from "@/api/companies/CompanyApi";
 
-import type { Company } from "@/types/company";
-
 import type { Department, DepartmentFormData } from "@/types/department";
 
 import {
@@ -58,7 +56,10 @@ export default function DepartmentForm() {
 
   const [saving, setSaving] = useState(false);
 
-  const [company, setCompany] = useState<Company | null>(null);
+  const [company, setCompany] = useState<{
+    id: string;
+    company_name: string;
+  } | null>(null);
 
   const [parentDepartments, setParentDepartments] = useState<Department[]>([]);
 
@@ -75,49 +76,62 @@ export default function DepartmentForm() {
       LOAD DATA
       React 19 Safe
   ========================================================== */
-useEffect(() => {
-  const fetchData = async () => {
-    try {
-      setLoading(true);
+  useEffect(() => {
+    let cancelled = false;
 
-      const companyRes = await CompanyApi.getProfile();
-      console.log("Company:", companyRes.data);
+    async function fetchData() {
+      try {
+        setLoading(true);
 
-      const parentRes = await DepartmentApi.getParentDepartments();
-      console.log("Parents:", parentRes.data);
+        if (isEdit && id) {
+          // The edit route must not depend on Company Profile access. The
+          // department detail is authoritative and includes its company name.
+          const departmentRes = await DepartmentApi.getById(id);
+          if (cancelled) return;
 
-      setCompany(companyRes.data);
-      setParentDepartments(parentRes.data);
+          const department = departmentRes.data;
+          setCompany({ id: department.company, company_name: department.company_name });
+          setFormData({
+            company: department.company,
+            parent_department: department.parent_department,
+            name: department.name,
+            code: department.code,
+            description: department.description ?? "",
+            is_active: department.is_active,
+          });
 
-      setFormData((prev) => ({
-        ...prev,
-        company: companyRes.data.id,
-      }));
+          try {
+            const parentRes = await DepartmentApi.getParentDepartments();
+            if (!cancelled) setParentDepartments(parentRes.data);
+          } catch (error) {
+            console.error("Department parent lookup error:", error);
+            if (!cancelled) toast.error("Unable to load parent department options.");
+          }
+          return;
+        }
 
-      if (isEdit && id) {
-        const departmentRes =
-          await DepartmentApi.getById(id);
+        const [companyRes, parentRes] = await Promise.all([
+          CompanyApi.getProfile(),
+          DepartmentApi.getParentDepartments(),
+        ]);
+        if (cancelled) return;
 
-        setFormData({
-          company: departmentRes.data.company,
-          parent_department: departmentRes.data.parent_department,
-          name: departmentRes.data.name,
-          code: departmentRes.data.code,
-          description: departmentRes.data.description ?? "",
-          is_active: departmentRes.data.is_active,
-        });
+        setCompany(companyRes.data);
+        setParentDepartments(parentRes.data);
+        setFormData((previous) => ({ ...previous, company: companyRes.data.id }));
+      } catch (error) {
+        console.error("Department Form Error:", error);
+        if (!cancelled) {
+          toast.error(isEdit ? "Unable to load department." : "Unable to load company details.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-    } catch (error) {
-      console.error("Department Form Error:", error);
-      toast.error("Unable to load department.");
-    } finally {
-      setLoading(false);
     }
-  };
 
-  void fetchData();
-}, [id, isEdit]);
+    void fetchData();
+    return () => { cancelled = true; };
+  }, [id, isEdit]);
 
   /* ==========================================================
       UPDATE FIELD
@@ -336,7 +350,7 @@ useEffect(() => {
             <Button
               type="button"
               variant="outline"
-              onClick={() => navigate("/departments")}
+              onClick={() => navigate("/company/departments")}
             >
               Cancel
             </Button>

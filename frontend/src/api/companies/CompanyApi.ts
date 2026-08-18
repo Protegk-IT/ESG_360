@@ -49,7 +49,7 @@ const CompanyApi = {
   },
 
   getStates(countryId?: string) {
-    return api.get<State[]>("/company/states/?country=<country_uuid>", {
+    return api.get<State[]>("/company/states/", {
       params: countryId
         ? { country: countryId }
         : {},
@@ -57,7 +57,7 @@ const CompanyApi = {
   },
 
   getCities(stateId?: string) {
-    return api.get<City[]>("/company/cities/?state=" + stateId, {
+    return api.get<City[]>("/company/cities/", {
       params: stateId
         ? { state: stateId }
         : {},

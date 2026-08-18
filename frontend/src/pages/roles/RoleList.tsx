@@ -12,6 +12,7 @@ import RoleApi from "@/api/roles/RoleApi";
 import type { Role } from "@/types/role";
 
 import { getRoleColumns } from "./role-columns";
+import { useAuth } from "@/context/AuthContext";
 
 import {
   Select,
@@ -23,6 +24,8 @@ import {
 
 export default function RoleList() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canManage = Boolean(user?.is_superuser);
 
   /* ==========================================================
      STATES
@@ -99,9 +102,9 @@ export default function RoleList() {
       const matchesType =
         typeFilter === "All" ||
         (typeFilter === "System" &&
-          role.is_system_role) ||
+          role.is_system) ||
         (typeFilter === "Custom" &&
-          !role.is_system_role);
+          !role.is_system);
 
       return (
         matchesSearch &&
@@ -134,7 +137,7 @@ export default function RoleList() {
         role.role_name,
         role.role_code,
         role.description,
-        role.is_system_role
+        role.is_system
           ? "System"
           : "Custom",
         role.is_active
@@ -165,7 +168,7 @@ export default function RoleList() {
   ========================================================== */
 
   const handleEdit = (
-    id: number
+    id: string
   ) => {
     navigate(
       `/accounts/roles/${id}/edit`
@@ -205,6 +208,7 @@ export default function RoleList() {
   const columns = getRoleColumns({
     onEdit: handleEdit,
     onDelete: handleDelete,
+    canManage,
   });
 
   /* ==========================================================
@@ -225,10 +229,8 @@ export default function RoleList() {
           <DataTableToolbar
             search={search}
             onSearchChange={setSearch}
-            addLabel="Add Role"
-            onAdd={() =>
-              navigate("/accounts/roles/create")
-            }
+            addLabel={canManage ? "Add Role" : undefined}
+            onAdd={canManage ? () => navigate("/accounts/roles/create") : undefined}
             onExport={exportRoles}
           >
             {/* ======================================

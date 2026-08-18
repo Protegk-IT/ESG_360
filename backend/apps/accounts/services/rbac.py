@@ -39,6 +39,7 @@ class RBACService:
             .filter(
                 user=user,
                 is_active=True,
+                role__is_active=True,
             )
             .filter(
                 Q(valid_from__isnull=True) | Q(valid_from__lte=today),
@@ -56,8 +57,11 @@ class RBACService:
         if user.is_superuser:
             return True
 
-        return RBACService.get_active_assignments(user).filter(
-            role__permissions__code=permission_code
+        module_code = permission_code.split(".", 1)[0]
+        return RBACService.get_assignments_for_permission(
+            user,
+            permission_code,
+            module_code=module_code,
         ).exists()
 
     @staticmethod

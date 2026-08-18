@@ -1,4 +1,5 @@
-from rest_framework import viewsets,status,generics
+from rest_framework import viewsets, status, generics
+from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from rest_framework.response import Response
@@ -17,10 +18,11 @@ class ActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ActivityLog.objects.select_related("user").order_by("-created_at")
     serializer_class = ActivityLogSerializer
     permission_classes = [IsAuthenticated,HasRolePermission]
+    permission_code = "activity_log.view"
 
 class NotificationListAPIView(generics.ListAPIView):
     serializer_class = NotificationSerializer
-    permission_classes = [IsAuthenticated,HasRolePermission]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return (
@@ -36,20 +38,14 @@ class NotificationReadAPIView(APIView):
     def patch(self, request, pk):
 
         try:
-            notification = Notification.objects.get(
-                id=pk,
-                recipient=request.user
-            )
+            notification = Notification.objects.get(id=pk, recipient=request.user)
+        except Notification.DoesNotExist as exc:
+            raise NotFound("Notification not found.") from exc
 
-        except Notification.DoesNotExist:
-            return Response(
-                {"detail": "Notification not found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        notification.is_read = True
-        notification.read_at = timezone.now()
-        notification.save()
+        if not notification.is_read:
+            notification.is_read = True
+            notification.read_at = timezone.now()
+            notification.save(update_fields=["is_read", "read_at", "updated_at"])
 
         return Response(
             {

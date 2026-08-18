@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 import { toast } from "sonner";
 import AppShell from "@/components/layout/AppShell";
 import CompanyApi from "@/api/companies/CompanyApi";
@@ -69,6 +70,12 @@ export default function CompanyProfile() {
         if (cancelled) return;
         setCompany(response.data);
       } catch (error) {
+        // A fresh local deployment may not have its singleton company profile
+        // configured yet. That is an intentional empty state, not a failed
+        // page load.
+        if (axios.isAxiosError(error) && error.response?.status === 404) {
+          return;
+        }
         console.error(error);
         if (!cancelled) {
           toast.error("Unable to load company profile.");

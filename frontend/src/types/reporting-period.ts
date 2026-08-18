@@ -13,6 +13,7 @@ export interface ReportingPeriod {
   id: string;
 
   parent: string | null;
+  children_count?: number;
 
   name: string;
 

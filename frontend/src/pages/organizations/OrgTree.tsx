@@ -148,8 +148,24 @@ export default function OrgTree() {
   const openAddChild = (parent: OrgNode) =>
     setFormState({ open: true, mode: "create", parentNode: parent, editingNode: null });
 
-  const openEdit = (node: OrgNode) =>
-    setFormState({ open: true, mode: "edit", parentNode: null, editingNode: node });
+  const openEdit = async (node: OrgNode) => {
+    try {
+      // The tree endpoint deliberately returns only the fields necessary to
+      // render the hierarchy. Fetch the canonical detail representation
+      // before opening an editor so location and facility values are never
+      // silently replaced with missing tree data.
+      const response = await OrganizationApi.getById(node.id);
+      setFormState({
+        open: true,
+        mode: "edit",
+        parentNode: null,
+        editingNode: response.data,
+      });
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to load organization node.");
+    }
+  };
 
   const closeForm = () => setFormState((prev) => ({ ...prev, open: false }));
 

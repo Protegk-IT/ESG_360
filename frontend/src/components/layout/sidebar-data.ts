@@ -1,109 +1,11 @@
-import {
-  FileBarChart2,
-  FileText,
-  FolderTree,
-  LayoutDashboard,
-  Leaf,
-  Settings,
-  ShieldCheck,
-} from "lucide-react";
-
-export const navMain = [
-  {
-    title: "Dashboard",
-    url: "/accounts/dashboard/",
-    icon: LayoutDashboard,
-  },
-
-  {
-    title: "Administration",
-    icon: ShieldCheck,
-    items: [
-      {
-        title: "Company Management",
-        url: "/companies",
-      },
-      {
-        title: "User Management",
-        url: "/accounts/users",
-      },
-      {
-        title: "Role Management",
-        url: "/accounts/roles",
-      },
-       {
-        title: "Departments",
-        url: "/company/departments",
-      },
-    ],
-  },
-
-  {
-    title: "Organization",
-    icon: FolderTree,
-    items: [
-      {
-        title: "Organization",
-        url: "/organizations",
-      },
-    ],
-  },
-
-  {
-    title: "Materiality Assessment",
-    icon: FileText,
-    items: [
-      {
-        title: "Topic Library",
-        url: "/materiality/topics",
-      },
-       {
-        title: "Assessment",
-        url: "/materiality/assessments",
-      },
-      
-    
-
-    ],
-  },
-
-  {
-    title: "Emissions",
-    icon: Leaf,
-    items: [
-      {
-        title: "Scope 1",
-        url: "/emissions/scope-1",
-      },
-      {
-        title: "Scope 2",
-        url: "/emissions/scope-2",
-      },
-      {
-        title: "Scope 3",
-        url: "/emissions/scope-3",
-      },
-    ],
-  },
-
-  {
-    title: "Reports",
-    icon: FileBarChart2,
-    items: [
-      {
-        title: "Reporting Periods",
-        url: "/periods",
-      },
-      {
-        title: "Reporting Forms",
-        url: "/periods/create",
-      },
-    ],
-  },
-
-  {
-    title: "Settings",
-    url: "/settings/",
-    icon: Settings,
-  },
+import { FileBarChart2, FileText, FolderTree, LayoutDashboard, ShieldCheck } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+export interface SidebarSubItem { title: string; url: string; permission: string; }
+export interface SidebarItem { title: string; icon: LucideIcon; url?: string; permission?: string; items?: SidebarSubItem[]; }
+export const navMain: SidebarItem[] = [
+  { title: "Dashboard", url: "/accounts/dashboard/", icon: LayoutDashboard, permission: "dashboard.view" },
+  { title: "Administration", icon: ShieldCheck, items: [{ title: "Company Management", url: "/companies", permission: "company.view" }, { title: "User Management", url: "/accounts/users", permission: "user.view" }, { title: "Role Management", url: "/accounts/roles", permission: "role.view" }, { title: "Departments", url: "/company/departments", permission: "department.view" }] },
+  { title: "Organization", icon: FolderTree, items: [{ title: "Organization", url: "/organizations", permission: "organization.view" }] },
+  { title: "Reports", icon: FileBarChart2, items: [{ title: "Reporting Periods", url: "/periods", permission: "reporting_period.view" }] },
+  { title: "Materiality Assessment", icon: FileText, items: [{ title: "Topic Library", url: "/materiality/topics", permission: "materiality.view" }, { title: "Assessments", url: "/materiality/assessments", permission: "materiality.view" }] },
 ];

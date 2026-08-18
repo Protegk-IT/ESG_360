@@ -1,6 +1,8 @@
 from django.contrib.auth.hashers import make_password
 from rest_framework import serializers
 
+from apps.core.serializers import ValidatedModelSerializer
+
 from .models import City, Company, Country, Department, State
 
 
@@ -22,7 +24,12 @@ class CitySerializer(serializers.ModelSerializer):
         fields = ['id', 'country', 'state', 'name', 'is_active']
 
 
-class CompanySerializer(serializers.ModelSerializer):
+class CompanySerializer(ValidatedModelSerializer):
+    # Keep foreign-key ids writable while exposing display labels for views.
+    country_name = serializers.CharField(source="country.name", read_only=True)
+    state_name = serializers.CharField(source="state.name", read_only=True)
+    city_name = serializers.CharField(source="city.name", read_only=True)
+
     class Meta:
         model = Company
         fields = [
@@ -45,8 +52,11 @@ class CompanySerializer(serializers.ModelSerializer):
             "corporate_address",
 
             "country",
+            "country_name",
             "state",
+            "state_name",
             "city",
+            "city_name",
 
             "contact_person",
             "email",
@@ -66,7 +76,7 @@ class CompanySerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
-class DepartmentSerializer(serializers.ModelSerializer):
+class DepartmentSerializer(ValidatedModelSerializer):
     company_name = serializers.CharField(source="company.company_name", read_only=True)
     parent_department_name = serializers.CharField(source="parent_department.name", read_only=True)
 

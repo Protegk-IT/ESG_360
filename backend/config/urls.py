@@ -27,7 +27,8 @@ urlpatterns = [
     path('api/company/', include('apps.companies.urls')),
     path("api/org/", include("apps.organizations.urls")),
     path("api/periods/", include("apps.periods.urls")),
-    path("api/materiality/",include("apps.materiality.urls")),
+    path("api/modules/", include("apps.modules.urls")),
+    path("api/materiality/", include("apps.materiality.urls")),
     path("api/public/materiality/", include(materiality_public_urls)),
 ]
 

@@ -19,20 +19,8 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 
-import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-export interface SidebarSubItem {
-  title: string;
-  url: string;
-}
-
-export interface SidebarItem {
-  title: string;
-  icon: LucideIcon;
-  url?: string;
-  items?: SidebarSubItem[];
-}
+import type { SidebarItem } from "./sidebar-data";
 
 interface NavMainProps {
   items: SidebarItem[];
