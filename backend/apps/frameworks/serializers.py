@@ -9,9 +9,9 @@ from apps.frameworks.models import (
 
 
 class FrameworkSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = Framework
+
         fields = [
             "id",
             "code",
@@ -22,9 +22,15 @@ class FrameworkSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+        read_only_fields = [
+            "created_at",
+            "updated_at",
+        ]
 
-class FrameworkVersionSerializer(serializers.ModelSerializer):
 
+class FrameworkVersionSerializer(
+    serializers.ModelSerializer
+):
     framework_code = serializers.CharField(
         source="framework.code",
         read_only=True,
@@ -32,6 +38,7 @@ class FrameworkVersionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = FrameworkVersion
+
         fields = [
             "id",
             "framework",
@@ -53,9 +60,47 @@ class FrameworkVersionSerializer(serializers.ModelSerializer):
             "framework_code",
         ]
 
+    def validate(self, attrs):
+        """
+        Prevent changing stable version identity once
+        an existing version is active.
+        """
 
-class FrameworkNodeSerializer(serializers.ModelSerializer):
+        if self.instance and self.instance.is_active:
+            if (
+                "framework" in attrs
+                and attrs["framework"].pk
+                != self.instance.framework_id
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "framework": (
+                            "The framework of an active "
+                            "version cannot be changed."
+                        )
+                    }
+                )
 
+            if (
+                "version_code" in attrs
+                and attrs["version_code"]
+                != self.instance.version_code
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "version_code": (
+                            "The version code of an active "
+                            "framework version cannot be changed."
+                        )
+                    }
+                )
+
+        return attrs
+
+
+class FrameworkNodeSerializer(
+    serializers.ModelSerializer
+):
     parent_code = serializers.CharField(
         source="parent.code",
         read_only=True,
@@ -94,9 +139,52 @@ class FrameworkNodeSerializer(serializers.ModelSerializer):
             "parent_code",
         ]
 
+    def validate(self, attrs):
+        parent = attrs.get(
+            "parent",
+            getattr(self.instance, "parent", None),
+        )
 
-class FrameworkTreeNodeSerializer(serializers.ModelSerializer):
+        framework_version = attrs.get(
+            "framework_version",
+            getattr(
+                self.instance,
+                "framework_version",
+                None,
+            ),
+        )
 
+        if parent and self.instance:
+            if parent.pk == self.instance.pk:
+                raise serializers.ValidationError(
+                    {
+                        "parent": (
+                            "A framework node cannot be "
+                            "its own parent."
+                        )
+                    }
+                )
+
+        if parent and framework_version:
+            if (
+                parent.framework_version_id
+                != framework_version.pk
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "parent": (
+                            "Parent node must belong to the "
+                            "same framework version."
+                        )
+                    }
+                )
+
+        return attrs
+
+
+class FrameworkTreeNodeSerializer(
+    serializers.ModelSerializer
+):
     children = serializers.SerializerMethodField()
 
     class Meta:
@@ -137,9 +225,21 @@ class FrameworkTreeNodeSerializer(serializers.ModelSerializer):
         ).data
 
 
-class DatapointMappingSerializer(serializers.ModelSerializer):
+class DatapointMappingSerializer(
+    serializers.ModelSerializer
+):
     framework_node_code = serializers.CharField(
         source="framework_node.code",
+        read_only=True,
+    )
+
+    framework_version_id = serializers.UUIDField(
+        source="framework_node.framework_version_id",
+        read_only=True,
+    )
+
+    framework_version_code = serializers.CharField(
+        source="framework_node.framework_version.version_code",
         read_only=True,
     )
 
@@ -165,6 +265,8 @@ class DatapointMappingSerializer(serializers.ModelSerializer):
             "id",
             "framework_node",
             "framework_node_code",
+            "framework_version_id",
+            "framework_version_code",
             "datapoint",
             "datapoint_code",
             "datapoint_label",
@@ -182,6 +284,8 @@ class DatapointMappingSerializer(serializers.ModelSerializer):
 
         read_only_fields = [
             "framework_node_code",
+            "framework_version_id",
+            "framework_version_code",
             "datapoint_code",
             "datapoint_label",
             "datapoint_data_type",
@@ -192,17 +296,64 @@ class DatapointMappingSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         mapping_type = attrs.get(
             "mapping_type",
-            DatapointMapping.MappingType.DIRECT,
+            getattr(
+                self.instance,
+                "mapping_type",
+                DatapointMapping.MappingType.DIRECT,
+            ),
         )
 
         aggregation = attrs.get(
             "aggregation",
-            DatapointMapping.Aggregation.NONE,
+            getattr(
+                self.instance,
+                "aggregation",
+                DatapointMapping.Aggregation.NONE,
+            ),
         )
 
+        framework_node = attrs.get(
+            "framework_node",
+            getattr(
+                self.instance,
+                "framework_node",
+                None,
+            ),
+        )
+
+        datapoint = attrs.get(
+            "datapoint",
+            getattr(
+                self.instance,
+                "datapoint",
+                None,
+            ),
+        )
+
+        if framework_node and not framework_node.is_active:
+            raise serializers.ValidationError(
+                {
+                    "framework_node": (
+                        "Only active framework nodes can "
+                        "have datapoint mappings."
+                    )
+                }
+            )
+
+        if datapoint and not datapoint.is_active:
+            raise serializers.ValidationError(
+                {
+                    "datapoint": (
+                        "Only active datapoints can be mapped."
+                    )
+                }
+            )
+
         if (
-            mapping_type == DatapointMapping.MappingType.DIRECT
-            and aggregation != DatapointMapping.Aggregation.NONE
+            mapping_type
+            == DatapointMapping.MappingType.DIRECT
+            and aggregation
+            != DatapointMapping.Aggregation.NONE
         ):
             raise serializers.ValidationError(
                 {
@@ -212,5 +363,18 @@ class DatapointMappingSerializer(serializers.ModelSerializer):
                 }
             )
 
+        if (
+            mapping_type
+            == DatapointMapping.MappingType.NARRATIVE
+            and aggregation
+            != DatapointMapping.Aggregation.NONE
+        ):
+            raise serializers.ValidationError(
+                {
+                    "aggregation": (
+                        "Narrative mappings cannot use aggregation."
+                    )
+                }
+            )
+
         return attrs
-    

@@ -1,11 +1,12 @@
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 
-from rest_framework import generics
-from rest_framework.permissions import IsAuthenticated
+from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
+from rest_framework.permissions import IsAuthenticated
+from apps.accounts.permissions import HasRolePermission
+from apps.accounts.viewsets import RBACModelViewSet
 from apps.frameworks.models import (
     Framework,
     FrameworkNode,
@@ -19,32 +20,24 @@ from apps.frameworks.serializers import (
     FrameworkTreeNodeSerializer,
     FrameworkVersionSerializer,
     DatapointMappingSerializer,
-
 )
-
-
-class FrameworkListCreateView(
-    generics.ListCreateAPIView
-):
+class FrameworkViewSet(RBACModelViewSet):
     """
-    GET:
-        List frameworks.
-
-    POST:
-        Create a framework.
-
-    Authentication:
-        Authenticated users only.
-
-    RBAC:
-        Not implemented yet.
+    Framework CRUD API.
     """
 
-    permission_classes = [IsAuthenticated]
+    module_code = "framework"
+
     serializer_class = FrameworkSerializer
 
+    queryset = Framework.objects.all()
+
     def get_queryset(self):
-        queryset = Framework.objects.all()
+        queryset = (
+            Framework.objects
+            .all()
+            .order_by("code")
+        )
 
         is_enabled = self.request.query_params.get(
             "is_enabled"
@@ -68,100 +61,81 @@ class FrameworkListCreateView(
         return queryset
 
 
-class FrameworkDetailView(
-    generics.RetrieveUpdateAPIView
-):
+class FrameworkVersionViewSet(RBACModelViewSet):
     """
-    Retrieve or update a framework.
-
-    Authentication:
-        Authenticated users only.
-
-    RBAC:
-        Not implemented yet.
+    Framework version CRUD API.
     """
 
-    permission_classes = [IsAuthenticated]
-
-    queryset = Framework.objects.all()
-
-    serializer_class = FrameworkSerializer
-
-
-class FrameworkVersionListView(
-    generics.ListCreateAPIView
-):
-    """
-    List or create versions belonging to a framework.
-
-    Authentication:
-        Authenticated users only.
-
-    RBAC:
-        Not implemented yet.
-    """
-
-    permission_classes = [IsAuthenticated]
+    module_code = "framework_version"
 
     serializer_class = FrameworkVersionSerializer
-
-    def get_queryset(self):
-        return (
-            FrameworkVersion.objects
-            .filter(
-                framework_id=self.kwargs["framework_id"]
-            )
-            .select_related("framework")
-        )
-
-    def perform_create(self, serializer):
-        framework = get_object_or_404(
-            Framework,
-            pk=self.kwargs["framework_id"],
-        )
-
-        serializer.save(
-            framework=framework
-        )
-
-
-class FrameworkVersionDetailView(
-    generics.RetrieveUpdateAPIView
-):
-    """
-    Retrieve or update a framework version.
-
-    Authentication:
-        Authenticated users only.
-
-    RBAC:
-        Not implemented yet.
-    """
-
-    permission_classes = [IsAuthenticated]
 
     queryset = (
         FrameworkVersion.objects
         .select_related("framework")
     )
 
-    serializer_class = FrameworkVersionSerializer
+    def get_queryset(self):
+        queryset = (
+            FrameworkVersion.objects
+            .select_related("framework")
+            .order_by(
+                "framework__code",
+                "version_code",
+            )
+        )
+
+        framework_id = self.request.query_params.get(
+            "framework"
+        )
+
+        is_active = self.request.query_params.get(
+            "is_active"
+        )
+
+        is_default = self.request.query_params.get(
+            "is_default"
+        )
+
+        search = self.request.query_params.get(
+            "search"
+        )
+
+        if framework_id:
+            queryset = queryset.filter(
+                framework_id=framework_id
+            )
+
+        if is_active is not None:
+            queryset = queryset.filter(
+                is_active=is_active.lower() == "true"
+            )
+
+        if is_default is not None:
+            queryset = queryset.filter(
+                is_default=is_default.lower() == "true"
+            )
+
+        if search:
+            queryset = queryset.filter(
+                Q(version_code__icontains=search)
+                | Q(version_name__icontains=search)
+            )
+
+        return queryset
 
 
-class FrameworkNodeDetailView(
-    generics.RetrieveAPIView
-):
+class FrameworkNodeViewSet(RBACModelViewSet):
     """
-    Retrieve a framework node.
+    Framework node CRUD API.
 
-    Authentication:
-        Authenticated users only.
-
-    RBAC:
-        Not implemented yet.
+    Supports filtering by framework version,
+    node type, code and active state.
     """
 
-    permission_classes = [IsAuthenticated]
+    module_code = "framework_node"
+
+    serializer_class = FrameworkNodeSerializer
 
     queryset = (
         FrameworkNode.objects
@@ -171,26 +145,85 @@ class FrameworkNodeDetailView(
         )
     )
 
-    serializer_class = FrameworkNodeSerializer
+    def get_queryset(self):
+        queryset = (
+            FrameworkNode.objects
+            .select_related(
+                "framework_version",
+                "parent",
+            )
+            .order_by(
+                "framework_version",
+                "path",
+                "display_order",
+                "code",
+            )
+        )
+
+        framework_version = (
+            self.request.query_params.get(
+                "framework_version"
+            )
+        )
+
+        code = self.request.query_params.get(
+            "code"
+        )
+
+        node_type = (
+            self.request.query_params.get(
+                "node_type"
+            )
+        )
+
+        is_active = (
+            self.request.query_params.get(
+                "is_active"
+            )
+        )
+
+        if framework_version:
+            queryset = queryset.filter(
+                framework_version_id=framework_version
+            )
+
+        if code:
+            queryset = queryset.filter(
+                code__icontains=code
+            )
+
+        if node_type:
+            queryset = queryset.filter(
+                node_type=node_type
+            )
+
+        if is_active is not None:
+            queryset = queryset.filter(
+                is_active=is_active.lower() == "true"
+            )
+
+        return queryset
 
 
-class FrameworkVersionTreeView(APIView):
+class FrameworkTreeView(APIView):
     """
-    Return the complete framework tree for a version.
+    Retrieve the complete framework tree for one
+    framework version.
 
-    One HTTP request returns the complete hierarchy.
-
-    Authentication:
-        Authenticated users only.
-
-    RBAC:
-        Not implemented yet.
+    One request returns the complete hierarchy.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = (
+        IsAuthenticated,
+        HasRolePermission,
+    )
+
+    module_code = "framework_node"
+
+    def get_required_permission(self):
+        return f"{self.module_code}.view"
 
     def get(self, request, version_id):
-
         version = get_object_or_404(
             FrameworkVersion.objects.select_related(
                 "framework"
@@ -219,7 +252,7 @@ class FrameworkVersionTreeView(APIView):
                 [],
             ).append(node)
 
-        # Ensure deterministic sibling ordering.
+        # Deterministic sibling ordering.
         for children in children_map.values():
             children.sort(
                 key=lambda node: (
@@ -245,7 +278,9 @@ class FrameworkVersionTreeView(APIView):
         return Response(
             {
                 "framework": {
-                    "id": str(version.framework.id),
+                    "id": str(
+                        version.framework.id
+                    ),
                     "code": version.framework.code,
                     "name": version.framework.name,
                 },
@@ -258,22 +293,26 @@ class FrameworkVersionTreeView(APIView):
             }
         )
 
-class DatapointMappingListCreateView(
-    generics.ListCreateAPIView
-):
-    """
-    List or create datapoint mappings.
 
-    Query parameters:
-        framework_node
-        datapoint
-        mapping_type
-        confidence
+class DatapointMappingViewSet(RBACModelViewSet):
+    """
+    Framework-node to canonical-datapoint mapping CRUD API.
     """
 
-    permission_classes = [IsAuthenticated]
+    module_code = "framework_mapping"
 
-    serializer_class = DatapointMappingSerializer
+    serializer_class = (
+        DatapointMappingSerializer
+    )
+
+    queryset = (
+        DatapointMapping.objects
+        .select_related(
+            "framework_node",
+            "framework_node__framework_version",
+            "datapoint",
+        )
+    )
 
     def get_queryset(self):
         queryset = (
@@ -289,25 +328,51 @@ class DatapointMappingListCreateView(
             )
         )
 
-        framework_node = self.request.query_params.get(
-            "framework_node"
+        framework_node = (
+            self.request.query_params.get(
+                "framework_node"
+            )
         )
 
-        datapoint = self.request.query_params.get(
-            "datapoint"
+        framework_version = (
+            self.request.query_params.get(
+                "framework_version"
+            )
         )
 
-        mapping_type = self.request.query_params.get(
-            "mapping_type"
+        datapoint = (
+            self.request.query_params.get(
+                "datapoint"
+            )
         )
 
-        confidence = self.request.query_params.get(
-            "confidence"
+        mapping_type = (
+            self.request.query_params.get(
+                "mapping_type"
+            )
+        )
+
+        confidence = (
+            self.request.query_params.get(
+                "confidence"
+            )
+        )
+
+        is_primary = (
+            self.request.query_params.get(
+                "is_primary"
+            )
         )
 
         if framework_node:
             queryset = queryset.filter(
                 framework_node_id=framework_node
+            )
+
+        if framework_version:
+            queryset = queryset.filter(
+                framework_node__framework_version_id=
+                framework_version
             )
 
         if datapoint:
@@ -325,25 +390,9 @@ class DatapointMappingListCreateView(
                 confidence=confidence
             )
 
+        if is_primary is not None:
+            queryset = queryset.filter(
+                is_primary=is_primary.lower() == "true"
+            )
+
         return queryset
-
-
-class DatapointMappingDetailView(
-    generics.RetrieveUpdateDestroyAPIView
-):
-    """
-    Retrieve, update or delete a datapoint mapping.
-    """
-
-    permission_classes = [IsAuthenticated]
-
-    queryset = (
-        DatapointMapping.objects
-        .select_related(
-            "framework_node",
-            "framework_node__framework_version",
-            "datapoint",
-        )
-    )
-
-    serializer_class = DatapointMappingSerializer 

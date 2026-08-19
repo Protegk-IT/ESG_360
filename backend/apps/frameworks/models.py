@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
+
 from apps.core.models import BaseModel
 
 
@@ -102,12 +103,15 @@ class FrameworkVersion(BaseModel):
                 fields=["framework", "version_code"],
                 name="uq_framework_version_code",
             ),
+            models.UniqueConstraint(
+                fields=["framework"],
+                condition=models.Q(is_default=True),
+                name="uq_default_framework_version",
+            ),
         ]
 
     def __str__(self):
         return f"{self.framework.code} - {self.version_code}"
-
-
 
 
 class FrameworkNode(BaseModel):
@@ -206,6 +210,7 @@ class FrameworkNode(BaseModel):
             "framework_version",
             "path",
             "display_order",
+            "code",
         ]
 
         constraints = [
@@ -249,7 +254,7 @@ class FrameworkNode(BaseModel):
             return
 
         # Prevent self-parent.
-        if self.parent_id == self.id:
+        if self.pk and self.parent_id == self.pk:
             raise ValidationError(
                 {
                     "parent": (
@@ -258,7 +263,7 @@ class FrameworkNode(BaseModel):
                 }
             )
 
-        # Parent must belong to same framework version.
+        # Parent must belong to the same framework version.
         if (
             self.framework_version_id
             and self.parent.framework_version_id
@@ -278,7 +283,6 @@ class FrameworkNode(BaseModel):
         visited = set()
 
         while ancestor is not None:
-
             if ancestor.pk in visited:
                 raise ValidationError(
                     {
@@ -290,7 +294,7 @@ class FrameworkNode(BaseModel):
 
             visited.add(ancestor.pk)
 
-            if ancestor.pk == self.pk:
+            if self.pk and ancestor.pk == self.pk:
                 raise ValidationError(
                     {
                         "parent": (
@@ -315,11 +319,26 @@ class FrameworkNode(BaseModel):
         self.depth = self.parent.depth + 1
         self.path = f"{self.parent.path}{self.code}/"
 
+    @transaction.atomic
     def save(self, *args, **kwargs):
+        """
+        Save the node and refresh descendant tree metadata.
+
+        When a node is moved, its descendants must receive
+        updated depth/path values as well.
+        """
+
         self.full_clean()
         self.calculate_tree_metadata()
+
         super().save(*args, **kwargs)
 
+        # Rebuild descendant metadata when this node changes.
+        for child in self.children.all().order_by(
+            "display_order",
+            "code",
+        ):
+            child.save()
 
 
 class DatapointMapping(BaseModel):
@@ -351,7 +370,7 @@ class DatapointMapping(BaseModel):
         related_name="datapoint_mappings",
     )
 
-    # M4 canonical datapoint.
+    # Canonical M4 datapoint.
     datapoint = models.ForeignKey(
         "datapoints.Datapoint",
         on_delete=models.PROTECT,
@@ -446,6 +465,17 @@ class DatapointMapping(BaseModel):
 
         if not self.datapoint_id:
             return
+
+        # Only active framework nodes may be mapped.
+        if not self.framework_node.is_active:
+            raise ValidationError(
+                {
+                    "framework_node": (
+                        "Only active framework nodes can "
+                        "have datapoint mappings."
+                    )
+                }
+            )
 
         # Only active M4 canonical datapoints may be mapped.
         if not self.datapoint.is_active:
