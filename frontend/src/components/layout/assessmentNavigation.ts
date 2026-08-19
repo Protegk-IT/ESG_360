@@ -1,15 +1,14 @@
 import {
   ArrowLeft,
   BarChart3,
+  ClipboardList,
   FileText,
+  LayoutDashboard,
   Network,
-  Send,
   Users,
 } from "lucide-react";
 
-export const getAssessmentNav = (
-  assessmentId?: string | null
-) => {
+export const getAssessmentNav = (assessmentId?: string | null) => {
   if (!assessmentId) {
     return [];
   }
@@ -18,48 +17,47 @@ export const getAssessmentNav = (
 
   return [
     {
-      title: "← All Assessments",
+      title: "All assessments",
       url: "/materiality/assessments",
       icon: ArrowLeft,
     },
     {
-      title: "Manage Topics",
+      title: "Overview",
+      url: base,
+      icon: LayoutDashboard,
+    },
+    {
+      title: "1. Scope & Topics",
       url: `${base}/select-topics`,
       icon: Network,
     },
 
     {
-      title: "Stakeholder Groups",
-      url: `${base}/groups`,
-      icon: Users,
-    },
-
-    {
-      title: "Stakeholders",
+      title: "2. Stakeholder Setup",
       url: `${base}/stakeholders`,
       icon: Users,
     },
 
     {
-      title: "Manage Survey",
+      title: "3. Survey & Responses",
       url: `${base}/survey`,
+      icon: Users,
+    },
+
+    {
+      title: "Distribution",
+      url: `${base}/survey/distribution`,
       icon: FileText,
     },
 
     {
-      title: "Survey Distribution",
-      url: `${base}/survey/distribution`,
-      icon: Send,
-    },
-
-    {
-      title: "Materiality Scoring",
+      title: "4. Scoring & Review",
       url: `${base}/scoring`,
-      icon: BarChart3,
+      icon: ClipboardList,
     },
 
     {
-      title: "Materiality Matrix",
+      title: "5. Results & Matrix",
       url: `${base}/matrix`,
       icon: BarChart3,
     },

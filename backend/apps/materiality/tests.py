@@ -243,12 +243,11 @@ class MaterialityWorkflowTests(TestCase):
 
 
 class DemoMaterialitySeedTests(TestCase):
-    def test_seed_demo_materiality_is_idempotent_and_stops_at_stakeholder_setup(self):
+    def test_seed_demo_materiality_is_idempotent_and_creates_three_visual_states(self):
         owner = User.objects.create_superuser(username="demo-owner", password="test-pass")
 
         call_command("seed_demo_materiality", owner=owner.username, verbosity=0)
         assessment = MaterialityAssessment.objects.get(name="Demo — FY 2025-26 Materiality Assessment")
-        Survey.objects.create(assessment=assessment, title="A survey that should be reset")
         call_command("seed_demo_materiality", owner=owner.username, verbosity=0)
 
         assessment.refresh_from_db()
@@ -257,10 +256,41 @@ class DemoMaterialitySeedTests(TestCase):
         self.assertEqual(assessment.stakeholder_groups.count(), 6)
         self.assertEqual(assessment.assessment_topics.filter(is_included=True).count(), 10)
         self.assertEqual(Stakeholder.objects.filter(group__assessment=assessment).count(), 18)
-        self.assertFalse(Survey.objects.filter(assessment=assessment).exists())
+        survey = Survey.objects.get(assessment=assessment)
+        self.assertEqual(survey.status, "READY")
+        self.assertEqual(survey.invitations.count(), 18)
+        self.assertEqual(survey.group_links.count(), 6)
         self.assertFalse(ScoreRun.objects.filter(assessment=assessment).exists())
         self.assertFalse(InternalScore.objects.filter(assessment_topic__assessment=assessment).exists())
         self.assertFalse(assessment.assessment_topics.filter(is_override=True).exists())
+
+        draft = MaterialityAssessment.objects.get(name="Demo — Draft Materiality Assessment")
+        self.assertEqual(draft.status, "DRAFT")
+        self.assertFalse(draft.assessment_topics.exists())
+
+        completed = MaterialityAssessment.objects.get(name="Demo — Completed Materiality Assessment")
+        self.assertEqual(completed.status, "COMPLETED")
+        self.assertTrue(completed.is_locked)
+        self.assertEqual(completed.score_runs.count(), 1)
+        completed_survey = Survey.objects.get(assessment=completed)
+        self.assertEqual(completed_survey.group_links.count(), 6)
+        self.assertEqual(
+            SurveySubmission.objects.filter(
+                survey=completed_survey,
+                submitted_at__isnull=False,
+            ).count(),
+            18,
+        )
+        self.assertSetEqual(
+            set(completed.assessment_topics.values_list("classification", flat=True)),
+            {
+                "DOUBLE_MATERIAL",
+                "IMPACT_MATERIAL",
+                "FINANCIAL_MATERIAL",
+                "NOT_MATERIAL",
+            },
+        )
+        self.assertTrue(completed.assessment_topics.filter(is_override=True).exists())
 
     def test_seed_does_not_mix_with_an_existing_non_demo_assessment(self):
         owner = User.objects.create_superuser(username="demo-owner", password="test-pass")

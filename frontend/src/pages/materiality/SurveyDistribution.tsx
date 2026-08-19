@@ -1,9 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useParams } from "react-router-dom";
 
@@ -18,9 +13,7 @@ import type {
   SurveyGroupLink,
 } from "@/types/materiality/survey";
 
-import type {
-  Stakeholder,
-} from "@/types/materiality/stakeholder";
+import type { Stakeholder } from "@/types/materiality/stakeholder";
 import type { MaterialityAssessment } from "@/types/materiality/assessment";
 
 import {
@@ -31,21 +24,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-import {
-  Button,
-} from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 
-import {
-  Badge,
-} from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 
-import {
-  Checkbox,
-} from "@/components/ui/checkbox";
+import { Checkbox } from "@/components/ui/checkbox";
 
-import {
-  Separator,
-} from "@/components/ui/separator";
+import { Separator } from "@/components/ui/separator";
 
 import {
   Dialog,
@@ -56,11 +41,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import {
   AlertCircle,
@@ -81,141 +62,88 @@ import {
   UserX,
 } from "lucide-react";
 
-import {
-  toast,
-} from "sonner";
-
+import { toast } from "sonner";
 
 /* ==========================================================
    DASHBOARD STATUS
 ========================================================== */
 
-type ResponseState =
-  | "COMPLETED"
-  | "PENDING"
-  | "FAILED"
-  | "UNKNOWN";
-
+type ResponseState = "COMPLETED" | "PENDING" | "FAILED" | "UNKNOWN";
 
 /* ==========================================================
    COMPONENT
 ========================================================== */
 
 export default function SurveyDistribution() {
-
-  const {
-    id,
-  } = useParams<{
+  const { id } = useParams<{
     id: string;
   }>();
-
 
   /* ========================================================
      SURVEY
   ======================================================== */
 
-  const [
-    survey,
-    setSurvey,
-  ] = useState<Survey | null>(null);
+  const [survey, setSurvey] = useState<Survey | null>(null);
 
-  const [assessment, setAssessment] = useState<MaterialityAssessment | null>(null);
-  const isReadOnly = Boolean(assessment?.is_locked);
-
+  const [assessment, setAssessment] = useState<MaterialityAssessment | null>(
+    null,
+  );
+  const isReadOnly = Boolean(
+    assessment?.is_locked ||
+    ["COMPLETED", "APPROVED"].includes(assessment?.status ?? ""),
+  );
+  const [showAllIndividualLinks, setShowAllIndividualLinks] = useState(false);
 
   /* ========================================================
      STAKEHOLDERS
   ======================================================== */
 
-  const [
-    stakeholders,
-    setStakeholders,
-  ] = useState<Stakeholder[]>([]);
-
+  const [stakeholders, setStakeholders] = useState<Stakeholder[]>([]);
 
   /* ========================================================
      INVITATIONS / RESPONSE DATA
   ======================================================== */
 
-  const [
-    invitations,
-    setInvitations,
-  ] = useState<SurveyInvitationResult[]>([]);
+  const [invitations, setInvitations] = useState<SurveyInvitationResult[]>([]);
 
   const [groupLinks, setGroupLinks] = useState<SurveyGroupLink[]>([]);
 
   const [preparingLinks, setPreparingLinks] = useState(false);
 
-
   /* ========================================================
      SELECTION
   ======================================================== */
 
-  const [
-    selectedStakeholderIds,
-    setSelectedStakeholderIds,
-  ] = useState<Set<string>>(
-    new Set()
-  );
+  const [selectedStakeholderIds, setSelectedStakeholderIds] = useState<
+    Set<string>
+  >(new Set());
 
-
-  const [
-    expandedGroups,
-    setExpandedGroups,
-  ] = useState<Set<string>>(
-    new Set()
-  );
-
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   /* ========================================================
      UI STATE
   ======================================================== */
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
+  const [loading, setLoading] = useState(true);
 
+  const [refreshing, setRefreshing] = useState(false);
 
-  const [
-    refreshing,
-    setRefreshing,
-  ] = useState(false);
+  const [sending, setSending] = useState(false);
 
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
 
-  const [
-    sending,
-    setSending,
-  ] = useState(false);
-
-
-  const [
-    sendDialogOpen,
-    setSendDialogOpen,
-  ] = useState(false);
-
-
-  const [
-    error,
-    setError,
-  ] = useState<string | null>(null);
-
+  const [error, setError] = useState<string | null>(null);
 
   /* ========================================================
      STATUS NORMALIZER
   ======================================================== */
 
   const getResponseState = useCallback(
-    (
-      status?: string | null
-    ): ResponseState => {
-
-      const normalized =
-        String(status ?? "")
-          .trim()
-          .toUpperCase()
-          .replace(/[\s-]+/g, "_");
-
+    (status?: string | null): ResponseState => {
+      const normalized = String(status ?? "")
+        .trim()
+        .toUpperCase()
+        .replace(/[\s-]+/g, "_");
 
       if (
         [
@@ -229,18 +157,11 @@ export default function SurveyDistribution() {
         return "COMPLETED";
       }
 
-
       if (
-        [
-          "FAILED",
-          "BOUNCED",
-          "EXPIRED",
-          "DELIVERY_FAILED",
-        ].includes(normalized)
+        ["FAILED", "BOUNCED", "EXPIRED", "DELIVERY_FAILED"].includes(normalized)
       ) {
         return "FAILED";
       }
-
 
       if (
         [
@@ -255,58 +176,40 @@ export default function SurveyDistribution() {
         return "PENDING";
       }
 
-
       return "UNKNOWN";
     },
-    []
+    [],
   );
-
 
   /* ========================================================
      LOAD SURVEY
   ======================================================== */
 
-  const loadSurvey = useCallback(
-    async () => {
+  const loadSurvey = useCallback(async () => {
+    if (!id) {
+      return;
+    }
 
-      if (!id) {
-        return;
-      }
+    const response = await SurveyApi.getSurvey(id);
 
-      const response =
-        await SurveyApi.getSurvey(id);
-
-      setSurvey(
-        response.data
-      );
-      const assessmentResponse = await AssessmentApi.getById(id);
-      setAssessment(assessmentResponse.data);
-    },
-    [id]
-  );
-
+    setSurvey(response.data);
+    const assessmentResponse = await AssessmentApi.getById(id);
+    setAssessment(assessmentResponse.data);
+  }, [id]);
 
   /* ========================================================
      LOAD STAKEHOLDERS
   ======================================================== */
 
-  const loadStakeholders =
-    useCallback(
-      async () => {
+  const loadStakeholders = useCallback(async () => {
+    if (!id) {
+      return;
+    }
 
-        if (!id) {
-          return;
-        }
+    const response = await SurveyApi.getStakeholders(id);
 
-        const response =
-          await SurveyApi.getStakeholders(id);
-
-        setStakeholders(
-          response.data
-        );
-      },
-      [id]
-    );
+    setStakeholders(response.data);
+  }, [id]);
 
   const loadDistributionLinks = useCallback(async () => {
     if (!id) return;
@@ -318,89 +221,54 @@ export default function SurveyDistribution() {
     setGroupLinks(groupLinksResponse.data);
   }, [id]);
 
-
   /* ========================================================
      INITIAL LOAD
   ======================================================== */
 
   useEffect(() => {
-
-    const loadData =
-      async () => {
-
-        try {
-
-          setLoading(true);
-          setError(null);
-
-          await Promise.all([
-            loadSurvey(),
-            loadStakeholders(),
-            loadDistributionLinks(),
-          ]);
-
-        } catch (err) {
-
-          console.error(
-            "Failed to load survey dashboard:",
-            err
-          );
-
-          setError(
-            "Unable to load survey dashboard."
-          );
-
-        } finally {
-
-          setLoading(false);
-
-        }
-      };
-
-
-    void loadData();
-
-  }, [
-    loadSurvey,
-    loadStakeholders,
-    loadDistributionLinks,
-  ]);
-
-
-  /* ========================================================
-     REFRESH
-  ======================================================== */
-
-  const handleRefresh =
-    async () => {
-
+    const loadData = async () => {
       try {
-
-        setRefreshing(true);
+        setLoading(true);
+        setError(null);
 
         await Promise.all([
           loadSurvey(),
           loadStakeholders(),
           loadDistributionLinks(),
         ]);
-
       } catch (err) {
+        console.error("Failed to load survey dashboard:", err);
 
-        console.error(
-          "Failed to refresh survey dashboard:",
-          err
-        );
-
-        toast.error(
-          "Unable to refresh survey dashboard."
-        );
-
+        setError("Unable to load survey dashboard.");
       } finally {
-
-        setRefreshing(false);
-
+        setLoading(false);
       }
     };
+
+    void loadData();
+  }, [loadSurvey, loadStakeholders, loadDistributionLinks]);
+
+  /* ========================================================
+     REFRESH
+  ======================================================== */
+
+  const handleRefresh = async () => {
+    try {
+      setRefreshing(true);
+
+      await Promise.all([
+        loadSurvey(),
+        loadStakeholders(),
+        loadDistributionLinks(),
+      ]);
+    } catch (err) {
+      console.error("Failed to refresh survey dashboard:", err);
+
+      toast.error("Unable to refresh survey dashboard.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handlePrepareDistribution = async () => {
     if (!id) return;
@@ -417,635 +285,375 @@ export default function SurveyDistribution() {
     }
   };
 
-
   /* ========================================================
      GROUP STAKEHOLDERS
   ======================================================== */
 
-  const groupedStakeholders =
-    useMemo(() => {
+  const groupedStakeholders = useMemo(() => {
+    return stakeholders.reduce<Record<string, Stakeholder[]>>(
+      (groups, stakeholder) => {
+        const groupId = stakeholder.group;
 
-      return stakeholders.reduce<
-        Record<string, Stakeholder[]>
-      >(
-        (
-          groups,
-          stakeholder
-        ) => {
+        if (!groups[groupId]) {
+          groups[groupId] = [];
+        }
 
-          const groupId =
-            stakeholder.group;
+        groups[groupId].push(stakeholder);
 
-          if (!groups[groupId]) {
-            groups[groupId] = [];
-          }
-
-          groups[groupId].push(
-            stakeholder
-          );
-
-          return groups;
-
-        },
-        {}
-      );
-
-    }, [stakeholders]);
-
+        return groups;
+      },
+      {},
+    );
+  }, [stakeholders]);
 
   /* ========================================================
      INVITATION MAP
   ======================================================== */
 
-  const invitationByStakeholder =
-    useMemo(() => {
+  const invitationByStakeholder = useMemo(() => {
+    const map = new Map<string, SurveyInvitationResult>();
 
-      const map =
-        new Map<
-          string,
-          SurveyInvitationResult
-        >();
-
-      invitations.forEach(
-        (invitation) => {
-
-          const stakeholderId =
-            (invitation as SurveyInvitationResult & {
-              stakeholder_id?: string;
-            }).stakeholder_id;
-
-          if (stakeholderId) {
-            map.set(
-              stakeholderId,
-              invitation
-            );
-          }
-
+    invitations.forEach((invitation) => {
+      const stakeholderId = (
+        invitation as SurveyInvitationResult & {
+          stakeholder_id?: string;
         }
-      );
+      ).stakeholder_id;
 
-      return map;
+      if (stakeholderId) {
+        map.set(stakeholderId, invitation);
+      }
+    });
 
-    }, [invitations]);
-
+    return map;
+  }, [invitations]);
 
   /* ========================================================
      DASHBOARD METRICS
   ======================================================== */
 
-  const metrics =
-    useMemo(() => {
+  const metrics = useMemo(() => {
+    const invited = invitations.length;
 
-      const invited =
-        invitations.length;
+    const completed = invitations.filter(
+      (invitation) => getResponseState(invitation.status) === "COMPLETED",
+    ).length;
 
-      const completed =
-        invitations.filter(
-          (invitation) =>
-            getResponseState(
-              invitation.status
-            ) === "COMPLETED"
-        ).length;
+    const failed = invitations.filter(
+      (invitation) => getResponseState(invitation.status) === "FAILED",
+    ).length;
 
-      const failed =
-        invitations.filter(
-          (invitation) =>
-            getResponseState(
-              invitation.status
-            ) === "FAILED"
-        ).length;
+    const pending = invitations.filter(
+      (invitation) =>
+        getResponseState(invitation.status) === "PENDING" ||
+        getResponseState(invitation.status) === "UNKNOWN",
+    ).length;
 
-      const pending =
-        invitations.filter(
-          (invitation) =>
-            getResponseState(
-              invitation.status
-            ) === "PENDING" ||
-            getResponseState(
-              invitation.status
-            ) === "UNKNOWN"
-        ).length;
+    const responseRate = invited > 0 ? (completed / invited) * 100 : 0;
 
+    // Anonymous group-link submissions do not have a finite invitation
+    // denominator, so they must not be folded into the invitation response
+    // rate. They are nevertheless real submitted responses and are shown
+    // explicitly in the monitoring totals.
+    const anonymousCompleted = groupLinks.reduce(
+      (total, link) => total + Number(link.anonymous_submitted_count ?? 0),
+      0,
+    );
 
-      const responseRate =
-        invited > 0
-          ? (completed / invited) * 100
-          : 0;
+    const deliveryRate = invited > 0 ? ((invited - failed) / invited) * 100 : 0;
 
+    const pendingRate = invited > 0 ? (pending / invited) * 100 : 0;
 
-      const deliveryRate =
-        invited > 0
-          ? ((invited - failed) / invited) * 100
-          : 0;
-
-
-      const pendingRate =
-        invited > 0
-          ? (pending / invited) * 100
-          : 0;
-
-
-      return {
-        invited,
-        completed,
-        pending,
-        failed,
-        responseRate,
-        deliveryRate,
-        pendingRate,
-      };
-
-    }, [
-      invitations,
-      getResponseState,
-    ]);
-      /* ========================================================
+    return {
+      invited,
+      completed,
+      pending,
+      failed,
+      anonymousCompleted,
+      totalCompleted: completed + anonymousCompleted,
+      responseRate,
+      deliveryRate,
+      pendingRate,
+    };
+  }, [invitations, groupLinks, getResponseState]);
+  /* ========================================================
      GROUP RESPONSE ANALYTICS
   ======================================================== */
 
-  const groupAnalytics =
-    useMemo(() => {
+  const groupAnalytics = useMemo(() => {
+    return Object.entries(groupedStakeholders).map(
+      ([groupId, groupStakeholders]) => {
+        const groupInvitations = groupStakeholders
+          .map((stakeholder) => invitationByStakeholder.get(stakeholder.id))
+          .filter((invitation): invitation is SurveyInvitationResult =>
+            Boolean(invitation),
+          );
 
-      return Object.entries(
-        groupedStakeholders
-      ).map(
-        ([
+        const invited = groupInvitations.length;
+
+        const completed = groupInvitations.filter(
+          (invitation) => getResponseState(invitation.status) === "COMPLETED",
+        ).length;
+
+        const pending = groupInvitations.filter(
+          (invitation) =>
+            getResponseState(invitation.status) === "PENDING" ||
+            getResponseState(invitation.status) === "UNKNOWN",
+        ).length;
+
+        const failed = groupInvitations.filter(
+          (invitation) => getResponseState(invitation.status) === "FAILED",
+        ).length;
+
+        const responseRate = invited > 0 ? (completed / invited) * 100 : 0;
+
+        const groupName =
+          groupStakeholders[0]?.group_name ?? "Stakeholder Group";
+
+        const anonymousCompleted =
+          groupLinks.find((link) => link.group_id === groupId)
+            ?.anonymous_submitted_count ?? 0;
+
+        return {
           groupId,
-          groupStakeholders,
-        ]) => {
-
-          const groupInvitations =
-            groupStakeholders
-              .map(
-                (stakeholder) =>
-                  invitationByStakeholder.get(
-                    stakeholder.id
-                  )
-              )
-              .filter(
-                (
-                  invitation
-                ): invitation is SurveyInvitationResult =>
-                  Boolean(invitation)
-              );
-
-
-          const invited =
-            groupInvitations.length;
-
-
-          const completed =
-            groupInvitations.filter(
-              (invitation) =>
-                getResponseState(
-                  invitation.status
-                ) === "COMPLETED"
-            ).length;
-
-
-          const pending =
-            groupInvitations.filter(
-              (invitation) =>
-                getResponseState(
-                  invitation.status
-                ) === "PENDING" ||
-                getResponseState(
-                  invitation.status
-                ) === "UNKNOWN"
-            ).length;
-
-
-          const failed =
-            groupInvitations.filter(
-              (invitation) =>
-                getResponseState(
-                  invitation.status
-                ) === "FAILED"
-            ).length;
-
-
-          const responseRate =
-            invited > 0
-              ? (completed / invited) * 100
-              : 0;
-
-
-          const groupName =
-            groupStakeholders[0]
-              ?.group_name ??
-            "Stakeholder Group";
-
-
-          return {
-            groupId,
-            groupName,
-            totalStakeholders:
-              groupStakeholders.length,
-            invited,
-            completed,
-            pending,
-            failed,
-            responseRate,
-          };
-        }
-      );
-
-    }, [
-      groupedStakeholders,
-      invitationByStakeholder,
-      getResponseState,
-    ]);
-
+          groupName,
+          totalStakeholders: groupStakeholders.length,
+          invited,
+          completed,
+          anonymousCompleted,
+          totalCompleted: completed + anonymousCompleted,
+          pending,
+          failed,
+          responseRate,
+        };
+      },
+    );
+  }, [
+    groupedStakeholders,
+    invitationByStakeholder,
+    groupLinks,
+    getResponseState,
+  ]);
 
   /* ========================================================
      SELECTION
   ======================================================== */
 
-  const toggleStakeholder =
-    (
-      stakeholderId: string
-    ) => {
+  const toggleStakeholder = (stakeholderId: string) => {
+    setSelectedStakeholderIds((previous) => {
+      const next = new Set(previous);
 
-      setSelectedStakeholderIds(
-        (previous) => {
+      if (next.has(stakeholderId)) {
+        next.delete(stakeholderId);
+      } else {
+        next.add(stakeholderId);
+      }
 
-          const next =
-            new Set(previous);
-
-
-          if (
-            next.has(
-              stakeholderId
-            )
-          ) {
-
-            next.delete(
-              stakeholderId
-            );
-
-          } else {
-
-            next.add(
-              stakeholderId
-            );
-
-          }
-
-
-          return next;
-        }
-      );
-    };
-
+      return next;
+    });
+  };
 
   /* ========================================================
      GROUP TOGGLE
   ======================================================== */
 
-  const toggleGroup =
-    (
-      groupId: string
-    ) => {
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups((previous) => {
+      const next = new Set(previous);
 
-      setExpandedGroups(
-        (previous) => {
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
 
-          const next =
-            new Set(previous);
-
-
-          if (
-            next.has(groupId)
-          ) {
-
-            next.delete(groupId);
-
-          } else {
-
-            next.add(groupId);
-
-          }
-
-
-          return next;
-        }
-      );
-    };
-
+      return next;
+    });
+  };
 
   /* ========================================================
      GROUP SELECTION
   ======================================================== */
 
-  const toggleGroupStakeholders =
-    (
-      groupStakeholders: Stakeholder[]
-    ) => {
+  const toggleGroupStakeholders = (groupStakeholders: Stakeholder[]) => {
+    const ids = groupStakeholders.map((stakeholder) => stakeholder.id);
 
-      const ids =
-        groupStakeholders.map(
-          (stakeholder) =>
-            stakeholder.id
-        );
+    const allSelected =
+      ids.length > 0 &&
+      ids.every((stakeholderId) => selectedStakeholderIds.has(stakeholderId));
 
+    setSelectedStakeholderIds((previous) => {
+      const next = new Set(previous);
 
-      const allSelected =
-        ids.length > 0 &&
-        ids.every(
-          (stakeholderId) =>
-            selectedStakeholderIds.has(
-              stakeholderId
-            )
-        );
+      if (allSelected) {
+        ids.forEach((stakeholderId) => next.delete(stakeholderId));
+      } else {
+        ids.forEach((stakeholderId) => next.add(stakeholderId));
+      }
 
-
-      setSelectedStakeholderIds(
-        (previous) => {
-
-          const next =
-            new Set(previous);
-
-
-          if (allSelected) {
-
-            ids.forEach(
-              (stakeholderId) =>
-                next.delete(
-                  stakeholderId
-                )
-            );
-
-          } else {
-
-            ids.forEach(
-              (stakeholderId) =>
-                next.add(
-                  stakeholderId
-                )
-            );
-
-          }
-
-
-          return next;
-        }
-      );
-    };
-
+      return next;
+    });
+  };
 
   /* ========================================================
      SELECTED STAKEHOLDERS
   ======================================================== */
 
-  const selectedStakeholders =
-    useMemo(
-      () =>
-        stakeholders.filter(
-          (stakeholder) =>
-            selectedStakeholderIds.has(
-              stakeholder.id
-            )
-        ),
-      [
-        stakeholders,
-        selectedStakeholderIds,
-      ]
-    );
+  const selectedStakeholders = useMemo(
+    () =>
+      stakeholders.filter((stakeholder) =>
+        selectedStakeholderIds.has(stakeholder.id),
+      ),
+    [stakeholders, selectedStakeholderIds],
+  );
 
-
-  const selectedCount =
-    selectedStakeholderIds.size;
-
+  const selectedCount = selectedStakeholderIds.size;
 
   /* ========================================================
      SEND INVITATIONS
   ======================================================== */
 
-  const handleSendInvitations =
-    async () => {
+  const handleSendInvitations = async () => {
+    if (!id) {
+      return;
+    }
 
-      if (!id) {
-        return;
-      }
+    const ids = Array.from(selectedStakeholderIds);
 
+    if (ids.length === 0) {
+      toast.error("Select at least one stakeholder.");
 
-      const ids =
-        Array.from(
-          selectedStakeholderIds
-        );
+      return;
+    }
 
+    try {
+      setSending(true);
 
-      if (ids.length === 0) {
+      const response = await SurveyApi.sendSurvey(id, ids);
 
-        toast.error(
-          "Select at least one stakeholder."
-        );
+      await loadDistributionLinks();
 
-        return;
-      }
+      setSelectedStakeholderIds(new Set());
 
+      setSendDialogOpen(false);
 
-      try {
+      toast.success("Survey invitations sent successfully.", {
+        description: `${response.data.count} stakeholder invitation${
+          response.data.count === 1 ? "" : "s"
+        } sent.`,
+      });
+    } catch (err) {
+      console.error("Failed to send survey invitations:", err);
 
-        setSending(true);
-
-
-        const response =
-          await SurveyApi.sendSurvey(
-            id,
-            ids
-          );
-
-
-        await loadDistributionLinks();
-
-
-        setSelectedStakeholderIds(
-          new Set()
-        );
-
-
-        setSendDialogOpen(
-          false
-        );
-
-
-        toast.success(
-          "Survey invitations sent successfully.",
-          {
-            description:
-              `${response.data.count} stakeholder invitation${
-                response.data.count === 1
-                  ? ""
-                  : "s"
-              } sent.`,
-          }
-        );
-
-      } catch (err) {
-
-        console.error(
-          "Failed to send survey invitations:",
-          err
-        );
-
-
-        toast.error(
-          "Unable to send survey invitations."
-        );
-
-      } finally {
-
-        setSending(false);
-
-      }
-    };
-
+      toast.error("Unable to send survey invitations.");
+    } finally {
+      setSending(false);
+    }
+  };
 
   /* ========================================================
      COPY LINK
   ======================================================== */
 
-  const handleCopyLink =
-    async (
-      surveyUrl: string
-    ) => {
+  const handleCopyLink = async (surveyUrl: string) => {
+    try {
+      await navigator.clipboard.writeText(surveyUrl);
 
-      try {
+      toast.success("Survey link copied.");
+    } catch (err) {
+      console.error("Failed to copy survey link:", err);
 
-        await navigator.clipboard.writeText(
-          surveyUrl
-        );
-
-
-        toast.success(
-          "Survey link copied."
-        );
-
-      } catch (err) {
-
-        console.error(
-          "Failed to copy survey link:",
-          err
-        );
-
-
-        toast.error(
-          "Unable to copy survey link."
-        );
-      }
-    };
-
+      toast.error("Unable to copy survey link.");
+    }
+  };
 
   /* ========================================================
      RESPONSE STATUS UI
   ======================================================== */
 
-  const getStatusBadge =
-    (
-      status?: string | null
-    ) => {
+  const getStatusBadge = (status?: string | null) => {
+    const state = getResponseState(status);
 
-      const state =
-        getResponseState(status);
-
-
-      if (state === "COMPLETED") {
-
-        return (
-          <Badge
-            className="
+    if (state === "COMPLETED") {
+      return (
+        <Badge
+          className="
               border-emerald-200
               bg-emerald-50
               text-emerald-700
               hover:bg-emerald-50
             "
-          >
-            <Check className="mr-1 h-3.5 w-3.5" />
-            Completed
-          </Badge>
-        );
-      }
+        >
+          <Check className="mr-1 h-3.5 w-3.5" />
+          Completed
+        </Badge>
+      );
+    }
 
-
-      if (state === "FAILED") {
-
-        return (
-          <Badge
-            className="
+    if (state === "FAILED") {
+      return (
+        <Badge
+          className="
               border-red-200
               bg-red-50
               text-red-700
               hover:bg-red-50
             "
-          >
-            <UserX className="mr-1 h-3.5 w-3.5" />
-            Failed
-          </Badge>
-        );
-      }
+        >
+          <UserX className="mr-1 h-3.5 w-3.5" />
+          Failed
+        </Badge>
+      );
+    }
 
-
-      return (
-        <Badge
-          className="
+    return (
+      <Badge
+        className="
             border-amber-200
             bg-amber-50
             text-amber-700
             hover:bg-amber-50
           "
-        >
-          <Clock3 className="mr-1 h-3.5 w-3.5" />
-          Pending
-        </Badge>
-      );
-    };
-
+      >
+        <Clock3 className="mr-1 h-3.5 w-3.5" />
+        Pending
+      </Badge>
+    );
+  };
 
   /* ========================================================
      MISSING ID
   ======================================================== */
 
   if (!id) {
-
     return (
       <AppShell
-        title="Survey Dashboard"
-        description="Monitor survey distribution and stakeholder responses."
+        title="Survey & Responses"
+        description="Distribute individual and group links, then monitor participation."
       >
-
         <Alert variant="destructive">
-
           <AlertCircle className="h-4 w-4" />
 
-          <AlertTitle>
-            Assessment ID is missing
-          </AlertTitle>
+          <AlertTitle>Assessment ID is missing</AlertTitle>
 
           <AlertDescription>
-            A valid assessment is required to
-            display the survey dashboard.
+            A valid assessment is required to display the survey dashboard.
           </AlertDescription>
-
         </Alert>
-
       </AppShell>
     );
   }
-
 
   /* ========================================================
      LOADING
   ======================================================== */
 
   if (loading) {
-
     return (
       <AppShell
         title="Survey Dashboard"
         description="Monitor survey distribution and stakeholder responses."
       >
-
         <div
           className="
             flex
@@ -1054,9 +662,7 @@ export default function SurveyDistribution() {
             justify-center
           "
         >
-
           <div className="flex flex-col items-center gap-3">
-
             <Loader2
               className="
                 h-8
@@ -1069,23 +675,17 @@ export default function SurveyDistribution() {
             <p className="text-sm text-slate-500">
               Loading survey dashboard...
             </p>
-
           </div>
-
         </div>
-
       </AppShell>
     );
   }
-    return (
+  return (
     <AppShell
-      title="Survey Distribution & Response Dashboard"
-      description="Monitor stakeholder invitations, response rates, and survey completion across groups."
+      title="Survey & Responses"
+      description="Distribute individual and group links, then monitor participation."
     >
-
       <div className="space-y-6">
-
-
         {/* ==================================================
             PAGE HEADER
         ================================================== */}
@@ -1100,9 +700,7 @@ export default function SurveyDistribution() {
             lg:justify-between
           "
         >
-
           <div>
-
             <div
               className="
                 mb-1
@@ -1111,7 +709,6 @@ export default function SurveyDistribution() {
                 gap-2
               "
             >
-
               <BarChart3
                 className="
                   h-5
@@ -1129,9 +726,7 @@ export default function SurveyDistribution() {
               >
                 Materiality Assessment
               </span>
-
             </div>
-
 
             <h1
               className="
@@ -1141,9 +736,8 @@ export default function SurveyDistribution() {
                 text-[#22243A]
               "
             >
-              Survey Distribution & Response
+              Distribution & response monitoring
             </h1>
-
 
             <p
               className="
@@ -1154,13 +748,10 @@ export default function SurveyDistribution() {
                 text-slate-500
               "
             >
-              Track invitation delivery, stakeholder
-              participation, response progress and
-              group-level completion.
+              Send individual invitations or share an anonymous group link. Both
+              contribute to the same stakeholder-group evidence.
             </p>
-
           </div>
-
 
           <div
             className="
@@ -1169,7 +760,6 @@ export default function SurveyDistribution() {
               gap-2
             "
           >
-
             <Button
               type="button"
               variant="outline"
@@ -1177,7 +767,6 @@ export default function SurveyDistribution() {
               onClick={handleRefresh}
               className="gap-2"
             >
-
               {refreshing ? (
                 <Loader2
                   className="
@@ -1194,31 +783,24 @@ export default function SurveyDistribution() {
                   "
                 />
               )}
-
               Refresh
-
             </Button>
 
-            {!isReadOnly && <Button
-              type="button"
-              variant="outline"
-              disabled={preparingLinks}
-              onClick={() => void handlePrepareDistribution()}
-            >
-              {preparingLinks ? "Preparing links…" : "Prepare links"}
-            </Button>}
-
+            {!isReadOnly && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={preparingLinks}
+                onClick={() => void handlePrepareDistribution()}
+              >
+                {preparingLinks ? "Preparing links…" : "Prepare links"}
+              </Button>
+            )}
 
             <Button
               type="button"
-              disabled={
-                selectedCount === 0 ||
-                !survey ||
-                isReadOnly
-              }
-              onClick={() =>
-                setSendDialogOpen(true)
-              }
+              disabled={selectedCount === 0 || !survey || isReadOnly}
+              onClick={() => setSendDialogOpen(true)}
               className="
                 gap-2
                 bg-[#4A3FD6]
@@ -1226,48 +808,31 @@ export default function SurveyDistribution() {
                 hover:bg-[#3F34C2]
               "
             >
-
               <Send
                 className="
                   h-4
                   w-4
                 "
               />
-
               Send Invitations
-
-              {selectedCount > 0 &&
-                ` (${selectedCount})`}
-
+              {selectedCount > 0 && ` (${selectedCount})`}
             </Button>
-
           </div>
-
         </div>
-
 
         {/* ==================================================
             ERROR
         ================================================== */}
 
         {error && (
-
           <Alert variant="destructive">
-
             <AlertCircle className="h-4 w-4" />
 
-            <AlertTitle>
-              Dashboard unavailable
-            </AlertTitle>
+            <AlertTitle>Dashboard unavailable</AlertTitle>
 
-            <AlertDescription>
-              {error}
-            </AlertDescription>
-
+            <AlertDescription>{error}</AlertDescription>
           </Alert>
-
         )}
-
 
         {/* ==================================================
             SURVEY OVERVIEW HERO
@@ -1284,9 +849,7 @@ export default function SurveyDistribution() {
             shadow-sm
           "
         >
-
           <CardContent className="p-6">
-
             <div
               className="
                 flex
@@ -1297,9 +860,7 @@ export default function SurveyDistribution() {
                 lg:justify-between
               "
             >
-
               <div className="min-w-0">
-
                 <div
                   className="
                     flex
@@ -1307,7 +868,6 @@ export default function SurveyDistribution() {
                     gap-2
                   "
                 >
-
                   <div
                     className="
                       flex
@@ -1322,19 +882,15 @@ export default function SurveyDistribution() {
                       shadow-sm
                     "
                   >
-
                     <ClipboardCheck
                       className="
                         h-5
                         w-5
                       "
                     />
-
                   </div>
 
-
                   <div className="min-w-0">
-
                     <p
                       className="
                         truncate
@@ -1343,8 +899,7 @@ export default function SurveyDistribution() {
                         text-[#22243A]
                       "
                     >
-                      {survey?.title ??
-                        "Materiality Survey"}
+                      {survey?.title ?? "Materiality Survey"}
                     </p>
 
                     <p
@@ -1356,11 +911,8 @@ export default function SurveyDistribution() {
                     >
                       Stakeholder response monitoring
                     </p>
-
                   </div>
-
                 </div>
-
 
                 <div
                   className="
@@ -1368,7 +920,6 @@ export default function SurveyDistribution() {
                     max-w-xl
                   "
                 >
-
                   <div
                     className="
                       flex
@@ -1377,9 +928,7 @@ export default function SurveyDistribution() {
                       gap-4
                     "
                   >
-
                     <div>
-
                       <p
                         className="
                           text-xs
@@ -1389,7 +938,7 @@ export default function SurveyDistribution() {
                           text-slate-500
                         "
                       >
-                        Overall Response Rate
+                        Identified invitation response rate
                       </p>
 
                       <p
@@ -1403,9 +952,7 @@ export default function SurveyDistribution() {
                       >
                         {metrics.responseRate.toFixed(1)}%
                       </p>
-
                     </div>
-
 
                     <Badge
                       className="
@@ -1415,12 +962,9 @@ export default function SurveyDistribution() {
                         hover:bg-white
                       "
                     >
-                      {metrics.completed} of{" "}
-                      {metrics.invited} responded
+                      {metrics.totalCompleted} total submitted
                     </Badge>
-
                   </div>
-
 
                   <div
                     className="
@@ -1431,7 +975,6 @@ export default function SurveyDistribution() {
                       bg-slate-200
                     "
                   >
-
                     <div
                       className="
                         h-full
@@ -1441,15 +984,10 @@ export default function SurveyDistribution() {
                         duration-500
                       "
                       style={{
-                        width: `${Math.min(
-                          metrics.responseRate,
-                          100
-                        )}%`,
+                        width: `${Math.min(metrics.responseRate, 100)}%`,
                       }}
                     />
-
                   </div>
-
 
                   <div
                     className="
@@ -1460,34 +998,39 @@ export default function SurveyDistribution() {
                       text-slate-500
                     "
                   >
+                    <span>{metrics.completed} identified completed</span>
 
-                    <span>
-                      {metrics.completed} completed
-                    </span>
+                    <span>{metrics.pending} pending</span>
 
-                    <span>
-                      {metrics.pending} pending
-                    </span>
+                    {metrics.anonymousCompleted > 0 && (
+                      <span>
+                        {metrics.anonymousCompleted} anonymous submitted
+                      </span>
+                    )}
 
+                    {metrics.failed > 0 && (
+                      <span className="text-destructive">
+                        {metrics.failed} failed{" "}
+                        {metrics.failed === 1 ? "delivery" : "deliveries"}
+                      </span>
+                    )}
                   </div>
-
                 </div>
-
               </div>
-
 
               {/* HERO CALCULATIONS */}
 
               <div
                 className="
+                  hidden
                   grid
                   grid-cols-2
                   gap-3
                   sm:grid-cols-4
                   lg:min-w-[470px]
                 "
+                aria-hidden="true"
               >
-
                 <div
                   className="
                     rounded-xl
@@ -1498,7 +1041,6 @@ export default function SurveyDistribution() {
                     shadow-sm
                   "
                 >
-
                   <Users
                     className="
                       h-4
@@ -1527,9 +1069,7 @@ export default function SurveyDistribution() {
                   >
                     Invited
                   </p>
-
                 </div>
-
 
                 <div
                   className="
@@ -1541,7 +1081,6 @@ export default function SurveyDistribution() {
                     shadow-sm
                   "
                 >
-
                   <UserCheck
                     className="
                       h-4
@@ -1570,9 +1109,7 @@ export default function SurveyDistribution() {
                   >
                     Responded
                   </p>
-
                 </div>
-
 
                 <div
                   className="
@@ -1584,7 +1121,6 @@ export default function SurveyDistribution() {
                     shadow-sm
                   "
                 >
-
                   <Clock3
                     className="
                       h-4
@@ -1613,9 +1149,7 @@ export default function SurveyDistribution() {
                   >
                     Pending
                   </p>
-
                 </div>
-
 
                 <div
                   className="
@@ -1627,7 +1161,6 @@ export default function SurveyDistribution() {
                     shadow-sm
                   "
                 >
-
                   <TrendingUp
                     className="
                       h-4
@@ -1656,37 +1189,24 @@ export default function SurveyDistribution() {
                   >
                     Delivery Rate
                   </p>
-
                 </div>
-
               </div>
-
             </div>
-
           </CardContent>
-
         </Card>
-
 
         {/* ==================================================
             KPI CARDS
         ================================================== */}
 
-        <div
-          className="
-            grid
-            gap-4
-            sm:grid-cols-2
-            xl:grid-cols-4
-          "
-        >
-
+        <div className="contents">
           {/* RESPONSE RATE */}
 
-          <Card className="border-slate-200 shadow-sm">
-
+          <Card
+            className="hidden border-slate-200 shadow-sm"
+            aria-hidden="true"
+          >
             <CardContent className="p-5">
-
               <div
                 className="
                   flex
@@ -1694,7 +1214,6 @@ export default function SurveyDistribution() {
                   justify-between
                 "
               >
-
                 <p
                   className="
                     text-sm
@@ -1719,9 +1238,7 @@ export default function SurveyDistribution() {
                 >
                   <BarChart3 className="h-4 w-4" />
                 </div>
-
               </div>
-
 
               <p
                 className="
@@ -1734,7 +1251,6 @@ export default function SurveyDistribution() {
                 {metrics.responseRate.toFixed(1)}%
               </p>
 
-
               <div
                 className="
                   mt-3
@@ -1743,7 +1259,6 @@ export default function SurveyDistribution() {
                   bg-slate-100
                 "
               >
-
                 <div
                   className="
                     h-2
@@ -1751,15 +1266,10 @@ export default function SurveyDistribution() {
                     bg-emerald-500
                   "
                   style={{
-                    width: `${Math.min(
-                      metrics.responseRate,
-                      100
-                    )}%`,
+                    width: `${Math.min(metrics.responseRate, 100)}%`,
                   }}
                 />
-
               </div>
-
 
               <p
                 className="
@@ -1770,18 +1280,16 @@ export default function SurveyDistribution() {
               >
                 Completed ÷ Invited × 100
               </p>
-
             </CardContent>
-
           </Card>
-
 
           {/* PENDING */}
 
-          <Card className="border-slate-200 shadow-sm">
-
+          <Card
+            className="hidden border-slate-200 shadow-sm"
+            aria-hidden="true"
+          >
             <CardContent className="p-5">
-
               <div
                 className="
                   flex
@@ -1789,7 +1297,6 @@ export default function SurveyDistribution() {
                   justify-between
                 "
               >
-
                 <p
                   className="
                     text-sm
@@ -1814,9 +1321,7 @@ export default function SurveyDistribution() {
                 >
                   <Clock3 className="h-4 w-4" />
                 </div>
-
               </div>
-
 
               <p
                 className="
@@ -1829,7 +1334,6 @@ export default function SurveyDistribution() {
                 {metrics.pending}
               </p>
 
-
               <p
                 className="
                   mt-2
@@ -1837,21 +1341,18 @@ export default function SurveyDistribution() {
                   text-slate-500
                 "
               >
-                {metrics.pendingRate.toFixed(1)}%
-                of invited stakeholders
+                {metrics.pendingRate.toFixed(1)}% of invited stakeholders
               </p>
-
             </CardContent>
-
           </Card>
-
 
           {/* FAILED */}
 
-          <Card className="border-slate-200 shadow-sm">
-
+          <Card
+            className="hidden border-slate-200 shadow-sm"
+            aria-hidden="true"
+          >
             <CardContent className="p-5">
-
               <div
                 className="
                   flex
@@ -1859,7 +1360,6 @@ export default function SurveyDistribution() {
                   justify-between
                 "
               >
-
                 <p
                   className="
                     text-sm
@@ -1884,9 +1384,7 @@ export default function SurveyDistribution() {
                 >
                   <UserX className="h-4 w-4" />
                 </div>
-
               </div>
-
 
               <p
                 className="
@@ -1899,7 +1397,6 @@ export default function SurveyDistribution() {
                 {metrics.failed}
               </p>
 
-
               <p
                 className="
                   mt-2
@@ -1909,18 +1406,16 @@ export default function SurveyDistribution() {
               >
                 Delivery issues requiring attention
               </p>
-
             </CardContent>
-
           </Card>
-
 
           {/* COMPLETION */}
 
-          <Card className="border-slate-200 shadow-sm">
-
+          <Card
+            className="hidden border-slate-200 shadow-sm"
+            aria-hidden="true"
+          >
             <CardContent className="p-5">
-
               <div
                 className="
                   flex
@@ -1928,7 +1423,6 @@ export default function SurveyDistribution() {
                   justify-between
                 "
               >
-
                 <p
                   className="
                     text-sm
@@ -1953,9 +1447,7 @@ export default function SurveyDistribution() {
                 >
                   <ClipboardCheck className="h-4 w-4" />
                 </div>
-
               </div>
-
 
               <p
                 className="
@@ -1965,10 +1457,8 @@ export default function SurveyDistribution() {
                   text-[#22243A]
                 "
               >
-                {metrics.completed}/
-                {metrics.invited}
+                {metrics.completed}/{metrics.invited}
               </p>
-
 
               <p
                 className="
@@ -1977,16 +1467,11 @@ export default function SurveyDistribution() {
                   text-slate-500
                 "
               >
-                {metrics.responseRate.toFixed(1)}%
-                assessment completion
+                {metrics.responseRate.toFixed(1)}% assessment completion
               </p>
-
             </CardContent>
-
           </Card>
-
         </div>
-
 
         {/* ==================================================
             RESPONSE BREAKDOWN + GROUP ANALYTICS
@@ -1996,16 +1481,16 @@ export default function SurveyDistribution() {
           className="
             grid
             gap-6
-            xl:grid-cols-[0.85fr_1.15fr]
+            grid-cols-1
           "
         >
-
           {/* RESPONSE BREAKDOWN */}
 
-          <Card className="border-slate-200 shadow-sm px-4">
-
+          <Card
+            className="hidden border-slate-200 shadow-sm px-4"
+            aria-hidden="true"
+          >
             <CardHeader>
-
               <CardTitle
                 className="
                   text-base
@@ -2019,15 +1504,11 @@ export default function SurveyDistribution() {
               <CardDescription>
                 Current survey participation status.
               </CardDescription>
-
             </CardHeader>
-
 
             <Separator />
 
-
             <CardContent className="p-6">
-
               <div
                 className="
                   flex
@@ -2038,7 +1519,6 @@ export default function SurveyDistribution() {
                   sm:items-center
                 "
               >
-
                 {/* DONUT */}
 
                 <div
@@ -2053,21 +1533,17 @@ export default function SurveyDistribution() {
                     rounded-full
                   "
                   style={{
-                    background:
-                      `conic-gradient(
+                    background: `conic-gradient(
                         #4A3FD6 ${metrics.responseRate}%,
                         #F59E0B ${metrics.responseRate}% ${
-                          metrics.responseRate +
-                          metrics.pendingRate
+                          metrics.responseRate + metrics.pendingRate
                         }%,
                         #E5E7EB ${
-                          metrics.responseRate +
-                          metrics.pendingRate
+                          metrics.responseRate + metrics.pendingRate
                         }% 100%
                       )`,
                   }}
                 >
-
                   <div
                     className="
                       flex
@@ -2080,7 +1556,6 @@ export default function SurveyDistribution() {
                       bg-white
                     "
                   >
-
                     <span
                       className="
                         text-2xl
@@ -2099,14 +1574,10 @@ export default function SurveyDistribution() {
                     >
                       Response
                     </span>
-
                   </div>
-
                 </div>
 
-
                 <div className="w-full space-y-4">
-
                   <div
                     className="
                       flex
@@ -2114,7 +1585,6 @@ export default function SurveyDistribution() {
                       justify-between
                     "
                   >
-
                     <div
                       className="
                         flex
@@ -2122,7 +1592,6 @@ export default function SurveyDistribution() {
                         gap-2
                       "
                     >
-
                       <span
                         className="
                           h-2.5
@@ -2140,7 +1609,6 @@ export default function SurveyDistribution() {
                       >
                         Completed
                       </span>
-
                     </div>
 
                     <span
@@ -2152,9 +1620,7 @@ export default function SurveyDistribution() {
                     >
                       {metrics.completed}
                     </span>
-
                   </div>
-
 
                   <div
                     className="
@@ -2163,7 +1629,6 @@ export default function SurveyDistribution() {
                       justify-between
                     "
                   >
-
                     <div
                       className="
                         flex
@@ -2171,7 +1636,6 @@ export default function SurveyDistribution() {
                         gap-2
                       "
                     >
-
                       <span
                         className="
                           h-2.5
@@ -2189,7 +1653,6 @@ export default function SurveyDistribution() {
                       >
                         Pending
                       </span>
-
                     </div>
 
                     <span
@@ -2201,9 +1664,7 @@ export default function SurveyDistribution() {
                     >
                       {metrics.pending}
                     </span>
-
                   </div>
-
 
                   <div
                     className="
@@ -2212,7 +1673,6 @@ export default function SurveyDistribution() {
                       justify-between
                     "
                   >
-
                     <div
                       className="
                         flex
@@ -2220,7 +1680,6 @@ export default function SurveyDistribution() {
                         gap-2
                       "
                     >
-
                       <span
                         className="
                           h-2.5
@@ -2238,7 +1697,6 @@ export default function SurveyDistribution() {
                       >
                         Failed
                       </span>
-
                     </div>
 
                     <span
@@ -2250,12 +1708,9 @@ export default function SurveyDistribution() {
                     >
                       {metrics.failed}
                     </span>
-
                   </div>
 
-
                   <Separator />
-
 
                   <p
                     className="
@@ -2264,26 +1719,18 @@ export default function SurveyDistribution() {
                       text-slate-500
                     "
                   >
-                    Response rate =
-                    completed responses ÷
-                    total invitations × 100.
+                    Response rate = completed responses ÷ total invitations ×
+                    100.
                   </p>
-
                 </div>
-
               </div>
-
             </CardContent>
-
           </Card>
-
 
           {/* GROUP ANALYTICS */}
 
           <Card className="border-slate-200 shadow-sm px-4">
-
             <CardHeader>
-
               <CardTitle
                 className="
                   text-base
@@ -2297,17 +1744,12 @@ export default function SurveyDistribution() {
               <CardDescription>
                 Compare participation across stakeholder groups.
               </CardDescription>
-
             </CardHeader>
-
 
             <Separator />
 
-
             <CardContent className="space-y-5 p-6">
-
               {groupAnalytics.length === 0 ? (
-
                 <div
                   className="
                     flex
@@ -2317,9 +1759,7 @@ export default function SurveyDistribution() {
                     text-center
                   "
                 >
-
                   <div>
-
                     <Users
                       className="
                         mx-auto
@@ -2349,41 +1789,29 @@ export default function SurveyDistribution() {
                     >
                       Send invitations to begin tracking responses.
                     </p>
-
                   </div>
-
                 </div>
-
               ) : (
-
-                groupAnalytics.map(
-                  (group) => (
-
+                groupAnalytics.map((group) => (
+                  <div key={group.groupId} className="space-y-2">
                     <div
-                      key={group.groupId}
-                      className="space-y-2"
-                    >
-
-                      <div
-                        className="
+                      className="
                           flex
                           items-center
                           justify-between
                           gap-4
                         "
-                      >
-
-                        <div
-                          className="
+                    >
+                      <div
+                        className="
                             flex
                             min-w-0
                             items-center
                             gap-2
                           "
-                        >
-
-                          <div
-                            className="
+                      >
+                        <div
+                          className="
                               flex
                               h-8
                               w-8
@@ -2394,109 +1822,87 @@ export default function SurveyDistribution() {
                               bg-[#F1EFFF]
                               text-[#4A3FD6]
                             "
-                          >
-                            <Users className="h-4 w-4" />
-                          </div>
+                        >
+                          <Users className="h-4 w-4" />
+                        </div>
 
-                          <div className="min-w-0">
-
-                            <p
-                              className="
+                        <div className="min-w-0">
+                          <p
+                            className="
                                 truncate
                                 text-sm
                                 font-medium
                                 text-[#22243A]
                               "
-                            >
-                              {group.groupName}
-                            </p>
+                          >
+                            {group.groupName}
+                          </p>
 
-                            <p
-                              className="
+                          <p
+                            className="
                                 text-[11px]
                                 text-slate-500
                               "
-                            >
-                              {group.completed} of{" "}
-                              {group.invited} responded
-                            </p>
-
-                          </div>
-
+                          >
+                            {group.totalCompleted} submitted
+                            {group.invited > 0 &&
+                              ` · ${group.completed} of ${group.invited} identified`}
+                          </p>
                         </div>
+                      </div>
 
-
-                        <span
-                          className="
+                      <span
+                        className="
                             shrink-0
                             text-sm
                             font-semibold
                             text-[#4A3FD6]
                           "
-                        >
-                          {group.responseRate.toFixed(1)}%
-                        </span>
+                      >
+                        {group.anonymousCompleted > 0
+                          ? `${group.anonymousCompleted} anonymous`
+                          : `${group.responseRate.toFixed(1)}%`}
+                      </span>
+                    </div>
 
-                      </div>
-
-
-                      <div
-                        className="
+                    <div
+                      className="
                           h-2
                           overflow-hidden
                           rounded-full
                           bg-slate-100
                         "
-                      >
-
-                        <div
-                          className="
+                    >
+                      <div
+                        className="
                             h-full
                             rounded-full
                             bg-[#4A3FD6]
                             transition-all
                           "
-                          style={{
-                            width: `${Math.min(
-                              group.responseRate,
-                              100
-                            )}%`,
-                          }}
-                        />
+                        style={{
+                          width: `${Math.min(group.responseRate, 100)}%`,
+                        }}
+                      />
+                    </div>
 
-                      </div>
-
-
-                      <div
-                        className="
+                    <div
+                      className="
                           flex
                           justify-between
                           text-[11px]
                           text-slate-400
                         "
-                      >
+                    >
+                      <span>{group.pending} pending</span>
 
-                        <span>
-                          {group.pending} pending
-                        </span>
-
-                        <span>
-                          {group.failed} failed
-                        </span>
-
-                      </div>
-
+                      <span>{group.failed} failed</span>
                     </div>
-
-                  )
-                )
-
+                  </div>
+                ))
               )}
-
             </CardContent>
-
           </Card>
-
         </div>
 
         {/* ==================================================
@@ -2504,29 +1910,117 @@ export default function SurveyDistribution() {
         ================================================== */}
         <Card className="border-slate-200 shadow-sm px-4">
           <CardHeader>
-            <CardTitle className="text-base font-semibold text-[#22243A]">Shareable survey links</CardTitle>
+            <CardTitle className="text-base font-semibold text-[#22243A]">
+              Choose how to distribute
+            </CardTitle>
             <CardDescription>
-              Individual links identify one invited stakeholder. Group links accept independent anonymous respondents.
+              Both methods feed the same stakeholder-group weighting. Use either
+              or both for each group.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-5 lg:grid-cols-2">
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-slate-700">Individual invitation links</p>
-              {invitations.length ? invitations.map((invitation) => (
-                <div key={invitation.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
-                  <div className="min-w-0"><p className="truncate text-sm font-medium text-slate-800">{invitation.stakeholder_name}</p><p className="truncate text-xs text-slate-500">{invitation.stakeholder_email}</p></div>
-                  <Button type="button" size="sm" variant="outline" className="shrink-0 gap-1" onClick={() => handleCopyLink(invitation.survey_url)}><Copy className="h-3.5 w-3.5" />Copy</Button>
-                </div>
-              )) : <p className="text-sm text-slate-500">No known stakeholders are available yet.</p>}
+            <div className="space-y-3 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">
+                  Known stakeholders
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-600">
+                  Each link belongs to one named person. Share it manually or
+                  use email invitations; their response remains traceable.
+                </p>
+              </div>
+              {invitations.length ? (
+                (showAllIndividualLinks
+                  ? invitations
+                  : invitations.slice(0, 3)
+                ).map((invitation) => (
+                  <div
+                    key={invitation.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-800">
+                        {invitation.stakeholder_name}
+                      </p>
+                      <p className="truncate text-xs text-slate-500">
+                        {invitation.stakeholder_email}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 gap-1"
+                      onClick={() => handleCopyLink(invitation.survey_url)}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      Copy
+                    </Button>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-slate-500">
+                  No known stakeholders are available yet.
+                </p>
+              )}
+              {invitations.length > 3 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-indigo-700 hover:text-indigo-800"
+                  onClick={() =>
+                    setShowAllIndividualLinks((visible) => !visible)
+                  }
+                >
+                  {showAllIndividualLinks
+                    ? "Show fewer links"
+                    : `Show all ${invitations.length} individual links`}
+                </Button>
+              )}
             </div>
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-slate-700">Anonymous stakeholder-group links</p>
-              {groupLinks.length ? groupLinks.map((groupLink) => (
-                <div key={groupLink.group_id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
-                  <div className="min-w-0"><p className="truncate text-sm font-medium text-slate-800">{groupLink.group_name}</p><p className="text-xs text-slate-500">Reusable by multiple anonymous respondents · {groupLink.anonymous_submitted_count} submitted</p></div>
-                  <Button type="button" size="sm" variant="outline" className="shrink-0 gap-1" onClick={() => handleCopyLink(groupLink.survey_url)}><Copy className="h-3.5 w-3.5" />Copy</Button>
-                </div>
-              )) : <p className="text-sm text-slate-500">No stakeholder groups are available yet.</p>}
+            <div className="space-y-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">
+                  Anonymous group links
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-600">
+                  One reusable link per group. Each browser gets an independent
+                  anonymous response that is still attributed to its group.
+                </p>
+              </div>
+              {groupLinks.length ? (
+                groupLinks.map((groupLink) => (
+                  <div
+                    key={groupLink.group_id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-800">
+                        {groupLink.group_name}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Reusable by multiple anonymous respondents ·{" "}
+                        {groupLink.anonymous_submitted_count} submitted
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 gap-1"
+                      onClick={() => handleCopyLink(groupLink.survey_url)}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      Copy
+                    </Button>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-slate-500">
+                  No stakeholder groups are available yet.
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -2536,9 +2030,7 @@ export default function SurveyDistribution() {
         ================================================== */}
 
         <Card className="border-slate-200 shadow-sm px-4">
-
           <CardHeader>
-
             <div
               className="
                 flex
@@ -2549,9 +2041,7 @@ export default function SurveyDistribution() {
                 sm:justify-between
               "
             >
-
               <div>
-
                 <CardTitle
                   className="
                     text-base
@@ -2565,9 +2055,7 @@ export default function SurveyDistribution() {
                 <CardDescription>
                   Invitation and response status for each stakeholder.
                 </CardDescription>
-
               </div>
-
 
               <Badge
                 variant="outline"
@@ -2580,19 +2068,13 @@ export default function SurveyDistribution() {
               >
                 {stakeholders.length} stakeholders
               </Badge>
-
             </div>
-
           </CardHeader>
-
 
           <Separator />
 
-
           <CardContent className="p-0">
-
             {stakeholders.length === 0 ? (
-
               <div
                 className="
                   flex
@@ -2604,7 +2086,6 @@ export default function SurveyDistribution() {
                   text-center
                 "
               >
-
                 <Users
                   className="
                     h-8
@@ -2633,20 +2114,16 @@ export default function SurveyDistribution() {
                     text-slate-500
                   "
                 >
-                  Add stakeholders to this assessment
-                  before distributing the survey.
+                  Add stakeholders to this assessment before distributing the
+                  survey.
                 </p>
-
               </div>
-
             ) : (
-
               <div
                 className="
                   overflow-x-auto
                 "
               >
-
                 <table
                   className="
                     w-full
@@ -2654,9 +2131,7 @@ export default function SurveyDistribution() {
                     text-sm
                   "
                 >
-
                   <thead>
-
                     <tr
                       className="
                         border-b
@@ -2664,7 +2139,6 @@ export default function SurveyDistribution() {
                         bg-slate-50
                       "
                     >
-
                       <th
                         className="
                           px-6
@@ -2677,7 +2151,6 @@ export default function SurveyDistribution() {
                       >
                         Stakeholder
                       </th>
-
 
                       <th
                         className="
@@ -2692,7 +2165,6 @@ export default function SurveyDistribution() {
                         Group
                       </th>
 
-
                       <th
                         className="
                           px-4
@@ -2705,7 +2177,6 @@ export default function SurveyDistribution() {
                       >
                         Email
                       </th>
-
 
                       <th
                         className="
@@ -2720,7 +2191,6 @@ export default function SurveyDistribution() {
                         Response
                       </th>
 
-
                       <th
                         className="
                           px-4
@@ -2734,7 +2204,6 @@ export default function SurveyDistribution() {
                         Participation
                       </th>
 
-
                       <th
                         className="
                           px-6
@@ -2747,11 +2216,8 @@ export default function SurveyDistribution() {
                       >
                         Action
                       </th>
-
                     </tr>
-
                   </thead>
-
 
                   <tbody
                     className="
@@ -2759,52 +2225,35 @@ export default function SurveyDistribution() {
                       divide-slate-100
                     "
                   >
+                    {stakeholders.map((stakeholder) => {
+                      const invitation = invitationByStakeholder.get(
+                        stakeholder.id,
+                      );
 
-                    {stakeholders.map(
-                      (stakeholder) => {
+                      const state = getResponseState(invitation?.status);
 
-                        const invitation =
-                          invitationByStakeholder.get(
-                            stakeholder.id
-                          );
+                      const completed = state === "COMPLETED";
 
-
-                        const state =
-                          getResponseState(
-                            invitation?.status
-                          );
-
-
-                        const completed =
-                          state === "COMPLETED";
-
-
-                        return (
-
-                          <tr
-                            key={
-                              stakeholder.id
-                            }
-                            className="
+                      return (
+                        <tr
+                          key={stakeholder.id}
+                          className="
                               transition-colors
                               hover:bg-slate-50/70
                             "
-                          >
+                        >
+                          {/* STAKEHOLDER */}
 
-                            {/* STAKEHOLDER */}
-
-                            <td className="px-6 py-4">
-
-                              <div
-                                className="
+                          <td className="px-6 py-4">
+                            <div
+                              className="
                                   flex
                                   items-center
                                   gap-3
                                 "
-                              >
-
-                                <div
-                                  className="
+                            >
+                              <div
+                                className="
                                     flex
                                     h-9
                                     w-9
@@ -2817,160 +2266,124 @@ export default function SurveyDistribution() {
                                     font-semibold
                                     text-[#4A3FD6]
                                   "
-                                >
-                                  {stakeholder.name
-                                    .charAt(0)
-                                    .toUpperCase()}
-                                </div>
+                              >
+                                {stakeholder.name.charAt(0).toUpperCase()}
+                              </div>
 
-
-                                <div className="min-w-0">
-
-                                  <p
-                                    className="
+                              <div className="min-w-0">
+                                <p
+                                  className="
                                       truncate
                                       font-medium
                                       text-[#22243A]
                                     "
-                                  >
-                                    {stakeholder.name}
-                                  </p>
+                                >
+                                  {stakeholder.name}
+                                </p>
 
-                                  {stakeholder.designation && (
-
-                                    <p
-                                      className="
+                                {stakeholder.designation && (
+                                  <p
+                                    className="
                                         mt-0.5
                                         truncate
                                         text-xs
                                         text-slate-500
                                       "
-                                    >
-                                      {stakeholder.designation}
-                                    </p>
-
-                                  )}
-
-                                </div>
-
+                                  >
+                                    {stakeholder.designation}
+                                  </p>
+                                )}
                               </div>
+                            </div>
+                          </td>
 
-                            </td>
+                          {/* GROUP */}
 
-
-                            {/* GROUP */}
-
-                            <td className="px-4 py-4">
-
-                              <Badge
-                                variant="outline"
-                                className="
+                          <td className="px-4 py-4">
+                            <Badge
+                              variant="outline"
+                              className="
                                   border-slate-200
                                   bg-white
                                   text-slate-600
                                 "
-                              >
-                                {stakeholder.group_name ??
-                                  "Stakeholder Group"}
-                              </Badge>
+                            >
+                              {stakeholder.group_name ?? "Stakeholder Group"}
+                            </Badge>
+                          </td>
 
-                            </td>
+                          {/* EMAIL */}
 
-
-                            {/* EMAIL */}
-
-                            <td
-                              className="
+                          <td
+                            className="
                                 max-w-[250px]
                                 truncate
                                 px-4
                                 py-4
                                 text-slate-600
                               "
-                            >
-                              {stakeholder.email}
-                            </td>
+                          >
+                            {stakeholder.email}
+                          </td>
 
+                          {/* RESPONSE */}
 
-                            {/* RESPONSE */}
-
-                            <td className="px-4 py-4">
-
-                              {invitation ? (
-
-                                getStatusBadge(
-                                  invitation.status
-                                )
-
-                              ) : (
-
-                                <Badge
-                                  variant="outline"
-                                  className="
+                          <td className="px-4 py-4">
+                            {invitation ? (
+                              getStatusBadge(invitation.status)
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="
                                     border-slate-200
                                     text-slate-500
                                   "
-                                >
-                                  Not Invited
-                                </Badge>
+                              >
+                                Not Invited
+                              </Badge>
+                            )}
+                          </td>
 
-                              )}
+                          {/* PARTICIPATION */}
 
-                            </td>
-
-
-                            {/* PARTICIPATION */}
-
-                            <td className="px-4 py-4">
-
-                              <div className="w-32">
-
-                                <div
-                                  className="
+                          <td className="px-4 py-4">
+                            <div className="w-32">
+                              <div
+                                className="
                                     flex
                                     items-center
                                     justify-between
                                     text-xs
                                   "
-                                >
-
-                                  <span
-                                    className="
+                              >
+                                <span
+                                  className="
                                       text-slate-500
                                     "
-                                  >
-                                    {completed
-                                      ? "100%"
-                                      : invitation
-                                        ? "0%"
-                                        : "—"}
-                                  </span>
+                                >
+                                  {completed ? "100%" : invitation ? "0%" : "—"}
+                                </span>
 
-                                  <span
-                                    className="
+                                <span
+                                  className="
                                       text-slate-400
                                     "
-                                  >
-                                    {completed
-                                      ? "Complete"
-                                      : "Pending"}
-                                  </span>
+                                >
+                                  {completed ? "Complete" : "Pending"}
+                                </span>
+                              </div>
 
-                                </div>
-
-
-                                <div
-                                  className="
+                              <div
+                                className="
                                     mt-1.5
                                     h-1.5
                                     overflow-hidden
                                     rounded-full
                                     bg-slate-100
                                   "
-                                >
-
-                                  <div
-                                    className={`
+                              >
+                                <div
+                                  className={`
                                       h-full
                                       rounded-full
                                       ${
@@ -2979,101 +2392,72 @@ export default function SurveyDistribution() {
                                           : "bg-amber-400"
                                       }
                                     `}
-                                    style={{
-                                      width:
-                                        completed
-                                          ? "100%"
-                                          : invitation
-                                            ? "8%"
-                                            : "0%",
-                                    }}
-                                  />
-
-                                </div>
-
+                                  style={{
+                                    width: completed
+                                      ? "100%"
+                                      : invitation
+                                        ? "8%"
+                                        : "0%",
+                                  }}
+                                />
                               </div>
+                            </div>
+                          </td>
 
-                            </td>
+                          {/* ACTION */}
 
-
-                            {/* ACTION */}
-
-                            <td
-                              className="
+                          <td
+                            className="
                                 px-6
                                 py-4
                                 text-right
                               "
-                            >
-
-                              {invitation?.survey_url ? (
-
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="gap-2"
-                                  onClick={() =>
-                                    handleCopyLink(
-                                      invitation.survey_url
-                                    )
-                                  }
-                                >
-
-                                  <Copy
-                                    className="
+                          >
+                            {invitation?.survey_url ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="gap-2"
+                                onClick={() =>
+                                  handleCopyLink(invitation.survey_url)
+                                }
+                              >
+                                <Copy
+                                  className="
                                       h-3.5
                                       w-3.5
                                     "
-                                  />
-
-                                  Copy Link
-
-                                </Button>
-
-                              ) : (
-
-                                <span
-                                  className="
+                                />
+                                Copy Link
+                              </Button>
+                            ) : (
+                              <span
+                                className="
                                     text-xs
                                     text-slate-400
                                   "
-                                >
-                                  Not available
-                                </span>
-
-                              )}
-
-                            </td>
-
-                          </tr>
-
-                        );
-
-                      }
-                    )}
-
+                              >
+                                Not available
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
-
                 </table>
-
               </div>
-
             )}
-
           </CardContent>
-
         </Card>
-
 
         {/* ==================================================
             SELECTION / DISTRIBUTION
         ================================================== */}
 
         <Card className="border-slate-200 shadow-sm px-4">
-
           <CardHeader>
-
             <div
               className="
                 flex
@@ -3084,9 +2468,7 @@ export default function SurveyDistribution() {
                 sm:justify-between
               "
             >
-
               <div>
-
                 <CardTitle
                   className="
                     text-base
@@ -3098,12 +2480,10 @@ export default function SurveyDistribution() {
                 </CardTitle>
 
                 <CardDescription>
-                  Select stakeholders or entire stakeholder
-                  groups to send survey invitations.
+                  Select stakeholders or entire stakeholder groups to send
+                  survey invitations.
                 </CardDescription>
-
               </div>
-
 
               <Badge
                 variant="outline"
@@ -3116,19 +2496,13 @@ export default function SurveyDistribution() {
               >
                 {selectedCount} selected
               </Badge>
-
             </div>
-
           </CardHeader>
-
 
           <Separator />
 
-
           <CardContent className="p-4">
-
             {stakeholders.length === 0 ? (
-
               <div
                 className="
                   flex
@@ -3140,7 +2514,6 @@ export default function SurveyDistribution() {
                   text-center
                 "
               >
-
                 <Users
                   className="
                     h-8
@@ -3159,55 +2532,28 @@ export default function SurveyDistribution() {
                 >
                   No stakeholders available
                 </p>
-
               </div>
-
             ) : (
-
               <div className="space-y-2">
+                {Object.entries(groupedStakeholders).map(
+                  ([groupId, groupStakeholders]) => {
+                    const expanded = expandedGroups.has(groupId);
 
-                {Object.entries(
-                  groupedStakeholders
-                ).map(
-                  ([
-                    groupId,
-                    groupStakeholders,
-                  ]) => {
-
-                    const expanded =
-                      expandedGroups.has(
-                        groupId
-                      );
-
-
-                    const selectedGroupCount =
-                      groupStakeholders.filter(
-                        (stakeholder) =>
-                          selectedStakeholderIds.has(
-                            stakeholder.id
-                          )
-                      ).length;
-
+                    const selectedGroupCount = groupStakeholders.filter(
+                      (stakeholder) =>
+                        selectedStakeholderIds.has(stakeholder.id),
+                    ).length;
 
                     const allSelected =
                       groupStakeholders.length > 0 &&
-                      selectedGroupCount ===
-                        groupStakeholders.length;
+                      selectedGroupCount === groupStakeholders.length;
 
-
-                    const someSelected =
-                      selectedGroupCount > 0 &&
-                      !allSelected;
-
+                    const someSelected = selectedGroupCount > 0 && !allSelected;
 
                     const groupName =
-                      groupStakeholders[0]
-                        ?.group_name ??
-                      "Stakeholder Group";
-
+                      groupStakeholders[0]?.group_name ?? "Stakeholder Group";
 
                     return (
-
                       <div
                         key={groupId}
                         className="
@@ -3218,7 +2564,6 @@ export default function SurveyDistribution() {
                           bg-white
                         "
                       >
-
                         <div
                           className={`
                             flex
@@ -3227,21 +2572,12 @@ export default function SurveyDistribution() {
                             gap-3
                             px-4
                             py-3
-                            ${
-                              expanded
-                                ? "bg-[#FBFAFF]"
-                                : "hover:bg-slate-50"
-                            }
+                            ${expanded ? "bg-[#FBFAFF]" : "hover:bg-slate-50"}
                           `}
                         >
-
                           <button
                             type="button"
-                            onClick={() =>
-                              toggleGroup(
-                                groupId
-                              )
-                            }
+                            onClick={() => toggleGroup(groupId)}
                             className="
                               flex
                               min-w-0
@@ -3251,7 +2587,6 @@ export default function SurveyDistribution() {
                               text-left
                             "
                           >
-
                             <span
                               className="
                                 flex
@@ -3265,18 +2600,14 @@ export default function SurveyDistribution() {
                                 text-[#4A3FD6]
                               "
                             >
-
                               {expanded ? (
                                 <ChevronDown className="h-4 w-4" />
                               ) : (
                                 <ChevronRight className="h-4 w-4" />
                               )}
-
                             </span>
 
-
                             <span className="min-w-0">
-
                               <span
                                 className="
                                   block
@@ -3297,16 +2628,10 @@ export default function SurveyDistribution() {
                                   text-slate-500
                                 "
                               >
-                                {
-                                  groupStakeholders.length
-                                }{" "}
-                                stakeholders
+                                {groupStakeholders.length} stakeholders
                               </span>
-
                             </span>
-
                           </button>
-
 
                           <div
                             className="
@@ -3315,7 +2640,6 @@ export default function SurveyDistribution() {
                               gap-3
                             "
                           >
-
                             <Badge
                               variant="outline"
                               className="
@@ -3324,12 +2648,8 @@ export default function SurveyDistribution() {
                                 text-slate-600
                               "
                             >
-                              {selectedGroupCount}/
-                              {
-                                groupStakeholders.length
-                              }
+                              {selectedGroupCount}/{groupStakeholders.length}
                             </Badge>
-
 
                             <Checkbox
                               checked={
@@ -3340,20 +2660,14 @@ export default function SurveyDistribution() {
                                     : false
                               }
                               onCheckedChange={() =>
-                                toggleGroupStakeholders(
-                                  groupStakeholders
-                                )
+                                toggleGroupStakeholders(groupStakeholders)
                               }
                               aria-label={`Select all stakeholders in ${groupName}`}
                             />
-
                           </div>
-
                         </div>
 
-
                         {expanded && (
-
                           <div
                             className="
                               border-t
@@ -3361,25 +2675,15 @@ export default function SurveyDistribution() {
                               bg-slate-50/50
                             "
                           >
+                            {groupStakeholders.map((stakeholder) => {
+                              const selected = selectedStakeholderIds.has(
+                                stakeholder.id,
+                              );
 
-                            {groupStakeholders.map(
-                              (
-                                stakeholder
-                              ) => {
-
-                                const selected =
-                                  selectedStakeholderIds.has(
-                                    stakeholder.id
-                                  );
-
-
-                                return (
-
-                                  <div
-                                    key={
-                                      stakeholder.id
-                                    }
-                                    className={`
+                              return (
+                                <div
+                                  key={stakeholder.id}
+                                  className={`
                                       flex
                                       items-center
                                       gap-4
@@ -3388,28 +2692,18 @@ export default function SurveyDistribution() {
                                       px-4
                                       py-3
                                       last:border-b-0
-                                      ${
-                                        selected
-                                          ? "bg-[#FBFAFF]"
-                                          : "bg-white"
-                                      }
+                                      ${selected ? "bg-[#FBFAFF]" : "bg-white"}
                                     `}
-                                  >
+                                >
+                                  <Checkbox
+                                    checked={selected}
+                                    onCheckedChange={() =>
+                                      toggleStakeholder(stakeholder.id)
+                                    }
+                                  />
 
-                                    <Checkbox
-                                      checked={
-                                        selected
-                                      }
-                                      onCheckedChange={() =>
-                                        toggleStakeholder(
-                                          stakeholder.id
-                                        )
-                                      }
-                                    />
-
-
-                                    <div
-                                      className="
+                                  <div
+                                    className="
                                         flex
                                         h-9
                                         w-9
@@ -3422,77 +2716,55 @@ export default function SurveyDistribution() {
                                         font-semibold
                                         text-[#4A3FD6]
                                       "
-                                    >
-                                      {stakeholder.name
-                                        .charAt(0)
-                                        .toUpperCase()}
-                                    </div>
+                                  >
+                                    {stakeholder.name.charAt(0).toUpperCase()}
+                                  </div>
 
-
-                                    <div className="min-w-0 flex-1">
-
-                                      <p
-                                        className="
+                                  <div className="min-w-0 flex-1">
+                                    <p
+                                      className="
                                           truncate
                                           text-sm
                                           font-medium
                                           text-[#22243A]
                                         "
-                                      >
-                                        {stakeholder.name}
-                                      </p>
+                                    >
+                                      {stakeholder.name}
+                                    </p>
 
-                                      <p
-                                        className="
+                                    <p
+                                      className="
                                           truncate
                                           text-xs
                                           text-slate-500
                                         "
-                                      >
-                                        {stakeholder.email}
-                                      </p>
+                                    >
+                                      {stakeholder.email}
+                                    </p>
+                                  </div>
 
-                                    </div>
-
-
-                                    {selected && (
-
-                                      <Check
-                                        className="
+                                  {selected && (
+                                    <Check
+                                      className="
                                           h-4
                                           w-4
                                           text-emerald-600
                                         "
-                                      />
-
-                                    )}
-
-                                  </div>
-
-                                );
-
-                              }
-                            )}
-
+                                    />
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
-
                         )}
-
                       </div>
-
                     );
-
-                  }
+                  },
                 )}
-
               </div>
-
             )}
-
           </CardContent>
-
         </Card>
-
 
         {/* ==================================================
             SEND INVITATION DIALOG
@@ -3501,14 +2773,11 @@ export default function SurveyDistribution() {
         <Dialog
           open={sendDialogOpen}
           onOpenChange={(open) => {
-
             if (!open && !sending) {
               setSendDialogOpen(false);
             }
-
           }}
         >
-
           <DialogContent
             className="
               w-[95vw]
@@ -3518,7 +2787,6 @@ export default function SurveyDistribution() {
               p-0
             "
           >
-
             <DialogHeader
               className="
                 border-b
@@ -3527,7 +2795,6 @@ export default function SurveyDistribution() {
                 py-5
               "
             >
-
               <div
                 className="
                   flex
@@ -3535,7 +2802,6 @@ export default function SurveyDistribution() {
                   gap-3
                 "
               >
-
                 <div
                   className="
                     flex
@@ -3549,19 +2815,15 @@ export default function SurveyDistribution() {
                     text-[#4A3FD6]
                   "
                 >
-
                   <Send
                     className="
                       h-5
                       w-5
                     "
                   />
-
                 </div>
 
-
                 <div>
-
                   <DialogTitle
                     className="
                       text-lg
@@ -3572,12 +2834,8 @@ export default function SurveyDistribution() {
                     Send Survey Invitations
                   </DialogTitle>
 
-
                   <DialogDescription>
-
-                    You are about to send invitations
-                    to{" "}
-
+                    You are about to send invitations to{" "}
                     <span
                       className="
                         font-semibold
@@ -3586,20 +2844,12 @@ export default function SurveyDistribution() {
                     >
                       {selectedCount}
                     </span>{" "}
-
                     stakeholder
-                    {selectedCount === 1
-                      ? ""
-                      : "s"}.
-
+                    {selectedCount === 1 ? "" : "s"}.
                   </DialogDescription>
-
                 </div>
-
               </div>
-
             </DialogHeader>
-
 
             <div
               className="
@@ -3608,7 +2858,6 @@ export default function SurveyDistribution() {
                 py-6
               "
             >
-
               <div
                 className="
                   rounded-lg
@@ -3619,7 +2868,6 @@ export default function SurveyDistribution() {
                   py-3
                 "
               >
-
                 <p
                   className="
                     text-xs
@@ -3630,7 +2878,6 @@ export default function SurveyDistribution() {
                   Selected stakeholders
                 </p>
 
-
                 <div
                   className="
                     mt-3
@@ -3639,15 +2886,10 @@ export default function SurveyDistribution() {
                     overflow-y-auto
                   "
                 >
-
-                  {selectedStakeholders.map(
-                    (stakeholder) => (
-
-                      <div
-                        key={
-                          stakeholder.id
-                        }
-                        className="
+                  {selectedStakeholders.map((stakeholder) => (
+                    <div
+                      key={stakeholder.id}
+                      className="
                           flex
                           items-center
                           justify-between
@@ -3657,52 +2899,42 @@ export default function SurveyDistribution() {
                           px-3
                           py-2
                         "
-                      >
-
-                        <div className="min-w-0">
-
-                          <p
-                            className="
+                    >
+                      <div className="min-w-0">
+                        <p
+                          className="
                               truncate
                               text-sm
                               font-medium
                               text-slate-800
                             "
-                          >
-                            {stakeholder.name}
-                          </p>
+                        >
+                          {stakeholder.name}
+                        </p>
 
-                          <p
-                            className="
+                        <p
+                          className="
                               truncate
                               text-xs
                               text-slate-500
                             "
-                          >
-                            {stakeholder.email}
-                          </p>
+                        >
+                          {stakeholder.email}
+                        </p>
+                      </div>
 
-                        </div>
-
-
-                        <Check
-                          className="
+                      <Check
+                        className="
                             h-4
                             w-4
                             shrink-0
                             text-emerald-600
                           "
-                        />
-
-                      </div>
-
-                    )
-                  )}
-
+                      />
+                    </div>
+                  ))}
                 </div>
-
               </div>
-
 
               <div
                 className="
@@ -3717,7 +2949,6 @@ export default function SurveyDistribution() {
                   py-3
                 "
               >
-
                 <Mail
                   className="
                     mt-0.5
@@ -3735,14 +2966,11 @@ export default function SurveyDistribution() {
                     text-slate-600
                   "
                 >
-                  Each selected stakeholder will
-                  receive a unique survey invitation
-                  link. Their response will be tracked
-                  on this dashboard.
+                  Each selected stakeholder will receive a unique survey
+                  invitation link. Their response will be tracked on this
+                  dashboard.
                 </p>
-
               </div>
-
 
               <div
                 className="
@@ -3757,7 +2985,6 @@ export default function SurveyDistribution() {
                   py-3
                 "
               >
-
                 <AlertCircle
                   className="
                     mt-0.5
@@ -3775,15 +3002,11 @@ export default function SurveyDistribution() {
                     text-amber-700
                   "
                 >
-                  Once invitations are sent, the
-                  response metrics will update as
+                  Once invitations are sent, the response metrics will update as
                   stakeholders complete the survey.
                 </p>
-
               </div>
-
             </div>
-
 
             <DialogFooter
               className="
@@ -3793,28 +3016,19 @@ export default function SurveyDistribution() {
                 py-4
               "
             >
-
               <Button
                 type="button"
                 variant="outline"
                 disabled={sending}
-                onClick={() =>
-                  setSendDialogOpen(false)
-                }
+                onClick={() => setSendDialogOpen(false)}
               >
                 Cancel
               </Button>
 
-
               <Button
                 type="button"
-                disabled={
-                  sending ||
-                  selectedCount === 0
-                }
-                onClick={
-                  handleSendInvitations
-                }
+                disabled={sending || selectedCount === 0}
+                onClick={handleSendInvitations}
                 className="
                   gap-2
                   bg-[#4A3FD6]
@@ -3822,9 +3036,7 @@ export default function SurveyDistribution() {
                   hover:bg-[#3F34C2]
                 "
               >
-
                 {sending ? (
-
                   <Loader2
                     className="
                       h-4
@@ -3832,33 +3044,21 @@ export default function SurveyDistribution() {
                       animate-spin
                     "
                   />
-
                 ) : (
-
                   <Send
                     className="
                       h-4
                       w-4
                     "
                   />
-
                 )}
 
-
-                {sending
-                  ? "Sending..."
-                  : "Send Invitations"}
-
+                {sending ? "Sending..." : "Send Invitations"}
               </Button>
-
             </DialogFooter>
-
           </DialogContent>
-
         </Dialog>
-
       </div>
-
     </AppShell>
   );
 }

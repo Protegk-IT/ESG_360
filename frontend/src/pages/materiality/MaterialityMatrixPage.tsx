@@ -1,922 +1,845 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-
-import ReactECharts from "echarts-for-react";
-import type { EChartsOption } from "echarts";
-import { toPng } from "html-to-image";
-
 import {
-  AlertCircle,
-  ChevronDown,
+  CartesianGrid,
+  ReferenceArea,
+  ReferenceLine,
+  ResponsiveContainer,
+  Scatter,
+  ScatterChart,
+  Tooltip,
+  XAxis,
+  YAxis,
+  ZAxis,
+} from "recharts";
+import { toPng } from "html-to-image";
+import {
   FileSpreadsheet,
   FileText,
   History,
   ImageIcon,
-  Layers,
   RefreshCw,
-  RotateCcw,
   Target,
-  X,
+  Users,
 } from "lucide-react";
 
 import api from "@/services/api";
-
 import AssessmentApi from "@/api/materiality/AssessmentApi";
 import ScoringApi from "@/api/materiality/ScoringApi";
-
+import AppShell from "@/components/layout/AppShell";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { MaterialityAssessment } from "@/types/materiality/assessment";
-
 import type {
-  MaterialityClassification,
+  GroupBreakdownEntry,
   MaterialityResult,
   ScoreRunDetail,
+  ScoreRunListItem,
   ScoreRunResultsResponse,
   ScoreRunTopicResult,
 } from "@/types/materiality/scoring";
 
-import AppShell from "@/components/layout/AppShell";
+const colors: Record<string, string> = {
+  MATERIAL: "#dc2626",
+  DOUBLE_MATERIAL: "#dc2626",
+  IMPACT_MATERIAL: "#2563eb",
+  FINANCIAL_MATERIAL: "#d97706",
+  MONITOR: "#d97706",
+  NOT_MATERIAL: "#16a34a",
+  INSUFFICIENT_DATA: "#64748b",
+};
+const classificationOrder = [
+  "DOUBLE_MATERIAL",
+  "IMPACT_MATERIAL",
+  "FINANCIAL_MATERIAL",
+  "NOT_MATERIAL",
+  "INSUFFICIENT_DATA",
+];
+const score = (value: unknown) =>
+  Number.isFinite(Number(value)) ? Number(value) : 0;
+const labelFor = (value: string) =>
+  value
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+const compactTopicLabel = (value: string) =>
+  value.length > 21 ? `${value.slice(0, 19).trimEnd()}…` : value;
+const isScoreRunDetail = (
+  value: ScoreRunResultsResponse,
+): value is ScoreRunDetail => "run_at" in value;
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
+type MatrixPoint = MaterialityResult & {
+  chart_primary_score: number;
+  chart_secondary_score: number;
+  overlap_count: number;
+};
 
-/* ============================================================
-   NPM PACKAGES REQUIRED (install before using this file)
-   npm install echarts echarts-for-react html-to-image
-============================================================ */
-
-/* ============================================================
-   CONSTANTS
-============================================================ */
-
-const DEFAULT_THRESHOLD = 3;
-const MATRIX_MIN = 1;
-const MATRIX_MAX = 5;
-const ESG_SCORE_METHOD = "1.0";
-const ESG_ACCENT = "#059669"; // emerald-600, matches sidebar
-
-/* ============================================================
-   CLASSIFICATION HELPERS
-============================================================ */
-
-function getClassificationLabel(classification: MaterialityClassification): string {
-  switch (classification) {
-    case "MATERIAL":
-      return "Material";
-    case "MONITOR":
-      return "Monitor";
-    case "NOT_MATERIAL":
-      return "Not Material";
-    case "DOUBLE_MATERIAL":
-      return "Double Material";
-    case "IMPACT_MATERIAL":
-      return "Impact Material";
-    case "FINANCIAL_MATERIAL":
-      return "Financial Material";
-    case "INSUFFICIENT_DATA":
-      return "Insufficient Data";
-    default:
-      return "Unknown";
-  }
-}
-
-function getClassificationDotColor(classification: MaterialityClassification): string {
-  switch (classification) {
-    case "MATERIAL":
-    case "DOUBLE_MATERIAL":
-      return "#ef4444";
-    case "MONITOR":
-    case "IMPACT_MATERIAL":
-    case "FINANCIAL_MATERIAL":
-      return "#f59e0b";
-    case "NOT_MATERIAL":
-      return "#22c55e";
-    case "INSUFFICIENT_DATA":
-    default:
-      return "#9ca3af";
-  }
-}
-
-const LEGEND_ITEMS = [
-  { label: "Material", color: "#ef4444" },
-  { label: "Monitor", color: "#f59e0b" },
-  { label: "Not Material", color: "#22c55e" },
-  { label: "Insufficient Data", color: "#9ca3af" },
-] as const;
-
-function calculatePreviewClassification(
-  mode: string,
-  primary: number,
-  secondary: number,
-  primaryThreshold: number,
-  secondaryThreshold: number,
-): MaterialityClassification {
-  if (!Number.isFinite(primary) || !Number.isFinite(secondary)) return "INSUFFICIENT_DATA";
-
-  const primaryMaterial = primary >= primaryThreshold;
-  const secondaryMaterial = secondary >= secondaryThreshold;
-
-  if (mode === "SINGLE") {
-    if (primaryMaterial && secondaryMaterial) return "MATERIAL";
-    if (primaryMaterial || secondaryMaterial) return "MONITOR";
-    return "NOT_MATERIAL";
-  }
-
-  if (primaryMaterial && secondaryMaterial) return "DOUBLE_MATERIAL";
-  if (primaryMaterial) return "IMPACT_MATERIAL";
-  if (secondaryMaterial) return "FINANCIAL_MATERIAL";
-  return "NOT_MATERIAL";
-}
-
-/* ============================================================
-   ERROR / NUMBER HELPERS
-============================================================ */
-
-function extractErrorMessage(error: unknown, fallback: string): string {
-  if (typeof error === "object" && error !== null) {
-    const possible = error as {
-      response?: { data?: { detail?: unknown; message?: unknown; errors?: unknown } };
-      message?: unknown;
-    };
-    const detail = possible.response?.data?.detail;
-    if (typeof detail === "string") return detail;
-    const message = possible.response?.data?.message;
-    if (typeof message === "string") return message;
-    const errors = possible.response?.data?.errors;
-    if (Array.isArray(errors) && typeof errors[0] === "string") return errors[0];
-    if (typeof possible.message === "string") return possible.message;
-  }
-  return fallback;
-}
-
-function numericValue(value: number | string | null | undefined): number {
-  const number = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(number) ? number : 0;
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = window.URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.URL.revokeObjectURL(url);
-}
-
-/* ============================================================
-   SCORE RUN HISTORY (GET /assessments/{id}/score-runs/)
-============================================================ */
-
-interface ScoreRunHistoryItem {
-  id: string | number;
-  run_at: string;
-  response_count?: number | null;
-  invited_count?: number | null;
-  method_version?: string | number | null;
-}
-
-/* ============================================================
-   ANIMATION STYLES
-============================================================ */
-
-function MatrixAnimationStyles() {
+function ClassificationBadge({ classification }: { classification: string }) {
   return (
-    <style>{`
-      @keyframes mm-fade-up {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-      .mm-fade-up { animation: mm-fade-up 0.45s ease-out both; }
-      @media (prefers-reduced-motion: reduce) {
-        .mm-fade-up { animation: none !important; }
-      }
-    `}</style>
+    <Badge
+      className="border-0 text-white hover:bg-inherit"
+      style={{ backgroundColor: colors[classification] ?? "#64748b" }}
+    >
+      {labelFor(classification)}
+    </Badge>
   );
 }
 
-/* ============================================================
-   MAIN PAGE
-============================================================ */
+function MatrixMarker({
+  cx,
+  cy,
+  fill,
+  payload,
+}: {
+  cx?: number;
+  cy?: number;
+  fill?: string;
+  payload?: MatrixPoint;
+}) {
+  if (cx == null || cy == null || !payload) return null;
+  const labelOnLeft = score(payload.chart_secondary_score) >= 4;
+  return (
+    <g className="cursor-pointer">
+      <title>{`${payload.subtopic_name}: impact ${score(payload.primary_score).toFixed(2)}, financial ${score(payload.secondary_score).toFixed(2)}`}</title>
+      <circle
+        cx={cx}
+        cy={cy}
+        r={8}
+        fill={fill}
+        stroke="white"
+        strokeWidth={2.5}
+      />
+      <text
+        x={cx + (labelOnLeft ? -11 : 11)}
+        y={cy - 10}
+        textAnchor={labelOnLeft ? "end" : "start"}
+        fill="#334155"
+        fontSize={11}
+        fontWeight={600}
+        stroke="white"
+        strokeWidth={3}
+        paintOrder="stroke"
+      >
+        {compactTopicLabel(payload.subtopic_name ?? "Assessment topic")}
+      </text>
+    </g>
+  );
+}
 
-interface DotDatum {
-  id: string | number;
-  primary_score: number;
-  secondary_score: number;
-  subtopic_name: string | null;
-  subtopic_code: string | null;
-  previewClassification: MaterialityClassification;
+function StakeholderContribution({
+  breakdown,
+}: {
+  breakdown?: Record<string, GroupBreakdownEntry[]>;
+}) {
+  const dimensions = Object.entries(breakdown ?? {}).filter(
+    ([, entries]) => entries.length > 0,
+  );
+  if (!dimensions.length)
+    return (
+      <p className="text-sm text-muted-foreground">
+        No stakeholder-group response snapshot is available for this topic.
+      </p>
+    );
+  return (
+    <div className="space-y-5">
+      {dimensions.map(([dimension, entries]) => (
+        <div key={dimension} className="overflow-x-auto">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {dimension === "IMPACT"
+              ? "Impact"
+              : dimension === "FINANCIAL"
+                ? "Financial"
+                : labelFor(dimension)}{" "}
+            stakeholder input
+          </p>
+          <Table className="min-w-155">
+            <TableHeader>
+              <TableRow className="border-slate-200 bg-slate-50 hover:bg-slate-50">
+                <TableHead className="px-4 py-3">Stakeholder group</TableHead>
+                <TableHead className="px-4 py-3 text-center">Weight</TableHead>
+                <TableHead className="px-4 py-3 text-center">
+                  Responses
+                </TableHead>
+                <TableHead className="px-4 py-3 text-center">Average</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {entries.map((entry) => (
+                <TableRow
+                  key={entry.group_id}
+                  className="border-slate-100 hover:bg-slate-50/70"
+                >
+                  <TableCell className="px-4 py-4 font-medium text-slate-900">
+                    {entry.group_name}
+                  </TableCell>
+                  <TableCell className="px-4 py-4 text-center text-slate-600">
+                    {entry.weight}%
+                  </TableCell>
+                  <TableCell className="px-4 py-4 text-center text-slate-600">
+                    {entry.response_count}
+                  </TableCell>
+                  <TableCell className="px-4 py-4 text-center font-medium text-slate-900">
+                    {entry.average ?? "—"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function MaterialityMatrixPage() {
   const { assessmentId } = useParams<{ assessmentId: string }>();
-
-  const [assessment, setAssessment] = useState<MaterialityAssessment | null>(null);
-  const [scoreRun, setScoreRun] = useState<ScoreRunDetail | null>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
+  const [assessment, setAssessment] = useState<MaterialityAssessment | null>(
+    null,
+  );
+  const [run, setRun] = useState<ScoreRunDetail | null>(null);
   const [results, setResults] = useState<MaterialityResult[]>([]);
-
+  const [selected, setSelected] = useState<MaterialityResult | null>(null);
+  const [runs, setRuns] = useState<ScoreRunListItem[] | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [runningScoring, setRunningScoring] = useState(false);
-  const [exportingCsv, setExportingCsv] = useState(false);
-  const [exportingPdf, setExportingPdf] = useState(false);
-  const [exportingPng, setExportingPng] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [primaryThreshold, setPrimaryThreshold] = useState(DEFAULT_THRESHOLD);
-  const [secondaryThreshold, setSecondaryThreshold] = useState(DEFAULT_THRESHOLD);
-
-  const [showHistory, setShowHistory] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyRuns, setHistoryRuns] = useState<ScoreRunHistoryItem[] | null>(null);
-
-  const chartRef = useRef<ReactECharts | null>(null);
-  const matrixCardRef = useRef<HTMLDivElement | null>(null);
-  const chartWrapperRef = useRef<HTMLDivElement | null>(null);
-
-  const assessmentMode = assessment?.mode ?? "SINGLE";
-  const isDoubleMode = assessmentMode === "DOUBLE";
-
-  const loadDashboard = useCallback(
-    async (refresh = false) => {
-      if (!assessmentId) return;
-      try {
-        setError(null);
-        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-        refresh ? setRefreshing(true) : setLoading(true);
-
-        const [assessmentResponse, resultsResponse] = await Promise.all([
-          AssessmentApi.getById(assessmentId),
-          ScoringApi.getResults(assessmentId),
-        ]);
-
-        setAssessment(assessmentResponse.data);
-
-        const resultsData = resultsResponse.data as ScoreRunResultsResponse;
-        const topicResults = Array.isArray(resultsData.topic_results) ? resultsData.topic_results : [];
-
-        const loadedResults: MaterialityResult[] = topicResults.map((topic: ScoreRunTopicResult) => ({
-          id: topic.id,
-          assessment_topic: topic.assessment_topic,
-          subtopic_name: topic.subtopic_name,
-          subtopic_code: topic.subtopic_code,
-          category_code: topic.category_code,
-          primary_score: numericValue(topic.primary_score),
-          secondary_score: numericValue(topic.secondary_score),
-          classification: topic.classification,
-          is_override: topic.is_override,
-          override_reason: topic.override_reason,
-          group_breakdown: topic.group_breakdown,
-        }));
-
-        setResults(loadedResults);
-
-        if ("run_at" in resultsData && Array.isArray(resultsData.topic_results)) {
-          setScoreRun(resultsData as ScoreRunDetail);
-          const thresholds = resultsData.thresholds_snapshot;
-          if (typeof thresholds === "object" && thresholds !== null) {
-            const primary = Number(thresholds.primary_threshold);
-            const secondary = Number(thresholds.secondary_threshold);
-            if (Number.isFinite(primary)) setPrimaryThreshold(primary);
-            if (Number.isFinite(secondary)) setSecondaryThreshold(secondary);
-          }
-        } else {
-          setScoreRun(null);
-        }
-      } catch (err: unknown) {
-        console.error("Failed to load materiality matrix:", err);
-        setError(extractErrorMessage(err, "Unable to load materiality matrix."));
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
+  const load = useCallback(async () => {
+    if (!assessmentId) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const [assessmentResponse, resultResponse] = await Promise.all([
+        AssessmentApi.getById(assessmentId),
+        ScoringApi.getResults(assessmentId),
+      ]);
+      setAssessment(assessmentResponse.data);
+      if (isScoreRunDetail(resultResponse.data)) {
+        setRun(resultResponse.data);
+        setResults(
+          resultResponse.data.topic_results.map(
+            (topic: ScoreRunTopicResult) => ({
+              ...topic,
+              primary_score: score(topic.primary_score),
+              secondary_score: score(topic.secondary_score),
+            }),
+          ),
+        );
+      } else {
+        setRun(null);
+        setResults([]);
       }
-    },
-    [assessmentId],
+    } catch {
+      setError(
+        "Unable to load materiality results. Refresh the page to try again.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [assessmentId]);
+  useEffect(() => {
+    const requestId = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(requestId);
+  }, [load]);
+
+  const readOnly = Boolean(
+    assessment?.is_locked ||
+    ["COMPLETED", "APPROVED"].includes(assessment?.status ?? ""),
   );
-
-  useEffect(() => {
-    if (!assessmentId) return;
-    void loadDashboard();
-  }, [assessmentId, loadDashboard]);
-
-  // Keep the chart correctly sized when the sidebar collapses/expands
-  // or the window resizes — ResizeObserver catches container changes
-  // that a plain window "resize" listener misses.
-  useEffect(() => {
-    const node = chartWrapperRef.current;
-    if (!node) return;
-
-    const observer = new ResizeObserver(() => {
-      chartRef.current?.getEchartsInstance().resize();
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
-
-  const previewResults: DotDatum[] = useMemo(() => {
-    return results.map((result) => ({
-      id: result.id,
-      primary_score: numericValue(result.primary_score),
-      secondary_score: numericValue(result.secondary_score),
-      subtopic_name: result.subtopic_name ?? null,
-      subtopic_code: result.subtopic_code ?? null,
-      previewClassification: calculatePreviewClassification(
-        assessmentMode,
-        numericValue(result.primary_score),
-        numericValue(result.secondary_score),
-        primaryThreshold,
-        secondaryThreshold,
+  const primaryThreshold = score(
+    run?.thresholds_snapshot?.primary_threshold ??
+      assessment?.primary_threshold ??
+      3,
+  );
+  const secondaryThreshold = score(
+    run?.thresholds_snapshot?.secondary_threshold ??
+      assessment?.secondary_threshold ??
+      3,
+  );
+  const counts = useMemo(
+    () =>
+      results.reduce<Record<string, number>>(
+        (all, result) => ({
+          ...all,
+          [result.classification]: (all[result.classification] ?? 0) + 1,
+        }),
+        {},
       ),
-    }));
-  }, [results, assessmentMode, primaryThreshold, secondaryThreshold]);
+    [results],
+  );
+  const classifications = useMemo(
+    () =>
+      classificationOrder.filter((classification) => counts[classification]),
+    [counts],
+  );
+  const chartPoints = useMemo<MatrixPoint[]>(() => {
+    const clusters = new Map<string, MaterialityResult[]>();
+    results.forEach((result) => {
+      const key = `${score(result.primary_score).toFixed(3)}:${score(result.secondary_score).toFixed(3)}`;
+      clusters.set(key, [...(clusters.get(key) ?? []), result]);
+    });
+    return Array.from(clusters.values()).flatMap((cluster) =>
+      cluster.map((result, index) => ({
+        ...result,
+        overlap_count: cluster.length,
+        chart_primary_score: Math.max(
+          1,
+          Math.min(
+            5,
+            score(result.primary_score) +
+              (Math.floor(index / 3) - 1) * (cluster.length > 1 ? 0.06 : 0),
+          ),
+        ),
+        chart_secondary_score: Math.max(
+          1,
+          Math.min(
+            5,
+            score(result.secondary_score) +
+              ((index % 3) - 1) * (cluster.length > 1 ? 0.06 : 0),
+          ),
+        ),
+      })),
+    );
+  }, [results]);
 
-  const thresholdChanged =
-    scoreRun !== null &&
-    (primaryThreshold !== numericValue(scoreRun.thresholds_snapshot.primary_threshold) ||
-      secondaryThreshold !== numericValue(scoreRun.thresholds_snapshot.secondary_threshold));
-
-  const primaryWord = isDoubleMode ? "Impact" : "Primary";
-  const secondaryWord = isDoubleMode ? "Financial" : "Secondary";
-
-  /* ----------------------------------------------------------
-     CHART OPTION (ECharts) — quadrant shading + threshold lines
-     animate smoothly on their own whenever the option updates,
-     no manual CSS transition wiring needed.
-  ---------------------------------------------------------- */
-  const chartOption: EChartsOption = useMemo(() => {
-    const seriesData = previewResults.map((d) => ({
-      value: [d.secondary_score, d.primary_score],
-      name: d.subtopic_name ?? "Unnamed topic",
-      code: d.subtopic_code,
-      classification: d.previewClassification,
-      itemStyle: { color: getClassificationDotColor(d.previewClassification) },
-    }));
-
-    const axisNameStyle = { fontSize: 12, fontWeight: 600, color: "#334155" };
-    const axisLabelStyle = { fontSize: 12, fontWeight: 600 as const, color: "#334155" };
-    const axisLineStyle = { lineStyle: { color: "#cbd5e1", width: 1 } };
-    const axisTickStyle = { lineStyle: { color: "#cbd5e1", width: 1 } };
-    const splitLineStyle = { lineStyle: { color: "#eef1f6", type: "solid" as const, width: 1 } };
-
-    return {
-      backgroundColor: "transparent",
-      animationDurationUpdate: 500,
-      animationEasingUpdate: "cubicOut",
-      grid: { left: 56, right: 24, top: 24, bottom: 56, containLabel: false },
-      xAxis: {
-        type: "value",
-        min: MATRIX_MIN,
-        max: MATRIX_MAX,
-        interval: 1,
-        name: `${secondaryWord} Materiality →`,
-        nameLocation: "middle",
-        nameGap: 32,
-        nameTextStyle: axisNameStyle,
-        axisLabel: axisLabelStyle,
-        axisLine: axisLineStyle,
-        axisTick: axisTickStyle,
-        splitLine: splitLineStyle,
-      },
-      yAxis: {
-        type: "value",
-        min: MATRIX_MIN,
-        max: MATRIX_MAX,
-        interval: 1,
-        name: `${primaryWord} Materiality →`,
-        nameLocation: "middle",
-        nameGap: 40,
-        nameRotate: 90,
-        nameTextStyle: axisNameStyle,
-        axisLabel: axisLabelStyle,
-        axisLine: axisLineStyle,
-        axisTick: axisTickStyle,
-        splitLine: splitLineStyle,
-      },
-      tooltip: {
-        trigger: "item",
-        backgroundColor: "#ffffff",
-        borderColor: "#e2e8f0",
-        borderWidth: 1,
-        borderRadius: 12,
-        padding: 0,
-        extraCssText: "box-shadow: 0 10px 25px -5px rgba(0,0,0,0.15); overflow: hidden;",
-        formatter: (params: unknown) => {
-          const p = params as { data: { name: string; code: string | null; classification: MaterialityClassification; value: [number, number] } };
-          const color = getClassificationDotColor(p.data.classification);
-          return `
-            <div style="box-sizing:border-box;width:220px;max-width:220px;padding:14px 16px;font-family:inherit;white-space:normal;overflow-wrap:break-word;">
-              <div style="font-size:13px;font-weight:600;line-height:1.4;color:#0f172a;">${p.data.name}</div>
-              ${p.data.code ? `<div style="font-size:11px;color:#94a3b8;margin-top:3px;">${p.data.code}</div>` : ""}
-              <div style="font-size:12px;color:#64748b;margin-top:8px;line-height:1.6;">${secondaryWord}: <span style="font-weight:600;color:#0f172a;">${p.data.value[0].toFixed(2)}</span></div>
-              <div style="font-size:12px;color:#64748b;line-height:1.6;">${primaryWord}: <span style="font-weight:600;color:#0f172a;">${p.data.value[1].toFixed(2)}</span></div>
-              <div style="font-size:12px;color:#64748b;margin-top:6px;line-height:1.6;">Classification: <span style="font-weight:600;color:${color};">${getClassificationLabel(p.data.classification)}</span></div>
-            </div>
-          `;
-        },
-      },
-      series: [
-        {
-          type: "scatter",
-          data: seriesData,
-          symbolSize: 15,
-          itemStyle: { borderColor: "#ffffff", borderWidth: 1.5, shadowBlur: 6, shadowColor: "rgba(15,23,42,0.15)" },
-          emphasis: { scale: 1.35, itemStyle: { shadowBlur: 10 } },
-          animationDuration: 550,
-          animationEasing: "elasticOut",
-          label: {
-            show: true,
-            position: "top",
-            distance: 7,
-            fontSize: 10,
-            fontWeight: 600,
-            color: "#1e293b",
-            textBorderColor: "#ffffff",
-            textBorderWidth: 3,
-            formatter: (params: unknown) => {
-              const p = params as { data: { name: string; code: string | null } };
-               const name = p.data.name;
-
-    return name.length > 24
-      ? `${name.slice(0, 24)}…`
-      : name;
-            },
-          },
-          labelLine: { show: false },
-          markArea: {
-            silent: true,
-            data: [
-              [
-                { coord: [MATRIX_MIN, primaryThreshold], itemStyle: { color: "#fef3c7", opacity: 0.55 } },
-                { coord: [secondaryThreshold, MATRIX_MAX] },
-              ],
-              [
-                { coord: [secondaryThreshold, primaryThreshold], itemStyle: { color: "#fee2e2", opacity: 0.55 } },
-                { coord: [MATRIX_MAX, MATRIX_MAX] },
-              ],
-              [
-                { coord: [MATRIX_MIN, MATRIX_MIN], itemStyle: { color: "#dcfce7", opacity: 0.55 } },
-                { coord: [secondaryThreshold, primaryThreshold] },
-              ],
-              [
-                { coord: [secondaryThreshold, MATRIX_MIN], itemStyle: { color: "#fef3c7", opacity: 0.55 } },
-                { coord: [MATRIX_MAX, primaryThreshold] },
-              ],
-            ],
-          },
-          markLine: {
-            silent: true,
-            symbol: "none",
-            label: { show: false },
-            lineStyle: { color: ESG_ACCENT, type: "dashed", width: 1.5 },
-            data: [{ xAxis: secondaryThreshold }, { yAxis: primaryThreshold }],
-          },
-        },
-      ],
-    };
-  }, [previewResults, primaryThreshold, secondaryThreshold, primaryWord, secondaryWord]);
-
-  const handleRunScoring = useCallback(async () => {
+  const exportFile = async (type: "csv" | "pdf") => {
     if (!assessmentId) return;
-    try {
-      setRunningScoring(true);
-      setError(null);
-      await ScoringApi.runScoring(assessmentId);
-      await loadDashboard(true);
-    } catch (err: unknown) {
-      console.error("Failed to run scoring:", err);
-      setError(extractErrorMessage(err, "Unable to run scoring."));
-    } finally {
-      setRunningScoring(false);
-    }
-  }, [assessmentId, loadDashboard]);
-
-  const handleExportCsv = useCallback(async () => {
-    if (!assessmentId) return;
-    try {
-      setExportingCsv(true);
-      setError(null);
-      const response = await api.get(`/materiality/assessments/${assessmentId}/export/csv/`, {
-        responseType: "blob",
-      });
-      downloadBlob(response.data as Blob, "materiality-results.csv");
-    } catch (err: unknown) {
-      console.error("CSV export failed:", err);
-      setError(extractErrorMessage(err, "Unable to export CSV."));
-    } finally {
-      setExportingCsv(false);
-    }
-  }, [assessmentId]);
-
-  const handleExportPdf = useCallback(async () => {
-    if (!assessmentId) return;
-    try {
-      setExportingPdf(true);
-      setError(null);
-      const response = await api.get(`/materiality/assessments/${assessmentId}/export/pdf/`, {
-        responseType: "blob",
-      });
-      downloadBlob(response.data as Blob, "materiality-summary.pdf");
-    } catch (err: unknown) {
-      console.error("PDF export failed:", err);
-      setError(extractErrorMessage(err, "Unable to export PDF."));
-    } finally {
-      setExportingPdf(false);
-    }
-  }, [assessmentId]);
-
-  const handleExportPng = useCallback(async () => {
-    if (!matrixCardRef.current) return;
-    try {
-      setExportingPng(true);
-      setError(null);
-      // Rasterizes the whole card — title, legend and chart together —
-      // so the exported PNG carries the same context you see on screen.
-      const dataUrl = await toPng(matrixCardRef.current, {
-        backgroundColor: "#ffffff",
-        pixelRatio: 2,
-      });
-      const anchor = document.createElement("a");
-      anchor.href = dataUrl;
-      anchor.download = `materiality-matrix-${assessment?.name?.replace(/\s+/g, "-").toLowerCase() ?? "export"}.png`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-    } catch (err: unknown) {
-      console.error("PNG export failed:", err);
-      setError(extractErrorMessage(err, "Unable to export the matrix as an image."));
-    } finally {
-      setExportingPng(false);
-    }
-  }, [assessment]);
-
-  const handleResetThresholds = useCallback(() => {
-    const snapshot = scoreRun?.thresholds_snapshot;
-    const primary = snapshot ? Number(snapshot.primary_threshold) : DEFAULT_THRESHOLD;
-    const secondary = snapshot ? Number(snapshot.secondary_threshold) : DEFAULT_THRESHOLD;
-    setPrimaryThreshold(Number.isFinite(primary) ? primary : DEFAULT_THRESHOLD);
-    setSecondaryThreshold(Number.isFinite(secondary) ? secondary : DEFAULT_THRESHOLD);
-  }, [scoreRun]);
-
-  const handleToggleHistory = useCallback(async () => {
+    const response = await api.get(
+      `/materiality/assessments/${assessmentId}/export/${type}/`,
+      { responseType: "blob" },
+    );
+    const url = URL.createObjectURL(response.data as Blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `materiality-results.${type}`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+  const toggleHistory = async () => {
     const next = !showHistory;
     setShowHistory(next);
-    if (next && historyRuns === null && assessmentId) {
-      try {
-        setHistoryLoading(true);
-        const response = await api.get(`/materiality/assessments/${assessmentId}/score-runs/`);
-        setHistoryRuns(Array.isArray(response.data) ? response.data : []);
-      } catch (err: unknown) {
-        console.error("Failed to load score run history:", err);
-        setError(extractErrorMessage(err, "Unable to load score run history."));
-        setHistoryRuns([]);
-      } finally {
-        setHistoryLoading(false);
-      }
+    if (next && !runs && assessmentId) {
+      const response = await ScoringApi.getScoreRuns(assessmentId);
+      setRuns(response.data);
     }
-  }, [showHistory, historyRuns, assessmentId]);
-
-  if (!assessmentId) {
-    return (
-      <AppShell title="Materiality Matrix" description="Visualise materiality results.">
-        <div className="flex min-h-[400px] items-center justify-center">
-          <Card className="max-w-md">
-            <CardContent className="p-8 text-center">
-              <AlertCircle className="mx-auto mb-4 h-10 w-10 text-destructive" />
-              <h2 className="text-lg font-semibold">Assessment not found</h2>
-              <p className="mt-2 text-sm text-muted-foreground">A valid materiality assessment is required.</p>
-            </CardContent>
-          </Card>
-        </div>
-      </AppShell>
-    );
-  }
-
-  if (loading && !assessment) {
-    return (
-      <AppShell title="Materiality Matrix" description="Visualise materiality results.">
-        <div className="space-y-6">
-          <div className="h-20 animate-pulse rounded-xl bg-muted" />
-          <div className="h-40 animate-pulse rounded-xl bg-muted" />
-          <div className="mx-auto aspect-[4/3] w-full max-w-3xl animate-pulse rounded-2xl bg-muted" />
-        </div>
-      </AppShell>
-    );
-  }
+  };
 
   return (
     <AppShell
-      title="Materiality Matrix"
-      description={
-        isDoubleMode
-          ? "Review impact and financial materiality results."
-          : "Review materiality results and classification thresholds."
-      }
+      title="Results & Matrix"
+      description="Review the recorded materiality outcome and supporting evidence."
     >
-      <MatrixAnimationStyles />
-
-      <div id="materiality-matrix-page" className="space-y-6 pb-10">
-        {/* HEADER */}
-        <div className="mm-fade-up flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0">
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
-                ESG Materiality
+      <div className="mx-auto max-w-7xl space-y-6 pb-10">
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <Badge>
+              {assessment?.mode === "DOUBLE"
+                ? "Double materiality"
+                : "Single materiality"}
+            </Badge>
+            {readOnly && (
+              <Badge variant="outline" className="ml-2">
+                Historical record
               </Badge>
-              <Badge
-                variant="outline"
-                className={
-                  isDoubleMode
-                    ? "border-purple-200 bg-purple-50 text-purple-700"
-                    : "border-sky-200 bg-sky-50 text-sky-700"
-                }
-              >
-                {isDoubleMode ? "Double Materiality" : "Single Materiality"}
-              </Badge>
-              {scoreRun && (
-                <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">
-                  Method v{scoreRun.method_version ?? ESG_SCORE_METHOD}
-                </Badge>
-              )}
-            </div>
-
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              {assessment?.name ?? "Materiality Assessment"}
-            </h1>
-
-            <p className="mt-1.5 max-w-3xl text-sm text-muted-foreground">
-              {isDoubleMode
-                ? "Compare the significance of organisational impacts with the significance of financial effects."
-                : "Evaluate which ESG topics are material based on the assessment's primary and secondary dimensions."}
+            )}
+            <h2 className="mt-3 text-2xl font-semibold text-foreground">
+              {assessment?.name ?? "Materiality assessment"}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {run
+                ? `Latest calculation: ${new Date(run.run_at).toLocaleString()}`
+                : "Complete evidence collection and internal review, then run scoring."}
             </p>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => void loadDashboard(true)} disabled={refreshing}>
-              <RefreshCw className={`h-4 w-4 sm:mr-2 ${refreshing ? "animate-spin" : ""}`} />
-              <span className="hidden sm:inline">Refresh</span>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => void load()}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh
             </Button>
-
-            <Button variant="outline" size="sm" onClick={() => void handleToggleHistory()}>
-              <History className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">History</span>
-              <ChevronDown className={`ml-1 h-3.5 w-3.5 transition-transform ${showHistory ? "rotate-180" : ""}`} />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void toggleHistory()}
+            >
+              <History className="mr-2 h-4 w-4" />
+              Score-run history
             </Button>
-
-            <span className="mx-1 hidden h-6 w-px bg-border sm:inline-block" aria-hidden="true" />
-
-            <Button variant="outline" size="sm" onClick={() => void handleExportPng()} disabled={exportingPng}>
-              <ImageIcon className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">{exportingPng ? "Exporting..." : "PNG"}</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => void handleExportCsv()} disabled={exportingCsv}>
-              <FileSpreadsheet className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">{exportingCsv ? "Exporting..." : "CSV"}</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => void handleExportPdf()} disabled={exportingPdf}>
-              <FileText className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">{exportingPdf ? "Exporting..." : "PDF"}</span>
-            </Button>
-
-            <span className="mx-1 hidden h-6 w-px bg-border sm:inline-block" aria-hidden="true" />
-            <Button size="sm" onClick={handleRunScoring} disabled={runningScoring} className="bg-emerald-600 hover:bg-emerald-700">
-              <Target className="h-4 w-4 sm:mr-2" />
-              {runningScoring ? "Running..." : "Run Scoring"}
-            </Button>
+            {run && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void exportFile("csv")}
+                >
+                  <FileSpreadsheet className="mr-2 h-4 w-4" />
+                  CSV
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void exportFile("pdf")}
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  PDF
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    if (!chartRef.current) return;
+                    const image = await toPng(chartRef.current);
+                    const anchor = document.createElement("a");
+                    anchor.href = image;
+                    anchor.download = "materiality-matrix.png";
+                    anchor.click();
+                  }}
+                >
+                  <ImageIcon className="mr-2 h-4 w-4" />
+                  PNG
+                </Button>
+              </>
+            )}
+            {!readOnly && (
+              <Button
+                size="sm"
+                onClick={async () => {
+                  if (!assessmentId) return;
+                  await ScoringApi.runScoring(assessmentId);
+                  await load();
+                }}
+              >
+                <Target className="mr-2 h-4 w-4" />
+                Run scoring
+              </Button>
+            )}
           </div>
         </div>
 
-        {/* SCORE RUN HISTORY */}
         {showHistory && (
-          <Card className="mm-fade-up">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-              <CardTitle className="text-base">Score Run History</CardTitle>
-              <Button variant="ghost" size="icon" onClick={() => setShowHistory(false)}>
-                <X className="h-4 w-4" />
-              </Button>
+          <Card className="border-slate-200 px-4 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-base">Score-run history</CardTitle>
+              <CardDescription>
+                Each run is an immutable record of its inputs and calculation.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="pt-0">
-              {historyLoading ? (
-                <div className="space-y-2">
-                  <div className="h-10 animate-pulse rounded-lg bg-muted" />
-                  <div className="h-10 animate-pulse rounded-lg bg-muted" />
-                </div>
-              ) : historyRuns && historyRuns.length > 0 ? (
-                <div className="overflow-hidden rounded-lg border">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
-                      <tr>
-                        <th className="px-4 py-2.5">Run date</th>
-                        <th className="px-4 py-2.5">Responses</th>
-                        <th className="px-4 py-2.5">Method</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {historyRuns.map((run) => (
-                        <tr key={run.id} className="hover:bg-slate-50/60">
-                          <td className="px-4 py-2.5 text-foreground">
-                            {new Date(run.run_at).toLocaleString(undefined, {
-                              day: "2-digit",
-                              month: "short",
-                              year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </td>
-                          <td className="px-4 py-2.5 text-muted-foreground">
-                            {run.response_count ?? "-"} / {run.invited_count ?? "-"}
-                          </td>
-                          <td className="px-4 py-2.5 text-muted-foreground">v{run.method_version ?? ESG_SCORE_METHOD}</td>
-                        </tr>
+            <Separator />
+            <CardContent className="p-0">
+              {runs?.length ? (
+                <div className="overflow-x-auto">
+                  <Table className="min-w-155">
+                    <TableHeader>
+                      <TableRow className="border-slate-200 bg-slate-50 hover:bg-slate-50">
+                        <TableHead className="px-6 py-3">Run date</TableHead>
+                        <TableHead className="px-4 py-3 text-right">
+                          Identified responses
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {runs.map((item) => (
+                        <TableRow
+                          key={item.id}
+                          className="border-slate-100 hover:bg-slate-50/70"
+                        >
+                          <TableCell className="px-6 py-4 font-medium text-slate-900">
+                            {new Date(item.run_at).toLocaleString()}
+                          </TableCell>
+                          <TableCell className="px-4 py-4 text-right text-slate-600">
+                            {item.response_count}/{item.invited_count}
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
               ) : (
-                <p className="py-4 text-center text-sm text-muted-foreground">No score runs yet for this assessment.</p>
+                <p className="p-6 text-sm text-muted-foreground">
+                  No score runs yet.
+                </p>
               )}
             </CardContent>
           </Card>
         )}
 
-        {/* ERROR */}
-        {error && (
-          <div className="mm-fade-up flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">
-            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">Unable to complete the request</p>
-              <p className="mt-1 text-sm">{error}</p>
-            </div>
-            <Button variant="ghost" size="icon" onClick={() => setError(null)} className="text-red-700 hover:bg-red-100">
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
-
-        {/* THRESHOLD ADJUSTMENT */}
-        <Card className="mm-fade-up" style={{ animationDelay: "60ms" }}>
-          <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0 pb-6 px-4">
-            <div className="space-y-1.5">
-              <CardTitle className="text-base">Threshold Adjustment</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Adjust thresholds to reclassify topics in real-time. Changes reflect instantly on the matrix.
+        {loading ? (
+          <Card>
+            <CardContent className="p-10 text-center text-sm text-muted-foreground">
+              Loading results…
+            </CardContent>
+          </Card>
+        ) : !run ? (
+          <Card>
+            <CardContent className="p-10 text-center">
+              <Target className="mx-auto h-8 w-8 text-muted-foreground" />
+              <h3 className="mt-3 font-semibold">No results yet</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Selected topics can be scored from Scoring &amp; Review before
+                the first score run.
               </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+              <Card className="border-slate-200 shadow-sm">
+                <CardContent className="p-5">
+                  <p className="text-sm text-muted-foreground">
+                    Topics assessed
+                  </p>
+                  <p className="mt-1 text-3xl font-semibold">
+                    {results.length}
+                  </p>
+                </CardContent>
+              </Card>
+              {classifications.map((classification) => (
+                <Card
+                  key={classification}
+                  className="border-slate-200 shadow-sm"
+                >
+                  <CardContent className="p-5">
+                    <p className="text-sm text-muted-foreground">
+                      {labelFor(classification)}
+                    </p>
+                    <p
+                      className="mt-1 text-3xl font-semibold"
+                      style={{ color: colors[classification] }}
+                    >
+                      {counts[classification]}
+                    </p>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-            {thresholdChanged && (
-              <Button variant="outline" size="sm" onClick={handleResetThresholds} className="shrink-0">
-                <RotateCcw className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Reset</span>
-              </Button>
-            )}
-          </CardHeader>
 
-          <CardContent className="pb-5 pt-2 px-4">
-            <div className="mx-auto grid w-full max-w-4xl grid-cols-1 gap-y-8 sm:grid-cols-[1fr_auto_1fr] sm:gap-x-10">
-              <ThresholdControl
-                label={`${primaryWord} Materiality Threshold (Y-Axis)`}
-                value={primaryThreshold}
-                onChange={setPrimaryThreshold}
-              />
-
-              <div className="hidden w-px self-stretch bg-border sm:block" aria-hidden="true" />
-
-              <ThresholdControl
-                label={`${secondaryWord} Materiality Threshold (X-Axis)`}
-                value={secondaryThreshold}
-                onChange={setSecondaryThreshold}
-              />
-            </div>
-
-            <div className="mt-6 flex justify-center">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-                <Layers className="h-3.5 w-3.5" />
-                {results.length} Topics
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* MATRIX GRAPH */}
-        <Card className="mm-fade-up" style={{ animationDelay: "120ms" }}>
-          <div ref={matrixCardRef} className="bg-card">
-            <CardHeader className="space-y-1.5 pb-4 px-4">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <CardTitle className="text-base">Materiality Matrix</CardTitle>
-                  <p className="mt-1.5 text-sm text-muted-foreground">Hover a point to see topic details.</p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 lg:pt-0.5">
-                  {LEGEND_ITEMS.map((item) => (
-                    <div key={item.label} className="flex items-center gap-1.5 text-xs text-slate-600">
-                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                      {item.label}
-                    </div>
+            <Card
+              ref={chartRef}
+              className="overflow-hidden border-slate-200 shadow-sm"
+            >
+              <CardHeader className="border-b bg-slate-50/70">
+                <CardTitle>Materiality Matrix</CardTitle>
+                <CardDescription>
+                  Impact rises vertically; financial materiality rises
+                  horizontally. Select a marker or use Topic review for its
+                  supporting evidence.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="px-6 pb-6 pt-6">
+                <div className="mb-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
+                  <span>
+                    Impact threshold{" "}
+                    <strong className="text-foreground">
+                      {primaryThreshold.toFixed(2)}
+                    </strong>
+                  </span>
+                  <span>
+                    Financial threshold{" "}
+                    <strong className="text-foreground">
+                      {secondaryThreshold.toFixed(2)}
+                    </strong>
+                  </span>
+                  {classifications.map((classification) => (
+                    <span
+                      className="inline-flex items-center gap-1.5"
+                      key={classification}
+                    >
+                      <i
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: colors[classification] }}
+                      />
+                      {labelFor(classification)}
+                    </span>
                   ))}
                 </div>
-              </div>
-            </CardHeader>
-
-            <CardContent className="pt-1">
-              <div className="mx-auto w-full rounded-2xl border border-slate-200 bg-white p-4 sm:p-7">
-                <div ref={chartWrapperRef} className="aspect-[16/10] w-full sm:aspect-[16/9]">
-                  <ReactECharts
-                    ref={chartRef}
-                    option={chartOption}
-                    notMerge={false}
-                    lazyUpdate
-                    opts={{ renderer: "svg" }}
-                    style={{ height: "100%", width: "100%" }}
-                  />
+                <div className="mx-auto aspect-square w-full max-w-190 rounded-xl bg-white p-2 sm:p-4">
+                  <div className="relative h-full w-full">
+                    <ResponsiveContainer
+                      width="100%"
+                      height="100%"
+                      minWidth={1}
+                      minHeight={1}
+                    >
+                      <ScatterChart
+                        margin={{ top: 28, right: 28, bottom: 28, left: 28 }}
+                      >
+                        <CartesianGrid stroke="#cbd5e1" strokeDasharray="3 4" />
+                        <XAxis
+                          type="number"
+                          dataKey="chart_secondary_score"
+                          domain={[1, 5]}
+                          tickCount={5}
+                          tickLine={false}
+                          height={28}
+                          axisLine={{ stroke: "#94a3b8" }}
+                          name="Financial materiality"
+                        />
+                        <YAxis
+                          type="number"
+                          dataKey="chart_primary_score"
+                          domain={[1, 5]}
+                          tickCount={5}
+                          tickLine={false}
+                          width={28}
+                          axisLine={{ stroke: "#94a3b8" }}
+                          name="Impact materiality"
+                        />
+                        <ZAxis type="number" range={[196, 196]} />
+                        <ReferenceArea
+                          x1={1}
+                          x2={secondaryThreshold}
+                          y1={1}
+                          y2={primaryThreshold}
+                          fill="#f8fafc"
+                          fillOpacity={1}
+                        />
+                        <ReferenceArea
+                          x1={secondaryThreshold}
+                          x2={5}
+                          y1={1}
+                          y2={primaryThreshold}
+                          fill="#fff7ed"
+                          fillOpacity={1}
+                        />
+                        <ReferenceArea
+                          x1={1}
+                          x2={secondaryThreshold}
+                          y1={primaryThreshold}
+                          y2={5}
+                          fill="#eff6ff"
+                          fillOpacity={1}
+                        />
+                        <ReferenceArea
+                          x1={secondaryThreshold}
+                          x2={5}
+                          y1={primaryThreshold}
+                          y2={5}
+                          fill="#fef2f2"
+                          fillOpacity={1}
+                        />
+                        <ReferenceLine
+                          x={secondaryThreshold}
+                          stroke="#0f766e"
+                          strokeWidth={2}
+                          strokeDasharray="6 5"
+                        />
+                        <ReferenceLine
+                          y={primaryThreshold}
+                          stroke="#0f766e"
+                          strokeWidth={2}
+                          strokeDasharray="6 5"
+                        />
+                        <Tooltip
+                          cursor={false}
+                          content={({ active, payload }) =>
+                            active && payload?.[0] ? (
+                              <div className="min-w-62.5 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-950 shadow-xl ring-1 ring-slate-950/5">
+                                <p className="font-semibold text-slate-950">
+                                  {String(payload[0].payload.subtopic_name)}
+                                </p>
+                                <div className="mt-2 flex items-center justify-between gap-6 text-slate-600">
+                                  <span>Impact</span>
+                                  <strong className="text-slate-950">
+                                    {score(
+                                      payload[0].payload.primary_score,
+                                    ).toFixed(2)}
+                                  </strong>
+                                </div>
+                                <div className="mt-1 flex items-center justify-between gap-6 text-slate-600">
+                                  <span>Financial</span>
+                                  <strong className="text-slate-950">
+                                    {score(
+                                      payload[0].payload.secondary_score,
+                                    ).toFixed(2)}
+                                  </strong>
+                                </div>
+                                <div className="mt-3">
+                                  <ClassificationBadge
+                                    classification={String(
+                                      payload[0].payload.classification,
+                                    )}
+                                  />
+                                </div>
+                                {payload[0].payload.is_override && (
+                                  <p className="mt-2 text-xs font-medium text-amber-700">
+                                    Documented management override
+                                  </p>
+                                )}
+                              </div>
+                            ) : null
+                          }
+                        />
+                        {classifications.map((classification) => (
+                          <Scatter
+                            id={`matrix-${classification}`}
+                            key={classification}
+                            name={labelFor(classification)}
+                            data={chartPoints.filter(
+                              (result) =>
+                                result.classification === classification,
+                            )}
+                            fill={colors[classification]}
+                            isAnimationActive={false}
+                            shape={(point: {
+                              cx?: number;
+                              cy?: number;
+                              fill?: string;
+                              payload?: MatrixPoint;
+                            }) => <MatrixMarker {...point} />}
+                            onClick={(point: { payload?: MatrixPoint }) =>
+                              point.payload && setSelected(point.payload)
+                            }
+                          />
+                        ))}
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                    <span className="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 text-xs font-medium text-slate-600">
+                      Financial materiality
+                    </span>
+                    <span className="pointer-events-none absolute -left-5 top-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap text-xs font-medium text-slate-600">
+                      Impact materiality
+                    </span>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </div>
-        </Card>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Topics with identical scores are offset slightly for display
+                  only; exports and recorded scores are unchanged.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200 px-4 shadow-sm">
+              <CardHeader>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle className="text-base">Topic review</CardTitle>
+                    <CardDescription>
+                      Recorded scores, classifications, and a direct path to the
+                      supporting stakeholder snapshot.
+                    </CardDescription>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="w-fit border-[#DDD8FF] bg-[#FBFAFF] text-[#4A3FD6]"
+                  >
+                    {results.length} topics
+                  </Badge>
+                </div>
+              </CardHeader>
+              <Separator />
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table className="min-w-225">
+                    <TableHeader>
+                      <TableRow className="border-slate-200 bg-slate-50 hover:bg-slate-50">
+                        <TableHead className="px-6 py-3">Topic</TableHead>
+                        <TableHead className="px-4 py-3 text-center">
+                          Impact
+                        </TableHead>
+                        <TableHead className="px-4 py-3 text-center">
+                          Financial
+                        </TableHead>
+                        <TableHead className="px-4 py-3">
+                          Classification
+                        </TableHead>
+                        <TableHead className="px-6 py-3 text-right">
+                          Action
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {results.map((result) => (
+                        <TableRow
+                          key={result.id}
+                          className="border-slate-100 transition-colors hover:bg-slate-50/70"
+                        >
+                          <TableCell className="px-6 py-4 font-medium text-slate-900">
+                            {result.subtopic_name}
+                          </TableCell>
+                          <TableCell className="px-4 py-4 text-center font-medium text-slate-900">
+                            {score(result.primary_score).toFixed(2)}
+                          </TableCell>
+                          <TableCell className="px-4 py-4 text-center font-medium text-slate-900">
+                            {score(result.secondary_score).toFixed(2)}
+                          </TableCell>
+                          <TableCell className="px-4 py-4">
+                            <ClassificationBadge
+                              classification={result.classification}
+                            />
+                          </TableCell>
+                          <TableCell className="px-6 py-4 text-right">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSelected(result)}
+                            >
+                              Inspect
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {selected && (
+              <Card className="border-slate-200 px-4 shadow-sm">
+                <CardHeader>
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-full bg-indigo-50 p-2.5">
+                      <Users className="h-5 w-5 text-indigo-700" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">
+                        {selected.subtopic_name}
+                      </CardTitle>
+                      <CardDescription>
+                        {labelFor(selected.classification)}
+                        {selected.is_override
+                          ? " · Documented management override"
+                          : " · System classification"}
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <Separator />
+                <CardContent className="px-6 py-5">
+                  <StakeholderContribution
+                    breakdown={selected.group_breakdown}
+                  />
+                </CardContent>
+              </Card>
+            )}
+          </>
+        )}
       </div>
     </AppShell>
-  );
-}
-
-/* ============================================================
-   THRESHOLD CONTROL
-============================================================ */
-
-function ThresholdControl({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-}) {
-  const sliderLabels = [1, 2, 3, 4, 5];
-
-  return (
-    <div className="w-full">
-      {/* =====================================================
-          LABEL + VALUE
-      ===================================================== */}
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <Label className="text-sm font-medium text-slate-600">
-          {label}
-        </Label>
-
-        <span
-          className="
-            min-w-[64px]
-            rounded-md
-            border
-            border-emerald-200
-            bg-emerald-50
-            px-2.5
-            py-1
-            text-center
-            text-sm
-            font-semibold
-            tabular-nums
-            text-emerald-600
-          "
-        >
-          {value.toFixed(2)}
-        </span>
-      </div>
-
-      {/* =====================================================
-          SLIDER
-      ===================================================== */}
-      <div className="relative px-[18px]">
-        <Slider
-          min={1}
-          max={5}
-          step={0.01}
-          value={[value]}
-          onValueChange={(values) => {
-            const next = values[0];
-
-            if (typeof next === "number") {
-              onChange(next);
-            }
-          }}
-        />
-
-        {/* ===================================================
-            SCALE LABELS
-        =================================================== */}
-        <div className="mt-1 flex justify-between text-sm text-slate-400">
-          {sliderLabels.map((number) => (
-            <span
-              key={number}
-              className="w-5 text-center font-normal"
-            >
-              {number}
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
   );
 }

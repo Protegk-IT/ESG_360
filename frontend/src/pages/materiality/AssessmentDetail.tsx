@@ -3,7 +3,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import {
-  ArrowLeft,
   Check,
   ChevronDown,
   ChevronRight,
@@ -63,7 +62,7 @@ interface Assessment {
   period_start: string;
   period_end: string;
 
-  mode: "SINGLE" | "DOUBLE" ;
+  mode: "SINGLE" | "DOUBLE";
   status: string;
 
   primary_threshold: string | number;
@@ -118,8 +117,14 @@ interface VisibleCategory {
    STATIC CONFIG
 ============================================================ */
 
-const STATUS_BADGE_CONFIG: Record<string, { label: string; className: string }> = {
-  DRAFT: { label: "Draft", className: "border-slate-200 bg-slate-50 text-slate-700" },
+const STATUS_BADGE_CONFIG: Record<
+  string,
+  { label: string; className: string }
+> = {
+  DRAFT: {
+    label: "Draft",
+    className: "border-slate-200 bg-slate-50 text-slate-700",
+  },
   TOPICS_SELECTED: {
     label: "Topics Selected",
     className: "border-blue-200 bg-blue-50 text-blue-700",
@@ -171,7 +176,9 @@ export default function AssessmentDetail() {
   const [subTopics, setSubTopics] = useState<MaterialSubTopic[]>([]);
 
   /* IDs of sub-topics already selected for this assessment. */
-  const [selectedSubTopicIds, setSelectedSubTopicIds] = useState<Set<string>>(new Set());
+  const [selectedSubTopicIds, setSelectedSubTopicIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   /* ---------------------------- ui state ---------------------------- */
 
@@ -182,7 +189,9 @@ export default function AssessmentDetail() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
 
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
+    new Set(),
+  );
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
 
   /* ---------------------------- post-save "generate survey" dialog ---------------------------- */
@@ -276,7 +285,7 @@ export default function AssessmentDetail() {
       (a, b) =>
         a.display_order - b.display_order ||
         String(a.code).localeCompare(String(b.code)) ||
-        a.name.localeCompare(b.name)
+        a.name.localeCompare(b.name),
     );
 
   const sortSubTopics = (subTopicList: MaterialSubTopic[]) =>
@@ -284,12 +293,15 @@ export default function AssessmentDetail() {
       (a, b) =>
         a.display_order - b.display_order ||
         a.code.localeCompare(b.code) ||
-        a.name.localeCompare(b.name)
+        a.name.localeCompare(b.name),
     );
 
   /* ---------------------------- search matching ---------------------------- */
 
-  const subTopicMatchesKeyword = (subTopic: MaterialSubTopic, keyword: string) =>
+  const subTopicMatchesKeyword = (
+    subTopic: MaterialSubTopic,
+    keyword: string,
+  ) =>
     subTopic.name.toLowerCase().includes(keyword) ||
     subTopic.code.toLowerCase().includes(keyword) ||
     (subTopic.description?.toLowerCase().includes(keyword) ?? false);
@@ -321,48 +333,66 @@ export default function AssessmentDetail() {
       (statusFilter === "Active" && topic.is_active) ||
       (statusFilter === "Inactive" && !topic.is_active);
 
-    return categories.reduce<VisibleCategory[]>((visibleCategories, category) => {
-      const categorySelfMatches = !keyword || categoryMatchesKeyword(category, keyword);
+    return categories.reduce<VisibleCategory[]>(
+      (visibleCategories, category) => {
+        const categorySelfMatches =
+          !keyword || categoryMatchesKeyword(category, keyword);
 
-      const visibleTopics = sortTopics(topicsByCategory.get(category.id) ?? [])
-        .filter(matchesStatus)
-        .reduce<VisibleTopic[]>((acc, topic) => {
-          const topicSubTopics = sortSubTopics(subTopicsByTopic.get(topic.id) ?? []);
+        const visibleTopics = sortTopics(
+          topicsByCategory.get(category.id) ?? [],
+        )
+          .filter(matchesStatus)
+          .reduce<VisibleTopic[]>((acc, topic) => {
+            const topicSubTopics = sortSubTopics(
+              subTopicsByTopic.get(topic.id) ?? [],
+            );
 
-          const topicSelfMatches = !keyword || topicMatchesKeyword(topic, keyword);
+            const topicSelfMatches =
+              !keyword || topicMatchesKeyword(topic, keyword);
 
-          const matchingSubTopics = keyword
-            ? topicSubTopics.filter((subTopic) => subTopicMatchesKeyword(subTopic, keyword))
-            : topicSubTopics;
+            const matchingSubTopics = keyword
+              ? topicSubTopics.filter((subTopic) =>
+                  subTopicMatchesKeyword(subTopic, keyword),
+                )
+              : topicSubTopics;
 
-          const topicVisible =
-            categorySelfMatches || topicSelfMatches || matchingSubTopics.length > 0;
+            const topicVisible =
+              categorySelfMatches ||
+              topicSelfMatches ||
+              matchingSubTopics.length > 0;
 
-          if (!topicVisible) {
+            if (!topicVisible) {
+              return acc;
+            }
+
+            acc.push({
+              topic,
+              subTopics:
+                topicSelfMatches || categorySelfMatches
+                  ? topicSubTopics
+                  : matchingSubTopics,
+            });
+
             return acc;
-          }
+          }, []);
 
-          acc.push({
-            topic,
-            subTopics: topicSelfMatches || categorySelfMatches ? topicSubTopics : matchingSubTopics,
-          });
+        if (categorySelfMatches || visibleTopics.length > 0) {
+          visibleCategories.push({ category, topics: visibleTopics });
+        }
 
-          return acc;
-        }, []);
-
-      if (categorySelfMatches || visibleTopics.length > 0) {
-        visibleCategories.push({ category, topics: visibleTopics });
-      }
-
-      return visibleCategories;
-    }, []);
+        return visibleCategories;
+      },
+      [],
+    );
   }, [categories, topicsByCategory, subTopicsByTopic, search, statusFilter]);
 
   /* ---------------------------- derived counts ---------------------------- */
 
   const selectedCount = selectedSubTopicIds.size;
   const estimatedQuestions = selectedCount * QUESTIONS_PER_SUBTOPIC;
-  const estimatedMinutes = Math.ceil((estimatedQuestions * SECONDS_PER_QUESTION) / 60);
+  const estimatedMinutes = Math.ceil(
+    (estimatedQuestions * SECONDS_PER_QUESTION) / 60,
+  );
 
   /* ---------------------------- tree toggles ---------------------------- */
 
@@ -408,9 +438,15 @@ export default function AssessmentDetail() {
   };
 
   const expandAll = () => {
-    setExpandedCategories(new Set(visibleTree.map(({ category }) => category.id)));
+    setExpandedCategories(
+      new Set(visibleTree.map(({ category }) => category.id)),
+    );
     setExpandedTopics(
-      new Set(visibleTree.flatMap(({ topics: topicList }) => topicList.map(({ topic }) => topic.id)))
+      new Set(
+        visibleTree.flatMap(({ topics: topicList }) =>
+          topicList.map(({ topic }) => topic.id),
+        ),
+      ),
     );
   };
 
@@ -425,9 +461,15 @@ export default function AssessmentDetail() {
       return;
     }
 
-    setExpandedCategories(new Set(visibleTree.map(({ category }) => category.id)));
+    setExpandedCategories(
+      new Set(visibleTree.map(({ category }) => category.id)),
+    );
     setExpandedTopics(
-      new Set(visibleTree.flatMap(({ topics: topicList }) => topicList.map(({ topic }) => topic.id)))
+      new Set(
+        visibleTree.flatMap(({ topics: topicList }) =>
+          topicList.map(({ topic }) => topic.id),
+        ),
+      ),
     );
   }, [search, visibleTree]);
 
@@ -485,7 +527,8 @@ export default function AssessmentDetail() {
       await SurveyApi.generateSurvey(id);
 
       toast.success("Survey questions generated successfully.", {
-        description: "Questions were generated from the included assessment topics.",
+        description:
+          "Questions were generated from the included assessment topics.",
       });
 
       setGenerateDialogOpen(false);
@@ -534,7 +577,8 @@ export default function AssessmentDetail() {
     </Badge>
   );
 
-  const getCategoryLabel = (code: TopicCategory["code"]) => CATEGORY_LABELS[code] ?? "Governance";
+  const getCategoryLabel = (code: TopicCategory["code"]) =>
+    CATEGORY_LABELS[code] ?? "Governance";
 
   const renderCategoryBadge = (code: TopicCategory["code"]) => (
     <Badge className="border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-50">
@@ -556,7 +600,9 @@ export default function AssessmentDetail() {
 
         <div
           className={`flex items-center justify-between gap-4 rounded-lg border px-4 py-3 transition-all ${
-            selected ? "border-indigo-200 bg-indigo-50/50" : "border-slate-100 bg-slate-50/70"
+            selected
+              ? "border-indigo-200 bg-indigo-50/50"
+              : "border-slate-100 bg-slate-50/70"
           }`}
         >
           <div className="flex min-w-0 items-center gap-3">
@@ -572,12 +618,18 @@ export default function AssessmentDetail() {
 
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold text-[#4A3FD6]">{subTopic.code}</span>
-                <span className="truncate text-sm font-medium text-slate-800">{subTopic.name}</span>
+                <span className="text-xs font-semibold text-[#4A3FD6]">
+                  {subTopic.code}
+                </span>
+                <span className="truncate text-sm font-medium text-slate-800">
+                  {subTopic.name}
+                </span>
               </div>
 
               {subTopic.description && (
-                <p className="mt-1 line-clamp-2 text-xs text-slate-500">{subTopic.description}</p>
+                <p className="mt-1 line-clamp-2 text-xs text-slate-500">
+                  {subTopic.description}
+                </p>
               )}
             </div>
           </div>
@@ -596,7 +648,10 @@ export default function AssessmentDetail() {
     );
   };
 
-  const renderTopic = ({ topic, subTopics: children }: VisibleTopic, isLast: boolean) => {
+  const renderTopic = (
+    { topic, subTopics: children }: VisibleTopic,
+    isLast: boolean,
+  ) => {
     const expanded = expandedTopics.has(topic.id);
 
     return (
@@ -615,7 +670,11 @@ export default function AssessmentDetail() {
               className="shrink-0"
               onClick={() => toggleTopic(topic.id)}
             >
-              {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              {expanded ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
             </Button>
 
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-600">
@@ -624,32 +683,45 @@ export default function AssessmentDetail() {
 
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold text-[#4A3FD6]">{topic.code}</span>
-                <span className="truncate text-sm font-semibold text-slate-800">{topic.name}</span>
+                <span className="text-xs font-semibold text-[#4A3FD6]">
+                  {topic.code}
+                </span>
+                <span className="truncate text-sm font-semibold text-slate-800">
+                  {topic.name}
+                </span>
 
                 {!topic.is_active && (
-                  <Badge className="border-slate-200 bg-slate-100 text-slate-500">Inactive</Badge>
+                  <Badge className="border-slate-200 bg-slate-100 text-slate-500">
+                    Inactive
+                  </Badge>
                 )}
               </div>
 
               {topic.description && (
-                <p className="mt-1 line-clamp-1 text-xs text-slate-500">{topic.description}</p>
+                <p className="mt-1 line-clamp-1 text-xs text-slate-500">
+                  {topic.description}
+                </p>
               )}
             </div>
           </div>
 
           <div className="shrink-0 text-xs text-slate-500">
-            {children.length} {children.length === 1 ? "sub-topic" : "sub-topics"}
+            {children.length}{" "}
+            {children.length === 1 ? "sub-topic" : "sub-topics"}
           </div>
         </div>
 
         {expanded && (
           <div className="relative ml-8 mt-3 space-y-0 border-l border-slate-200 pl-6">
             {children.length > 0 ? (
-              children.map((subTopic, index) => renderSubTopic(subTopic, index === children.length - 1))
+              children.map((subTopic, index) =>
+                renderSubTopic(subTopic, index === children.length - 1),
+              )
             ) : (
               <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center">
-                <p className="text-sm text-slate-500">No matching sub-topics.</p>
+                <p className="text-sm text-slate-500">
+                  No matching sub-topics.
+                </p>
               </div>
             )}
           </div>
@@ -658,7 +730,10 @@ export default function AssessmentDetail() {
     );
   };
 
-  const renderCategory = ({ category, topics: categoryTopics }: VisibleCategory, isLast: boolean) => {
+  const renderCategory = (
+    { category, topics: categoryTopics }: VisibleCategory,
+    isLast: boolean,
+  ) => {
     const expanded = expandedCategories.has(category.id);
 
     return (
@@ -676,7 +751,11 @@ export default function AssessmentDetail() {
               className="shrink-0"
               onClick={() => toggleCategory(category.id)}
             >
-              {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              {expanded ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
             </Button>
 
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
@@ -685,12 +764,15 @@ export default function AssessmentDetail() {
 
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-semibold text-slate-900">{category.name}</span>
+                <span className="text-sm font-semibold text-slate-900">
+                  {category.name}
+                </span>
                 {renderCategoryBadge(category.code)}
               </div>
 
               <p className="mt-0.5 text-xs text-slate-500">
-                {categoryTopics.length} {categoryTopics.length === 1 ? "topic" : "topics"}
+                {categoryTopics.length}{" "}
+                {categoryTopics.length === 1 ? "topic" : "topics"}
               </p>
             </div>
           </div>
@@ -700,12 +782,16 @@ export default function AssessmentDetail() {
           <div className="relative ml-8 mt-3 space-y-0 border-l border-slate-200 pl-6">
             {categoryTopics.length > 0 ? (
               categoryTopics.map((visibleTopic, index) =>
-                renderTopic(visibleTopic, index === categoryTopics.length - 1)
+                renderTopic(visibleTopic, index === categoryTopics.length - 1),
               )
             ) : (
               <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-5 py-7 text-center">
-                <p className="text-sm font-medium text-slate-600">No topics found</p>
-                <p className="mt-1 text-xs text-slate-500">Try changing your search or status filter.</p>
+                <p className="text-sm font-medium text-slate-600">
+                  No topics found
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Try changing your search or status filter.
+                </p>
               </div>
             )}
           </div>
@@ -739,7 +825,9 @@ export default function AssessmentDetail() {
         description="Unable to load the requested assessment."
       >
         <div className="flex min-h-[400px] flex-col items-center justify-center gap-4">
-          <p className="text-sm text-red-600">{error ?? "Assessment not found."}</p>
+          <p className="text-sm text-red-600">
+            {error ?? "Assessment not found."}
+          </p>
 
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => void loadData()}>
@@ -747,7 +835,10 @@ export default function AssessmentDetail() {
               Try Again
             </Button>
 
-            <Button variant="outline" onClick={() => navigate("/materiality/assessments")}>
+            <Button
+              variant="outline"
+              onClick={() => navigate("/materiality/assessments")}
+            >
               Back
             </Button>
           </div>
@@ -764,38 +855,41 @@ export default function AssessmentDetail() {
       description="Select the ESG sub-topics that will be included in this assessment."
     >
       <div className="space-y-6">
-        <Button variant="ghost" className="-ml-2" onClick={() => navigate("/materiality/assessments")}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Assessments
-        </Button>
-
         {/* ASSESSMENT SUMMARY */}
         <Card className="border-slate-200 shadow-sm">
           <CardContent className="p-6">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-xl font-semibold text-[#22243A]">{assessment.name}</h1>
+                  <h1 className="text-xl font-semibold text-[#22243A]">
+                    {assessment.name}
+                  </h1>
                   {renderStatusBadge(assessment.status)}
                   {renderModeBadge(assessment.mode)}
                   {assessment.is_locked && (
-                    <Badge className="border-red-200 bg-red-50 text-red-700">Locked</Badge>
+                    <Badge className="border-red-200 bg-red-50 text-red-700">
+                      Locked
+                    </Badge>
                   )}
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500">
-                <span>
-  Reporting Period:{" "}
-  <strong className="font-medium text-slate-700">
-    {assessment.reporting_period_details?.name ??
-      "Not specified"}
-  </strong>
-</span>
+                  <span>
+                    Reporting Period:{" "}
+                    <strong className="font-medium text-slate-700">
+                      {assessment.reporting_period_details?.name ??
+                        "Not specified"}
+                    </strong>
+                  </span>
                 </div>
               </div>
 
               <div className="flex shrink-0 gap-2">
-                <Button variant="outline" onClick={() => void loadData()} disabled={saving}>
+                <Button
+                  variant="outline"
+                  onClick={() => void loadData()}
+                  disabled={saving}
+                >
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Refresh
                 </Button>
@@ -839,7 +933,9 @@ export default function AssessmentDetail() {
                   <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                     Selected Sub-topics
                   </p>
-                  <p className="mt-1 text-2xl font-semibold text-[#22243A]">{selectedCount}</p>
+                  <p className="mt-1 text-2xl font-semibold text-[#22243A]">
+                    {selectedCount}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -855,7 +951,9 @@ export default function AssessmentDetail() {
                   <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                     Estimated Questions
                   </p>
-                  <p className="mt-1 text-2xl font-semibold text-[#22243A]">{estimatedQuestions}</p>
+                  <p className="mt-1 text-2xl font-semibold text-[#22243A]">
+                    {estimatedQuestions}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -882,10 +980,13 @@ export default function AssessmentDetail() {
 
         {selectedCount > 20 && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-            <p className="text-sm font-medium text-amber-800">Large topic shortlist</p>
+            <p className="text-sm font-medium text-amber-800">
+              Large topic shortlist
+            </p>
             <p className="mt-1 text-sm text-amber-700">
-              {selectedCount} sub-topics will produce approximately {estimatedQuestions} questions and
-              an estimated {estimatedMinutes}-minute survey. Consider reducing the shortlist.
+              {selectedCount} sub-topics will produce approximately{" "}
+              {estimatedQuestions} questions and an estimated {estimatedMinutes}
+              -minute survey. Consider reducing the shortlist.
             </p>
           </div>
         )}
@@ -900,7 +1001,8 @@ export default function AssessmentDetail() {
                   Topic Selection
                 </CardTitle>
                 <p className="mt-1 text-sm text-slate-500">
-                  Select the sub-topics that should be included in this assessment.
+                  Select the sub-topics that should be included in this
+                  assessment.
                 </p>
               </div>
 
@@ -930,7 +1032,9 @@ export default function AssessmentDetail() {
 
               <Select
                 value={statusFilter}
-                onValueChange={(value) => setStatusFilter(value as StatusFilter)}
+                onValueChange={(value) =>
+                  setStatusFilter(value as StatusFilter)
+                }
               >
                 <SelectTrigger className="w-full md:w-40">
                   <SelectValue />
@@ -947,13 +1051,20 @@ export default function AssessmentDetail() {
             {visibleTree.length === 0 ? (
               <div className="flex min-h-[280px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 text-center">
                 <FolderTree className="h-10 w-10 text-slate-300" />
-                <p className="mt-3 text-sm font-medium text-slate-600">No topics found</p>
-                <p className="mt-1 text-xs text-slate-500">Try changing your search or status filter.</p>
+                <p className="mt-3 text-sm font-medium text-slate-600">
+                  No topics found
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Try changing your search or status filter.
+                </p>
               </div>
             ) : (
               <div className="space-y-0">
                 {visibleTree.map((visibleCategory, index) =>
-                  renderCategory(visibleCategory, index === visibleTree.length - 1)
+                  renderCategory(
+                    visibleCategory,
+                    index === visibleTree.length - 1,
+                  ),
                 )}
               </div>
             )}
@@ -970,7 +1081,10 @@ export default function AssessmentDetail() {
             Cancel
           </Button>
 
-          <Button onClick={() => void handleSaveTopics()} disabled={saving || assessment.is_locked}>
+          <Button
+            onClick={() => void handleSaveTopics()}
+            disabled={saving || assessment.is_locked}
+          >
             {saving ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1004,9 +1118,7 @@ export default function AssessmentDetail() {
         }}
       >
         <DialogContent className="max-w-md border-slate-200 bg-white p-0">
-
           <div className="flex flex-col items-center px-6 pb-2 pt-8 text-center">
-
             <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-[#F1EFFF] text-[#4A3FD6]">
               <Sparkles className="h-7 w-7" />
             </div>
@@ -1017,20 +1129,19 @@ export default function AssessmentDetail() {
               </DialogTitle>
 
               <DialogDescription className="max-w-sm text-center text-sm leading-6 text-slate-500">
-                Generate survey questions automatically from the topics included in this
-                materiality assessment. The generated questions can be reviewed and edited
-                afterwards.
+                Generate survey questions automatically from the topics included
+                in this materiality assessment. The generated questions can be
+                reviewed and edited afterwards.
               </DialogDescription>
             </DialogHeader>
 
             <p className="mt-4 text-[11px] text-slate-400">
-              The survey and its generated questions will be created by the backend.
+              The survey and its generated questions will be created by the
+              backend.
             </p>
-
           </div>
 
           <DialogFooter className="flex-col gap-2 border-t border-slate-100 px-6 py-4 sm:flex-col">
-
             <Button
               type="button"
               onClick={() => void handleGenerateSurvey()}
@@ -1042,7 +1153,9 @@ export default function AssessmentDetail() {
               ) : (
                 <Sparkles className="mr-2 h-4 w-4" />
               )}
-              {generatingSurvey ? "Generating Questions..." : "Generate Questions"}
+              {generatingSurvey
+                ? "Generating Questions..."
+                : "Generate Questions"}
             </Button>
 
             <Button
@@ -1054,9 +1167,7 @@ export default function AssessmentDetail() {
             >
               Not Now
             </Button>
-
           </DialogFooter>
-
         </DialogContent>
       </Dialog>
     </AppShell>

@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import axios from "axios";
 import { Toaster, toast } from "sonner";
 import {
-  ArrowLeft,
   Calculator,
   CircleAlert,
   Clock3,
@@ -19,16 +18,42 @@ import {
   Users,
 } from "lucide-react";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,7 +67,10 @@ import AppShell from "@/components/layout/AppShell";
 import AssessmentApi from "@/api/materiality/AssessmentApi";
 import ScoringApi from "@/api/materiality/ScoringApi";
 
-import type { MaterialityAssessment } from "@/types/materiality/assessment";
+import type {
+  AssessmentTopic,
+  MaterialityAssessment,
+} from "@/types/materiality/assessment";
 import type {
   GroupBreakdownEntry,
   InternalScore,
@@ -94,12 +122,19 @@ const DIALOG_CONTENT_CLASS =
 
 export default function ScoringDashboard() {
   const { assessmentId } = useParams<{ assessmentId: string }>();
-  const navigate = useNavigate();
 
   // ------------------------------------------------------------
   // Main state
   // ------------------------------------------------------------
-  const [assessment, setAssessment] = useState<MaterialityAssessment | null>(null);
+  const [assessment, setAssessment] = useState<MaterialityAssessment | null>(
+    null,
+  );
+  // Selected assessment topics are the source of truth for the scoring
+  // workspace. A ScoreRun only exists *after* scoring, so it must never be
+  // used as the source for the internal-scoring form.
+  const [assessmentTopics, setAssessmentTopics] = useState<AssessmentTopic[]>(
+    [],
+  );
   const [results, setResults] = useState<MaterialityResult[]>([]);
   const [, setInternalScores] = useState<InternalScore[]>([]);
   const [lastScoreRun, setLastScoreRun] = useState<ScoreRun | null>(null);
@@ -117,192 +152,167 @@ export default function ScoringDashboard() {
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [selectedResult, setSelectedResult] = useState<MaterialityResult | null>(null);
+  const [selectedResult, setSelectedResult] =
+    useState<MaterialityResult | null>(null);
 
   // ------------------------------------------------------------
   // Override form state
   // ------------------------------------------------------------
-  const [overrideClassification, setOverrideClassification] = useState<Classification | "">("");
+  const [overrideClassification, setOverrideClassification] = useState<
+    Classification | ""
+  >("");
   const [overrideReason, setOverrideReason] = useState("");
 
   // ------------------------------------------------------------
   // Internal expert score form state (frontend only —
   // calculations happen server-side)
   // ------------------------------------------------------------
-  const [internalForm, setInternalForm] = useState<Record<string, Partial<InternalScore>>>({});
+  const [internalForm, setInternalForm] = useState<
+    Record<string, Partial<InternalScore>>
+  >({});
 
   // loadDashboard NEVER shows its own success toast. It's called both as
   // a silent refetch after actions (save / run / override) AND from the
   // explicit "Refresh" button. Each caller is responsible for its own
   // single success toast — that's what was causing the double toast.
- const loadDashboard = useCallback(
-  async (refresh = false) => {
-    if (!assessmentId) return;
+  const loadDashboard = useCallback(
+    async (refresh = false) => {
+      if (!assessmentId) return;
 
-    try {
-      setError(null);
+      try {
+        setError(null);
 
-      if (refresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
+        if (refresh) {
+          setRefreshing(true);
+        } else {
+          setLoading(true);
+        }
 
-      // ==========================================================
-      // 1. Load assessment + results
-      // These APIs are valid for both SINGLE and DOUBLE
-      // ==========================================================
+        // ==========================================================
+        // 1. Load assessment + results
+        // These APIs are valid for both SINGLE and DOUBLE
+        // ==========================================================
 
-      const [assessmentRes, resultsRes] =
-        await Promise.all([
-          AssessmentApi.getById(assessmentId),
-          ScoringApi.getResults(assessmentId),
-        ]);
+        const [assessmentRes, selectedTopicsRes, resultsRes] =
+          await Promise.all([
+            AssessmentApi.getById(assessmentId),
+            AssessmentApi.getTopicsByAssessment(assessmentId),
+            ScoringApi.getResults(assessmentId),
+          ]);
 
-      const loadedAssessment =
-        assessmentRes.data;
+        const loadedAssessment = assessmentRes.data;
 
-      setAssessment(loadedAssessment);
+        setAssessment(loadedAssessment);
+        setAssessmentTopics(
+          (Array.isArray(selectedTopicsRes.data)
+            ? selectedTopicsRes.data
+            : []
+          ).filter((topic) => topic.is_included),
+        );
 
-      // ==========================================================
-      // 2. Process scoring results
-      // ==========================================================
+        // ==========================================================
+        // 2. Process scoring results
+        // ==========================================================
 
-      const resultsData = resultsRes.data;
+        const resultsData = resultsRes.data;
 
-      const topicResults =
-        Array.isArray(resultsData.topic_results)
+        const topicResults = Array.isArray(resultsData.topic_results)
           ? resultsData.topic_results
           : [];
 
-      const loadedResults: MaterialityResult[] =
-        topicResults.map((t) => ({
+        const loadedResults: MaterialityResult[] = topicResults.map((t) => ({
           id: t.id,
-          assessment_topic:
-            t.assessment_topic,
-          subtopic_name:
-            t.subtopic_name,
-          subtopic_code:
-            t.subtopic_code,
-          category_code:
-            t.category_code,
-          primary_score:
-            Number(t.primary_score),
-          secondary_score:
-            Number(t.secondary_score),
-          classification:
-            t.classification,
-          is_override:
-            t.is_override,
-          override_reason:
-            t.override_reason,
+          assessment_topic: t.assessment_topic,
+          subtopic_name: t.subtopic_name,
+          subtopic_code: t.subtopic_code,
+          category_code: t.category_code,
+          primary_score: Number(t.primary_score),
+          secondary_score: Number(t.secondary_score),
+          classification: t.classification,
+          is_override: t.is_override,
+          override_reason: t.override_reason,
 
           // Stakeholder group breakdown
-          group_breakdown:
-            t.group_breakdown,
+          group_breakdown: t.group_breakdown,
         }));
 
-      setResults(loadedResults);
+        setResults(loadedResults);
 
-      // ==========================================================
-      // 3. Internal scoring
-      //
-      // IMPORTANT:
-      // /internal-scores/ is ONLY called for DOUBLE.
-      // ==========================================================
+        // ==========================================================
+        // 3. Internal scoring
+        //
+        // IMPORTANT:
+        // /internal-scores/ is ONLY called for DOUBLE.
+        // ==========================================================
 
-      if (
-        loadedAssessment.mode === "DOUBLE"
-      ) {
-        const internalRes =
-          await ScoringApi.getInternalScores(
-            assessmentId
-          );
+        if (loadedAssessment.mode === "DOUBLE") {
+          const internalRes = await ScoringApi.getInternalScores(assessmentId);
 
-        const loadedInternal =
-          Array.isArray(internalRes.data)
+          const loadedInternal = Array.isArray(internalRes.data)
             ? internalRes.data
             : [];
 
-        setInternalScores(
-          loadedInternal
-        );
+          setInternalScores(loadedInternal);
 
-        // --------------------------------------------------------
-        // Hydrate internal expert scoring form
-        // --------------------------------------------------------
+          // --------------------------------------------------------
+          // Hydrate internal expert scoring form
+          // --------------------------------------------------------
 
-        const formState: Record<
-          string,
-          Partial<InternalScore>
-        > = {};
+          const formState: Record<string, Partial<InternalScore>> = {};
 
-        loadedInternal.forEach(
-          (score) => {
-            formState[
-              score.assessment_topic
-            ] = {
+          loadedInternal.forEach((score) => {
+            formState[score.assessment_topic] = {
               ...score,
             };
-          }
-        );
+          });
 
-        setInternalForm(
-          formState
-        );
-      } else {
-        // ========================================================
-        // SINGLE MATERIALITY
-        //
-        // Never call /internal-scores/
-        // Clear any previous internal state.
-        // ========================================================
+          setInternalForm(formState);
+        } else {
+          // ========================================================
+          // SINGLE MATERIALITY
+          //
+          // Never call /internal-scores/
+          // Clear any previous internal state.
+          // ========================================================
 
-        setInternalScores([]);
-        setInternalForm({});
-      }
+          setInternalScores([]);
+          setInternalForm({});
+        }
 
-      // ==========================================================
-      // 4. Store latest score run
-      // ==========================================================
+        // ==========================================================
+        // 4. Store latest score run
+        // ==========================================================
 
-      if ("run_at" in resultsData) {
-        setLastScoreRun(
-          resultsData
-        );
-      } else {
-        setLastScoreRun(null);
-      }
+        if ("run_at" in resultsData) {
+          setLastScoreRun(resultsData);
+        } else {
+          setLastScoreRun(null);
+        }
+      } catch (err: unknown) {
+        console.error("Failed to load scoring dashboard:", err);
 
-    } catch (err: unknown) {
-      console.error(
-        "Failed to load scoring dashboard:",
-        err
-      );
-
-      const message =
-        extractErrorMessage(
+        const message = extractErrorMessage(
           err,
-          "Unable to load scoring information."
+          "Unable to load scoring information.",
         );
 
-      setError(message);
-      toast.error(message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  },
-  [assessmentId]
-);
+        setError(message);
+        toast.error(message);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [assessmentId],
+  );
 
-useEffect(() => {
-  loadDashboard();
+  useEffect(() => {
+    loadDashboard();
 
-  // loadDashboard is intentionally triggered
-  // whenever assessmentId changes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [assessmentId]);
+    // loadDashboard is intentionally triggered
+    // whenever assessmentId changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assessmentId]);
   // The only place "Dashboard refreshed" is shown — the manual Refresh
   // button. Actions like Save / Run / Override show their own toast
   // instead and call loadDashboard(true) silently.
@@ -313,9 +323,13 @@ useEffect(() => {
 
   const assessmentMode = assessment?.mode ?? "SINGLE";
   const isDoubleMode = assessmentMode === "DOUBLE";
+  const isReadOnly = Boolean(
+    assessment?.is_locked ||
+    ["COMPLETED", "APPROVED"].includes(assessment?.status ?? ""),
+  );
 
   const kpis = useMemo(() => {
-    const totalTopics = results.length;
+    const totalTopics = assessmentTopics.length;
 
     // primary_score / secondary_score are never null coming back from
     // /results/ — run_scoring() defaults them to 0.00 when data is
@@ -330,13 +344,42 @@ useEffect(() => {
       MATERIAL_CLASSIFICATIONS.includes(r.classification as Classification),
     ).length;
 
-    const overriddenTopics = results.filter((r) => r.is_override === true).length;
+    const overriddenTopics = results.filter(
+      (r) => r.is_override === true,
+    ).length;
 
     return { totalTopics, scoredTopics, materialTopics, overriddenTopics };
-  }, [results]);
+  }, [assessmentTopics.length, results]);
+
+  const internalScoringTopics = useMemo<MaterialityResult[]>(
+    () =>
+      assessmentTopics.map((topic) => {
+        const scored = results.find(
+          (result) => result.assessment_topic === topic.id,
+        );
+        return (
+          scored ?? {
+            id: topic.id,
+            assessment_topic: topic.id,
+            subtopic_name: topic.subtopic_name,
+            subtopic_code: undefined,
+            category_code: topic.category_name,
+            primary_score: 0,
+            secondary_score: 0,
+            classification: "INSUFFICIENT_DATA",
+            is_override: false,
+            override_reason: "",
+            group_breakdown: {},
+          }
+        );
+      }),
+    [assessmentTopics, results],
+  );
 
   const scoringProgress =
-    kpis.totalTopics > 0 ? Math.round((kpis.scoredTopics / kpis.totalTopics) * 100) : 0;
+    kpis.totalTopics > 0
+      ? Math.round((kpis.scoredTopics / kpis.totalTopics) * 100)
+      : 0;
 
   const getInternalScore = useCallback(
     (topicId: string) => internalForm[topicId] ?? {},
@@ -353,17 +396,20 @@ useEffect(() => {
     [],
   );
 
-  const updateImpactType = useCallback((topicId: string, value: "ACTUAL" | "POTENTIAL") => {
-    setInternalForm((current) => ({
-      ...current,
-      [topicId]: {
-        ...current[topicId],
-        impact_type: value,
-        // Likelihood is only meaningful for potential impacts
-        ...(value === "ACTUAL" ? { likelihood: undefined } : {}),
-      },
-    }));
-  }, []);
+  const updateImpactType = useCallback(
+    (topicId: string, value: "ACTUAL" | "POTENTIAL") => {
+      setInternalForm((current) => ({
+        ...current,
+        [topicId]: {
+          ...current[topicId],
+          impact_type: value,
+          // Likelihood is only meaningful for potential impacts
+          ...(value === "ACTUAL" ? { likelihood: undefined } : {}),
+        },
+      }));
+    },
+    [],
+  );
 
   const updateRationale = useCallback((topicId: string, value: string) => {
     setInternalForm((current) => ({
@@ -401,7 +447,10 @@ useEffect(() => {
       toast.success("Expert scores saved successfully.");
     } catch (err: unknown) {
       console.error("Failed to save internal scores:", err);
-      const message = extractErrorMessage(err, "Unable to save internal scores.");
+      const message = extractErrorMessage(
+        err,
+        "Unable to save internal scores.",
+      );
       setError(message);
       toast.error(message);
     } finally {
@@ -482,25 +531,36 @@ useEffect(() => {
       toast.success("Classification overridden successfully.");
     } catch (err: unknown) {
       console.error("Failed to override classification:", err);
-      const message = extractErrorMessage(err, "Unable to override classification.");
+      const message = extractErrorMessage(
+        err,
+        "Unable to override classification.",
+      );
       setError(message);
       toast.error(message);
     } finally {
       setOverriding(false);
     }
-  }, [assessmentId, selectedResult, overrideClassification, overrideReason, loadDashboard]);
+  }, [
+    assessmentId,
+    selectedResult,
+    overrideClassification,
+    overrideReason,
+    loadDashboard,
+  ]);
 
   if (loading) {
     return (
       <AppShell
         title="Materiality Scoring"
-        description="Calculate, review and validate materiality results for your ESG assessment."
+        description="Complete internal scoring, validate evidence and run the materiality calculation."
       >
         <Toaster richColors position="top-right" />
         <div className="flex min-h-[500px] items-center justify-center">
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
-            <p className="text-sm text-muted-foreground">Loading scoring dashboard...</p>
+            <p className="text-sm text-muted-foreground">
+              Loading scoring dashboard...
+            </p>
           </div>
         </div>
       </AppShell>
@@ -527,8 +587,8 @@ useEffect(() => {
 
   return (
     <AppShell
-      title="Materiality Scoring"
-      description="Calculate, review and validate materiality results for your ESG assessment."
+      title="Scoring & Review"
+      description="Complete internal scoring, validate evidence and run the materiality calculation."
     >
       {/* Toaster is mounted here (scoped to this page) since AppShell is left untouched */}
       <Toaster richColors position="top-right" />
@@ -550,7 +610,7 @@ useEffect(() => {
           refreshing={refreshing}
           savingInternal={savingInternal}
           runningScoring={runningScoring}
-          onBack={() => navigate("/materiality/assessments")}
+          isReadOnly={isReadOnly}
           onRefresh={handleManualRefresh}
           onSaveInternal={handleSaveInternalScores}
           onRunScoring={() => setRunDialogOpen(true)}
@@ -583,8 +643,9 @@ useEffect(() => {
         <div className="min-w-0 space-y-6">
           {isDoubleMode && (
             <InternalScoringCard
-              results={results}
+              results={internalScoringTopics}
               savingInternal={savingInternal}
+              isReadOnly={isReadOnly}
               onSave={handleSaveInternalScores}
               getInternalScore={getInternalScore}
               updateInternalField={updateInternalField}
@@ -598,6 +659,7 @@ useEffect(() => {
             onRunScoring={() => setRunDialogOpen(true)}
             onOpenDetails={handleOpenDetails}
             onOpenOverride={handleOpenOverride}
+            isReadOnly={isReadOnly}
           />
         </div>
       </div>
@@ -675,7 +737,9 @@ function getClassificationBadge(classification: string) {
       );
     case "MONITOR":
       return (
-        <Badge className="border border-orange-200 bg-orange-50 text-orange-700">Monitor</Badge>
+        <Badge className="border border-orange-200 bg-orange-50 text-orange-700">
+          Monitor
+        </Badge>
       );
     case "NOT_MATERIAL":
       return <Badge variant="secondary">Not Material</Badge>;
@@ -700,7 +764,7 @@ function DashboardHeader({
   refreshing,
   savingInternal,
   runningScoring,
-  onBack,
+  isReadOnly,
   onRefresh,
   onSaveInternal,
   onRunScoring,
@@ -710,42 +774,51 @@ function DashboardHeader({
   refreshing: boolean;
   savingInternal: boolean;
   runningScoring: boolean;
-  onBack: () => void;
+  isReadOnly: boolean;
   onRefresh: () => void;
   onSaveInternal: () => void;
   onRunScoring: () => void;
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-      <div className="flex min-w-0 items-start gap-3">
-        <Button type="button" variant="ghost" size="icon" className="mt-1 shrink-0" onClick={onBack}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900">
-              {assessment.name}
-            </h1>
-            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
-              {isDoubleMode ? "Double Materiality" : "Single Materiality"}
-            </Badge>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Review stakeholder results, internal expert scoring and final materiality
-            classifications.
-          </p>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900">
+            {assessment.name}
+          </h1>
+          <Badge
+            variant="outline"
+            className="border-emerald-200 bg-emerald-50 text-emerald-700"
+          >
+            {isDoubleMode ? "Double Materiality" : "Single Materiality"}
+          </Badge>
         </div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Review stakeholder results, internal expert scoring and final
+          materiality classifications.
+        </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant="outline" disabled={refreshing} onClick={onRefresh}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+        <Button
+          type="button"
+          variant="outline"
+          disabled={refreshing}
+          onClick={onRefresh}
+        >
+          <RefreshCw
+            className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+          />
           Refresh
         </Button>
 
-        {isDoubleMode && (
-          <Button type="button" variant="outline" onClick={onSaveInternal} disabled={savingInternal}>
+        {isDoubleMode && !isReadOnly && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onSaveInternal}
+            disabled={savingInternal}
+          >
             {savingInternal ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
@@ -758,11 +831,11 @@ function DashboardHeader({
         <Button
           type="button"
           onClick={onRunScoring}
-          disabled={runningScoring}
+          disabled={runningScoring || isReadOnly}
           className="bg-emerald-600 hover:bg-emerald-700"
         >
           <Calculator className="mr-2 h-4 w-4" />
-          Run Scoring
+          {isReadOnly ? "Historical score run" : "Run Scoring"}
         </Button>
       </div>
     </div>
@@ -777,7 +850,12 @@ function KpiGrid({
   kpis,
   scoringProgress,
 }: {
-  kpis: { totalTopics: number; scoredTopics: number; materialTopics: number; overriddenTopics: number };
+  kpis: {
+    totalTopics: number;
+    scoredTopics: number;
+    materialTopics: number;
+    overriddenTopics: number;
+  };
   scoringProgress: number;
 }) {
   return (
@@ -786,8 +864,12 @@ function KpiGrid({
         <CardContent className="p-5">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Total Topics</p>
-              <p className="mt-2 text-3xl font-semibold text-slate-900">{kpis.totalTopics}</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                Total Topics
+              </p>
+              <p className="mt-2 text-3xl font-semibold text-slate-900">
+                {kpis.totalTopics}
+              </p>
             </div>
             <div className="rounded-xl bg-slate-100 p-3">
               <Target className="h-5 w-5 text-slate-700" />
@@ -803,8 +885,12 @@ function KpiGrid({
         <CardContent className="p-5">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Scored Topics</p>
-              <p className="mt-2 text-3xl font-semibold text-slate-900">{kpis.scoredTopics}</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                Scored Topics
+              </p>
+              <p className="mt-2 text-3xl font-semibold text-slate-900">
+                {kpis.scoredTopics}
+              </p>
             </div>
             <div className="rounded-xl bg-blue-50 p-3">
               <FileCheck2 className="h-5 w-5 text-blue-600" />
@@ -823,14 +909,20 @@ function KpiGrid({
         <CardContent className="p-5">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Material Topics</p>
-              <p className="mt-2 text-3xl font-semibold text-slate-900">{kpis.materialTopics}</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                Material Topics
+              </p>
+              <p className="mt-2 text-3xl font-semibold text-slate-900">
+                {kpis.materialTopics}
+              </p>
             </div>
             <div className="rounded-xl bg-emerald-50 p-3">
               <TrendingUp className="h-5 w-5 text-emerald-600" />
             </div>
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">Topics meeting materiality criteria</p>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Topics meeting materiality criteria
+          </p>
         </CardContent>
       </Card>
 
@@ -838,14 +930,20 @@ function KpiGrid({
         <CardContent className="p-5">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Manual Overrides</p>
-              <p className="mt-2 text-3xl font-semibold text-slate-900">{kpis.overriddenTopics}</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                Manual Overrides
+              </p>
+              <p className="mt-2 text-3xl font-semibold text-slate-900">
+                {kpis.overriddenTopics}
+              </p>
             </div>
             <div className="rounded-xl bg-amber-50 p-3">
               <ShieldCheck className="h-5 w-5 text-amber-600" />
             </div>
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">Manager-reviewed classifications</p>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Manager-reviewed classifications
+          </p>
         </CardContent>
       </Card>
     </div>
@@ -868,12 +966,14 @@ function StatusCard({
   kpis: { totalTopics: number; scoredTopics: number };
 }) {
   return (
-    <Card className="min-w-0 border-slate-200 shadow-sm">
+    <Card className="min-w-0 border-slate-200 px-4 shadow-sm">
       <CardHeader>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between px-4">
           <div>
             <CardTitle className="text-lg">Scoring Status</CardTitle>
-            <CardDescription>Current readiness of the materiality assessment.</CardDescription>
+            <CardDescription>
+              Current readiness of the materiality assessment.
+            </CardDescription>
           </div>
           <Badge
             variant="outline"
@@ -895,7 +995,9 @@ function StatusCard({
               <Users className="h-4 w-4 text-blue-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-slate-900">Stakeholder Assessment</p>
+              <p className="text-sm font-medium text-slate-900">
+                Stakeholder Assessment
+              </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 Survey responses are aggregated using stakeholder group weights.
               </p>
@@ -907,7 +1009,9 @@ function StatusCard({
               <ShieldCheck className="h-4 w-4 text-purple-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-slate-900">Internal Expert Review</p>
+              <p className="text-sm font-medium text-slate-900">
+                Internal Expert Review
+              </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {isDoubleMode
                   ? "Expert impact and financial assessments are enabled."
@@ -921,7 +1025,9 @@ function StatusCard({
               <Clock3 className="h-4 w-4 text-emerald-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-slate-900">Latest Score Run</p>
+              <p className="text-sm font-medium text-slate-900">
+                Latest Score Run
+              </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {lastScoreRun?.run_at
                   ? new Date(lastScoreRun.run_at).toLocaleString()
@@ -962,7 +1068,13 @@ function ModeBanner({ isDoubleMode }: { isDoubleMode: boolean }) {
     >
       <CardContent className="p-5">
         <div className="flex gap-4">
-          <div className={isDoubleMode ? "rounded-xl bg-purple-100 p-3" : "rounded-xl bg-blue-100 p-3"}>
+          <div
+            className={
+              isDoubleMode
+                ? "rounded-xl bg-purple-100 p-3"
+                : "rounded-xl bg-blue-100 p-3"
+            }
+          >
             {isDoubleMode ? (
               <ShieldCheck className="h-5 w-5 text-purple-700" />
             ) : (
@@ -971,7 +1083,9 @@ function ModeBanner({ isDoubleMode }: { isDoubleMode: boolean }) {
           </div>
           <div className="min-w-0">
             <h3 className="font-semibold text-slate-900">
-              {isDoubleMode ? "Double Materiality Scoring" : "Single Materiality Scoring"}
+              {isDoubleMode
+                ? "Double Materiality Scoring"
+                : "Single Materiality Scoring"}
             </h3>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
               {isDoubleMode
@@ -992,6 +1106,7 @@ function ModeBanner({ isDoubleMode }: { isDoubleMode: boolean }) {
 function InternalScoringCard({
   results,
   savingInternal,
+  isReadOnly,
   onSave,
   getInternalScore,
   updateInternalField,
@@ -1000,9 +1115,14 @@ function InternalScoringCard({
 }: {
   results: MaterialityResult[];
   savingInternal: boolean;
+  isReadOnly: boolean;
   onSave: () => void;
   getInternalScore: (topicId: string) => Partial<InternalScore>;
-  updateInternalField: (topicId: string, field: ScoreField, value: number) => void;
+  updateInternalField: (
+    topicId: string,
+    field: ScoreField,
+    value: number,
+  ) => void;
   updateImpactType: (topicId: string, value: "ACTUAL" | "POTENTIAL") => void;
   updateRationale: (topicId: string, value: string) => void;
 }) {
@@ -1013,30 +1133,38 @@ function InternalScoringCard({
           <div>
             <CardTitle>Internal Expert Assessment</CardTitle>
             <CardDescription>
-              Evaluate the severity and financial significance of each sub-topic.
+              Evaluate the severity and financial significance of each
+              sub-topic.
             </CardDescription>
           </div>
-          <Button type="button" onClick={onSave} disabled={savingInternal}>
-            {savingInternal ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="mr-2 h-4 w-4" />
-            )}
-            Save Expert Assessment
-          </Button>
+          {!isReadOnly && (
+            <Button type="button" onClick={onSave} disabled={savingInternal}>
+              {savingInternal ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
+              Save Expert Assessment
+            </Button>
+          )}
         </div>
       </CardHeader>
 
-      <CardContent className="min-w-0">
-        <Alert className="mb-5 border-purple-200 bg-purple-50">
-          <ShieldCheck className="h-4 w-4 text-purple-700" />
-          <AlertTitle>How expert scoring works</AlertTitle>
-          <AlertDescription>
-            Scale, Scope and Irremediability determine impact severity. Likelihood is used for
-            potential impacts. Financial Magnitude and Financial Likelihood determine the
-            financial score. The backend performs the final calculations and blending.
-          </AlertDescription>
-        </Alert>
+      <Separator />
+
+      <CardContent className="min-w-0 p-0">
+        <div className="px-6 pt-6">
+          <Alert className="mb-5 border-purple-200 bg-purple-50">
+            <ShieldCheck className="h-4 w-4 text-purple-700" />
+            <AlertTitle>How expert scoring works</AlertTitle>
+            <AlertDescription>
+              Scale, Scope and Irremediability determine impact severity.
+              Likelihood is used for potential impacts. Financial Magnitude and
+              Financial Likelihood determine the financial score. The backend
+              performs the final calculations and blending.
+            </AlertDescription>
+          </Alert>
+        </div>
 
         {/*
           This is the only element on the page that should ever scroll
@@ -1044,26 +1172,47 @@ function InternalScoringCard({
           wide table (9 columns with min-widths) never pushes the rest
           of the page out of view.
         */}
-        <div className="w-full min-w-0 max-w-full overflow-x-auto rounded-lg border">
-          <Table>
+        <div className="w-full min-w-0 max-w-full overflow-x-auto">
+          <Table className="min-w-[1500px]">
             <TableHeader>
-              <TableRow className="bg-slate-50">
-                <TableHead className="min-w-[220px]">Sub-topic</TableHead>
-                <TableHead className="min-w-[130px]">Impact Type</TableHead>
-                <TableHead className="min-w-[110px] text-center">Scale</TableHead>
-                <TableHead className="min-w-[110px] text-center">Scope</TableHead>
-                <TableHead className="min-w-[140px] text-center">Irremediability</TableHead>
-                <TableHead className="min-w-[120px] text-center">Likelihood</TableHead>
-                <TableHead className="min-w-[160px] text-center">Financial Magnitude</TableHead>
-                <TableHead className="min-w-[170px] text-center">Financial Likelihood</TableHead>
-                <TableHead className="min-w-[250px]">Rationale</TableHead>
+              <TableRow className="border-slate-200 bg-slate-50 hover:bg-slate-50">
+                <TableHead className="min-w-[220px] px-6 py-3">
+                  Sub-topic
+                </TableHead>
+                <TableHead className="min-w-[130px] px-4 py-3">
+                  Impact Type
+                </TableHead>
+                <TableHead className="min-w-[110px] px-4 py-3 text-center">
+                  Scale
+                </TableHead>
+                <TableHead className="min-w-[110px] px-4 py-3 text-center">
+                  Scope
+                </TableHead>
+                <TableHead className="min-w-[140px] px-4 py-3 text-center">
+                  Irremediability
+                </TableHead>
+                <TableHead className="min-w-[120px] px-4 py-3 text-center">
+                  Likelihood
+                </TableHead>
+                <TableHead className="min-w-[160px] px-4 py-3 text-center">
+                  Financial Magnitude
+                </TableHead>
+                <TableHead className="min-w-[170px] px-4 py-3 text-center">
+                  Financial Likelihood
+                </TableHead>
+                <TableHead className="min-w-[250px] px-6 py-3">
+                  Rationale
+                </TableHead>
               </TableRow>
             </TableHeader>
 
             <TableBody>
               {results.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+                  <TableCell
+                    colSpan={9}
+                    className="h-32 text-center text-muted-foreground"
+                  >
                     No assessment topics are available.
                   </TableCell>
                 </TableRow>
@@ -1074,8 +1223,11 @@ function InternalScoringCard({
                   const impactType = score.impact_type ?? "ACTUAL";
 
                   return (
-                    <TableRow key={topicId} className="align-top">
-                      <TableCell>
+                    <TableRow
+                      key={topicId}
+                      className="align-top border-slate-100 hover:bg-slate-50/70"
+                    >
+                      <TableCell className="px-6 py-4">
                         <p className="font-medium text-slate-900">
                           {result.subtopic_name ?? "Assessment Topic"}
                         </p>
@@ -1086,11 +1238,15 @@ function InternalScoringCard({
                         )}
                       </TableCell>
 
-                      <TableCell>
+                      <TableCell className="px-4 py-4">
                         <Select
                           value={impactType}
+                          disabled={isReadOnly}
                           onValueChange={(value) =>
-                            updateImpactType(topicId, value as "ACTUAL" | "POTENTIAL")
+                            updateImpactType(
+                              topicId,
+                              value as "ACTUAL" | "POTENTIAL",
+                            )
                           }
                         >
                           <SelectTrigger className="w-[120px]">
@@ -1106,44 +1262,68 @@ function InternalScoringCard({
                       <ScoreSelectCell
                         width="w-[90px]"
                         value={score.scale}
-                        onChange={(value) => updateInternalField(topicId, "scale", value)}
+                        disabled={isReadOnly}
+                        onChange={(value) =>
+                          updateInternalField(topicId, "scale", value)
+                        }
                       />
                       <ScoreSelectCell
                         width="w-[90px]"
                         value={score.scope}
-                        onChange={(value) => updateInternalField(topicId, "scope", value)}
+                        disabled={isReadOnly}
+                        onChange={(value) =>
+                          updateInternalField(topicId, "scope", value)
+                        }
                       />
                       <ScoreSelectCell
                         width="w-[90px]"
                         value={score.irremediability}
-                        onChange={(value) => updateInternalField(topicId, "irremediability", value)}
+                        disabled={isReadOnly}
+                        onChange={(value) =>
+                          updateInternalField(topicId, "irremediability", value)
+                        }
                       />
                       <ScoreSelectCell
                         width="w-[90px]"
                         value={score.likelihood}
-                        disabled={impactType !== "POTENTIAL"}
+                        disabled={isReadOnly || impactType !== "POTENTIAL"}
                         placeholder={impactType === "ACTUAL" ? "N/A" : "1–5"}
-                        onChange={(value) => updateInternalField(topicId, "likelihood", value)}
+                        onChange={(value) =>
+                          updateInternalField(topicId, "likelihood", value)
+                        }
                       />
                       <ScoreSelectCell
                         width="w-[110px]"
                         value={score.financial_magnitude}
+                        disabled={isReadOnly}
                         onChange={(value) =>
-                          updateInternalField(topicId, "financial_magnitude", value)
+                          updateInternalField(
+                            topicId,
+                            "financial_magnitude",
+                            value,
+                          )
                         }
                       />
                       <ScoreSelectCell
                         width="w-[110px]"
                         value={score.financial_likelihood}
+                        disabled={isReadOnly}
                         onChange={(value) =>
-                          updateInternalField(topicId, "financial_likelihood", value)
+                          updateInternalField(
+                            topicId,
+                            "financial_likelihood",
+                            value,
+                          )
                         }
                       />
 
-                      <TableCell>
+                      <TableCell className="px-6 py-4">
                         <Textarea
                           value={score.rationale ?? ""}
-                          onChange={(event) => updateRationale(topicId, event.target.value)}
+                          disabled={isReadOnly}
+                          onChange={(event) =>
+                            updateRationale(topicId, event.target.value)
+                          }
                           placeholder="Explain the evidence or judgement supporting this score..."
                           className="min-h-[80px] min-w-[230px] resize-none"
                         />
@@ -1174,7 +1354,7 @@ function ScoreSelectCell({
   placeholder?: string;
 }) {
   return (
-    <TableCell>
+    <TableCell className="px-4 py-4">
       <Select
         disabled={disabled}
         value={value ? String(value) : ""}
@@ -1204,14 +1384,16 @@ function ResultsCard({
   onRunScoring,
   onOpenDetails,
   onOpenOverride,
+  isReadOnly,
 }: {
   results: MaterialityResult[];
   onRunScoring: () => void;
   onOpenDetails: (result: MaterialityResult) => void;
   onOpenOverride: (result: MaterialityResult) => void;
+  isReadOnly: boolean;
 }) {
   return (
-    <Card className="min-w-0 border-slate-200 shadow-sm px-4">
+    <Card className="min-w-0 border-slate-200 px-4 shadow-sm">
       <CardHeader>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
@@ -1226,44 +1408,59 @@ function ResultsCard({
         </div>
       </CardHeader>
 
-      <CardContent className="min-w-0">
+      <Separator />
+
+      <CardContent className="min-w-0 p-0">
         {results.length === 0 ? (
           <div className="flex min-h-[250px] flex-col items-center justify-center text-center">
             <div className="rounded-full bg-slate-100 p-4">
               <Calculator className="h-6 w-6 text-slate-500" />
             </div>
-            <h3 className="mt-4 font-semibold text-slate-900">No scoring results yet</h3>
+            <h3 className="mt-4 font-semibold text-slate-900">
+              No scoring results yet
+            </h3>
             <p className="mt-1 max-w-md text-sm text-muted-foreground">
-              Complete the required survey and internal expert assessment, then run scoring to
-              generate materiality results.
+              Complete the required survey and internal expert assessment, then
+              run scoring to generate materiality results.
             </p>
-            <Button
-              type="button"
-              className="mt-4 bg-emerald-600 hover:bg-emerald-700"
-              onClick={onRunScoring}
-            >
-              <Calculator className="mr-2 h-4 w-4" />
-              Run Scoring
-            </Button>
+            {!isReadOnly && (
+              <Button
+                type="button"
+                className="mt-4 bg-emerald-600 hover:bg-emerald-700"
+                onClick={onRunScoring}
+              >
+                <Calculator className="mr-2 h-4 w-4" />
+                Run Scoring
+              </Button>
+            )}
           </div>
         ) : (
-          <div className="w-full min-w-0 max-w-full overflow-x-auto rounded-lg border">
-            <Table>
+          <div className="w-full min-w-0 max-w-full overflow-x-auto">
+            <Table className="min-w-[920px]">
               <TableHeader>
-                <TableRow className="bg-slate-50">
-                  <TableHead>Sub-topic</TableHead>
-                  <TableHead className="text-center">Primary</TableHead>
-                  <TableHead className="text-center">Secondary</TableHead>
-                  <TableHead>Classification</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                <TableRow className="border-slate-200 bg-slate-50 hover:bg-slate-50">
+                  <TableHead className="px-6 py-3">Sub-topic</TableHead>
+                  <TableHead className="px-4 py-3 text-center">
+                    Primary
+                  </TableHead>
+                  <TableHead className="px-4 py-3 text-center">
+                    Secondary
+                  </TableHead>
+                  <TableHead className="px-4 py-3">Classification</TableHead>
+                  <TableHead className="px-4 py-3">Status</TableHead>
+                  <TableHead className="px-6 py-3 text-right">
+                    Actions
+                  </TableHead>
                 </TableRow>
               </TableHeader>
 
               <TableBody>
                 {results.map((result) => (
-                  <TableRow key={result.assessment_topic}>
-                    <TableCell>
+                  <TableRow
+                    key={result.assessment_topic}
+                    className="border-slate-100 hover:bg-slate-50/70"
+                  >
+                    <TableCell className="px-6 py-4">
                       <p className="font-medium text-slate-900">
                         {result.subtopic_name ?? "Assessment Topic"}
                       </p>
@@ -1274,23 +1471,28 @@ function ResultsCard({
                       )}
                     </TableCell>
 
-                    <TableCell className="text-center">
+                    <TableCell className="px-4 py-4 text-center">
                       <span className="font-semibold text-slate-900">
                         {result.primary_score ?? "—"}
                       </span>
                     </TableCell>
 
-                    <TableCell className="text-center">
+                    <TableCell className="px-4 py-4 text-center">
                       <span className="font-semibold text-slate-900">
                         {result.secondary_score ?? "—"}
                       </span>
                     </TableCell>
 
-                    <TableCell>{getClassificationBadge(result.classification)}</TableCell>
+                    <TableCell className="px-4 py-4">
+                      {getClassificationBadge(result.classification)}
+                    </TableCell>
 
-                    <TableCell>
+                    <TableCell className="px-4 py-4">
                       {result.is_override ? (
-                        <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
+                        <Badge
+                          variant="outline"
+                          className="border-amber-200 bg-amber-50 text-amber-700"
+                        >
                           <ShieldCheck className="mr-1 h-3 w-3" />
                           Overridden
                         </Badge>
@@ -1301,22 +1503,35 @@ function ResultsCard({
                       )}
                     </TableCell>
 
-                    <TableCell className="text-right">
+                    <TableCell className="px-6 py-4 text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button type="button" variant="outline" size="sm" className="h-8 gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-2"
+                          >
                             Actions
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="bg-white">
-                          <DropdownMenuItem onClick={() => onOpenDetails(result)}>
+                          <DropdownMenuItem
+                            onClick={() => onOpenDetails(result)}
+                          >
                             View Score Details
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => onOpenOverride(result)}>
-                            Override Classification
-                          </DropdownMenuItem>
+                          {!isReadOnly && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => onOpenOverride(result)}
+                              >
+                                Override Classification
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -1356,15 +1571,17 @@ function RunScoringDialog({
         <DialogHeader>
           <DialogTitle>Run Materiality Scoring</DialogTitle>
           <DialogDescription>
-            The scoring engine will calculate the latest materiality results using the current
-            assessment configuration.
+            The scoring engine will calculate the latest materiality results
+            using the current assessment configuration.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           <Alert className="border-emerald-200 bg-emerald-50">
             <Calculator className="h-4 w-4 text-emerald-700" />
-            <AlertTitle>{isDoubleMode ? "Double Materiality" : "Single Materiality"}</AlertTitle>
+            <AlertTitle>
+              {isDoubleMode ? "Double Materiality" : "Single Materiality"}
+            </AlertTitle>
             <AlertDescription>
               {isDoubleMode
                 ? "Stakeholder survey scores will be combined with internal expert impact and financial scores according to the configured blend weight."
@@ -1376,11 +1593,15 @@ function RunScoringDialog({
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <p className="text-muted-foreground">Topics</p>
-                <p className="mt-1 font-semibold text-slate-900">{kpis.totalTopics}</p>
+                <p className="mt-1 font-semibold text-slate-900">
+                  {kpis.totalTopics}
+                </p>
               </div>
               <div>
                 <p className="text-muted-foreground">Scored</p>
-                <p className="mt-1 font-semibold text-slate-900">{kpis.scoredTopics}</p>
+                <p className="mt-1 font-semibold text-slate-900">
+                  {kpis.scoredTopics}
+                </p>
               </div>
               <div>
                 <p className="text-muted-foreground">Mode</p>
@@ -1390,14 +1611,16 @@ function RunScoringDialog({
               </div>
               <div>
                 <p className="text-muted-foreground">Current Overrides</p>
-                <p className="mt-1 font-semibold text-slate-900">{kpis.overriddenTopics}</p>
+                <p className="mt-1 font-semibold text-slate-900">
+                  {kpis.overriddenTopics}
+                </p>
               </div>
             </div>
           </div>
 
           <p className="text-xs leading-5 text-muted-foreground">
-            A new score run will create a historical snapshot. Existing manual overrides will
-            remain preserved.
+            A new score run will create a historical snapshot. Existing manual
+            overrides will remain preserved.
           </p>
         </div>
 
@@ -1469,7 +1692,8 @@ function OverrideDialog({
         <DialogHeader>
           <DialogTitle>Override Classification</DialogTitle>
           <DialogDescription>
-            Manually promote or demote this topic's system-generated classification.
+            Manually promote or demote this topic's system-generated
+            classification.
           </DialogDescription>
         </DialogHeader>
 
@@ -1483,7 +1707,9 @@ function OverrideDialog({
                 {selectedResult.subtopic_name ?? "Assessment Topic"}
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="text-xs text-muted-foreground">Current classification:</span>
+                <span className="text-xs text-muted-foreground">
+                  Current classification:
+                </span>
                 {getClassificationBadge(selectedResult.classification)}
               </div>
             </div>
@@ -1493,7 +1719,9 @@ function OverrideDialog({
             <Label htmlFor="override-classification">New Classification</Label>
             <Select
               value={overrideClassification}
-              onValueChange={(value) => setOverrideClassification(value as Classification)}
+              onValueChange={(value) =>
+                setOverrideClassification(value as Classification)
+              }
             >
               <SelectTrigger id="override-classification">
                 <SelectValue placeholder="Select classification" />
@@ -1501,9 +1729,15 @@ function OverrideDialog({
               <SelectContent className="bg-white">
                 {isDoubleMode ? (
                   <>
-                    <SelectItem value="DOUBLE_MATERIAL">Double Material</SelectItem>
-                    <SelectItem value="IMPACT_MATERIAL">Impact Material</SelectItem>
-                    <SelectItem value="FINANCIAL_MATERIAL">Financial Material</SelectItem>
+                    <SelectItem value="DOUBLE_MATERIAL">
+                      Double Material
+                    </SelectItem>
+                    <SelectItem value="IMPACT_MATERIAL">
+                      Impact Material
+                    </SelectItem>
+                    <SelectItem value="FINANCIAL_MATERIAL">
+                      Financial Material
+                    </SelectItem>
                     <SelectItem value="NOT_MATERIAL">Not Material</SelectItem>
                   </>
                 ) : (
@@ -1530,10 +1764,14 @@ function OverrideDialog({
               className="min-h-[120px] resize-none"
             />
             <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">Minimum 20 characters required.</p>
+              <p className="text-xs text-muted-foreground">
+                Minimum 20 characters required.
+              </p>
               <p
                 className={`text-xs ${
-                  reasonLength >= 20 ? "text-emerald-600" : "text-muted-foreground"
+                  reasonLength >= 20
+                    ? "text-emerald-600"
+                    : "text-muted-foreground"
                 }`}
               >
                 {reasonLength}/20
@@ -1545,8 +1783,8 @@ function OverrideDialog({
             <ShieldAlert className="h-4 w-4 text-amber-700" />
             <AlertTitle>Audit trail</AlertTitle>
             <AlertDescription>
-              This override will be recorded against the current user and will remain visible
-              after future scoring runs.
+              This override will be recorded against the current user and will
+              remain visible after future scoring runs.
             </AlertDescription>
           </Alert>
         </div>
@@ -1564,7 +1802,9 @@ function OverrideDialog({
             type="button"
             className="bg-amber-600 hover:bg-amber-700"
             onClick={onConfirm}
-            disabled={overriding || reasonLength < 20 || !overrideClassification}
+            disabled={
+              overriding || reasonLength < 20 || !overrideClassification
+            }
           >
             {overriding ? (
               <>
@@ -1630,20 +1870,28 @@ function ScoreDetailDialog({
                 <p className="mt-2 text-2xl font-semibold">
                   {selectedResult.primary_score ?? "—"}
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">Impact dimension</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Impact dimension
+                </p>
               </div>
               <div className="rounded-lg border p-4">
                 <p className="text-xs text-muted-foreground">Secondary Score</p>
                 <p className="mt-2 text-2xl font-semibold">
                   {selectedResult.secondary_score ?? "—"}
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">Financial dimension</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Financial dimension
+                </p>
               </div>
             </div>
 
             <div className="rounded-lg border p-4">
-              <p className="text-sm font-medium text-slate-900">Final Classification</p>
-              <div className="mt-3">{getClassificationBadge(selectedResult.classification)}</div>
+              <p className="text-sm font-medium text-slate-900">
+                Final Classification
+              </p>
+              <div className="mt-3">
+                {getClassificationBadge(selectedResult.classification)}
+              </div>
             </div>
 
             {/*
@@ -1654,7 +1902,9 @@ function ScoreDetailDialog({
               ScoreRunTopic). Added as its own section inside this
               existing dialog — no new dialogs, tabs, or page elements.
             */}
-            <StakeholderBreakdownSection groupBreakdown={selectedResult.group_breakdown} />
+            <StakeholderBreakdownSection
+              groupBreakdown={selectedResult.group_breakdown}
+            />
 
             {isDoubleMode && (
               <div className="space-y-4">
@@ -1663,9 +1913,10 @@ function ScoreDetailDialog({
                     Double Materiality Interpretation
                   </h4>
                   <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                    The primary score represents the impact perspective while the secondary score
-                    represents the financial perspective. Both are evaluated against the
-                    configured materiality threshold.
+                    The primary score represents the impact perspective while
+                    the secondary score represents the financial perspective.
+                    Both are evaluated against the configured materiality
+                    threshold.
                   </p>
                 </div>
 
@@ -1673,10 +1924,12 @@ function ScoreDetailDialog({
                   <div className="flex items-start gap-3 rounded-lg bg-blue-50 p-3">
                     <Target className="mt-0.5 h-4 w-4 text-blue-600" />
                     <div>
-                      <p className="text-sm font-medium text-blue-900">Impact Materiality</p>
+                      <p className="text-sm font-medium text-blue-900">
+                        Impact Materiality
+                      </p>
                       <p className="text-xs leading-5 text-blue-800/80">
-                        Determines whether the topic represents a significant impact on people or
-                        the environment.
+                        Determines whether the topic represents a significant
+                        impact on people or the environment.
                       </p>
                     </div>
                   </div>
@@ -1684,10 +1937,12 @@ function ScoreDetailDialog({
                   <div className="flex items-start gap-3 rounded-lg bg-amber-50 p-3">
                     <TrendingUp className="mt-0.5 h-4 w-4 text-amber-600" />
                     <div>
-                      <p className="text-sm font-medium text-amber-900">Financial Materiality</p>
+                      <p className="text-sm font-medium text-amber-900">
+                        Financial Materiality
+                      </p>
                       <p className="text-xs leading-5 text-amber-800/80">
-                        Determines whether the topic can create a significant financial effect for
-                        the organization.
+                        Determines whether the topic can create a significant
+                        financial effect for the organization.
                       </p>
                     </div>
                   </div>
@@ -1700,8 +1955,9 @@ function ScoreDetailDialog({
                 <ShieldCheck className="h-4 w-4 text-amber-700" />
                 <AlertTitle>Manual Override Applied</AlertTitle>
                 <AlertDescription>
-                  This classification has been manually changed by an ESG manager and is
-                  protected from being replaced by a normal score recalculation.
+                  This classification has been manually changed by an ESG
+                  manager and is protected from being replaced by a normal score
+                  recalculation.
                 </AlertDescription>
               </Alert>
             )}
@@ -1718,7 +1974,9 @@ function ScoreDetailDialog({
                 <div className="flex justify-between gap-4">
                   <span className="text-muted-foreground">Override status</span>
                   <span className="font-medium">
-                    {selectedResult.is_override ? "Overridden" : "System calculated"}
+                    {selectedResult.is_override
+                      ? "Overridden"
+                      : "System calculated"}
                   </span>
                 </div>
               </div>
@@ -1749,11 +2007,13 @@ function StakeholderBreakdownSection({
     <div className="rounded-lg border p-4">
       <div className="flex items-center gap-2">
         <Users className="h-4 w-4 text-blue-600" />
-        <p className="text-sm font-medium text-slate-900">Stakeholder Group Results</p>
+        <p className="text-sm font-medium text-slate-900">
+          Stakeholder Group Results
+        </p>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        Weighted survey responses by stakeholder group for this topic, snapshotted at the time
-        scoring was last run.
+        Weighted survey responses by stakeholder group for this topic,
+        snapshotted at the time scoring was last run.
       </p>
 
       <div className="mt-4 space-y-4">
@@ -1771,7 +2031,9 @@ function StakeholderBreakdownSection({
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-slate-50">
-                      <TableHead className="min-w-[140px]">Stakeholder Group</TableHead>
+                      <TableHead className="min-w-[140px]">
+                        Stakeholder Group
+                      </TableHead>
                       <TableHead className="text-center">Weight</TableHead>
                       <TableHead className="text-center">Responses</TableHead>
                       <TableHead className="text-center">Average</TableHead>
@@ -1783,11 +2045,17 @@ function StakeholderBreakdownSection({
                         <TableCell className="font-medium text-slate-900">
                           {entry.group_name}
                         </TableCell>
-                        <TableCell className="text-center">{entry.weight}%</TableCell>
-                        <TableCell className="text-center">{entry.response_count}</TableCell>
+                        <TableCell className="text-center">
+                          {entry.weight}%
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {entry.response_count}
+                        </TableCell>
                         <TableCell className="text-center">
                           {entry.average ?? (
-                            <span className="text-xs text-muted-foreground">No responses</span>
+                            <span className="text-xs text-muted-foreground">
+                              No responses
+                            </span>
                           )}
                         </TableCell>
                       </TableRow>

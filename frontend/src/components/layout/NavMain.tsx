@@ -29,22 +29,16 @@ interface NavMainProps {
 }
 
 // Explicit JS-driven color states (no dependency on data-* variant support).
-const isPathActive = (
-  pathname: string,
-  url?: string
-) => {
+const isPathActive = (pathname: string, url?: string, exact = false) => {
   if (!url) {
     return false;
   }
 
-  if (url === "/materiality/assessments") {
+  if (exact || url === "/materiality/assessments") {
     return pathname === url;
   }
 
-  return (
-    pathname === url ||
-    pathname.startsWith(`${url}/`)
-  );
+  return pathname === url || pathname.startsWith(`${url}/`);
 };
 const baseItem =
   "h-11 w-full rounded-xl px-4 text-sm font-medium transition-colors duration-150";
@@ -56,16 +50,14 @@ const baseSubItem =
 const restSubState = "text-gray-500 hover:bg-blue-50 hover:text-blue-700";
 const activeSubState = "bg-blue-50 text-blue-700 font-medium";
 
-export function NavMain({
-  items,
-}: NavMainProps) {
+export function NavMain({ items }: NavMainProps) {
   const location = useLocation();
 
   // Accordion-style: only one section open at a time.
   // Swap to a Set<string> if you want multiple sections open together.
   const [openTitle, setOpenTitle] = useState<string | null>(() => {
     const match = items.find((item) =>
-      item.items?.some((sub) => sub.url === location.pathname)
+      item.items?.some((sub) => sub.url === location.pathname),
     );
     return match?.title ?? null;
   });
@@ -77,9 +69,10 @@ export function NavMain({
           {items.map((item) => {
             if (!item.items) {
               const isActive = isPathActive(
-  location.pathname,
-  item.url
-);
+                location.pathname,
+                item.url,
+                item.title === "Overview",
+              );
               return (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
@@ -103,13 +96,10 @@ export function NavMain({
               );
             }
 
-           const isParentActive =
-  item.items?.some((sub) =>
-    isPathActive(
-      location.pathname,
-      sub.url
-    )
-  ) ?? false;
+            const isParentActive =
+              item.items?.some((sub) =>
+                isPathActive(location.pathname, sub.url),
+              ) ?? false;
             const isOpen = openTitle === item.title;
 
             return (
@@ -126,7 +116,7 @@ export function NavMain({
                       isActive={isParentActive}
                       className={cn(
                         baseItem,
-                        isParentActive || isOpen ? activeState : restState
+                        isParentActive || isOpen ? activeState : restState,
                       )}
                     >
                       <item.icon className="h-[18px] w-[18px] shrink-0" />
@@ -138,7 +128,7 @@ export function NavMain({
                       <ChevronRight
                         className={cn(
                           "h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200",
-                          isOpen && "rotate-90"
+                          isOpen && "rotate-90",
                         )}
                       />
                     </SidebarMenuButton>
@@ -154,28 +144,35 @@ export function NavMain({
                         each child gets a short horizontal branch to the line */}
                     <SidebarMenuSub className="relative ml-5 mt-1 space-y-1 border-l border-gray-200 pl-4">
                       {item.items.map((sub) => {
-                        const isSubActive = location.pathname === sub.url;
+                        const isSubActive = isPathActive(
+                          location.pathname,
+                          sub.url,
+                          sub.title === "Overview" ||
+                            sub.title === "All assessments" ||
+                            sub.title === "3. Survey & Responses",
+                        );
 
                         return (
-                          <SidebarMenuSubItem key={sub.title} className="relative">
+                          <SidebarMenuSubItem
+                            key={sub.title}
+                            className="relative"
+                          >
                             <span
                               aria-hidden="true"
                               className="pointer-events-none absolute -left-4 top-1/2 h-px w-3 -translate-y-1/2 bg-gray-200"
                             />
-                        <SidebarMenuSubButton
-  asChild
-  isActive={isSubActive}
-  className={cn(
-    baseSubItem,
-    isSubActive
-      ? activeSubState
-      : restSubState
-  )}
->
-  <Link to={sub.url}>
-    <span>{sub.title}</span>
-  </Link>
-</SidebarMenuSubButton>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={isSubActive}
+                              className={cn(
+                                baseSubItem,
+                                isSubActive ? activeSubState : restSubState,
+                              )}
+                            >
+                              <Link to={sub.url}>
+                                <span>{sub.title}</span>
+                              </Link>
+                            </SidebarMenuSubButton>
                           </SidebarMenuSubItem>
                         );
                       })}

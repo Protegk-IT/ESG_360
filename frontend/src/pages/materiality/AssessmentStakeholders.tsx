@@ -1,36 +1,16 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  useNavigate,
-  useParams,
-} from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import AppShell from "@/components/layout/AppShell";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-import {
-  Button,
-} from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 
-import {
-  Badge,
-} from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 
-import {
-  DataTableToolbar,
-} from "@/common/DataTableToolbar";
+import { DataTableToolbar } from "@/common/DataTableToolbar";
 
 import StakeholderApi from "@/api/materiality/StakeholderApi";
 import AssessmentApi from "@/api/materiality/AssessmentApi";
@@ -56,7 +36,6 @@ import {
   Upload,
   UserPlus,
   Users,
-  ArrowLeft,
   Download,
   Pencil,
   Trash2,
@@ -64,218 +43,128 @@ import {
 
 import { toast } from "sonner";
 
-
 /* ==========================================================
    COMPONENT
 ========================================================== */
 
 export default function AssessmentStakeholders() {
-
-  const {
-    id,
-  } = useParams<{
+  const { id } = useParams<{
     id: string;
   }>();
-
-  const navigate = useNavigate();
-
-
 
   /* ========================================================
      STATES
   ======================================================== */
 
-  const [
-    groups,
-    setGroups,
-  ] = useState<StakeholderGroup[]>([]);
+  const [groups, setGroups] = useState<StakeholderGroup[]>([]);
 
-  const [
-    stakeholders,
-    setStakeholders,
-  ] = useState<Stakeholder[]>([]);
+  const [stakeholders, setStakeholders] = useState<Stakeholder[]>([]);
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
+  const [loading, setLoading] = useState(true);
 
-  const [
-    savingGroup,
-    setSavingGroup,
-  ] = useState(false);
+  const [savingGroup, setSavingGroup] = useState(false);
 
-  const [
-    savingStakeholder,
-    setSavingStakeholder,
-  ] = useState(false);
+  const [savingStakeholder, setSavingStakeholder] = useState(false);
 
-  const [
-    importing,
-    setImporting,
-  ] = useState(false);
+  const [importing, setImporting] = useState(false);
 
-  const [
-    error,
-    setError,
-  ] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const [
-    search,
-    setSearch,
-  ] = useState("");
+  const [search, setSearch] = useState("");
 
-  const [
-    expandedGroups,
-    setExpandedGroups,
-  ] = useState<
-    Set<string>
-  >(new Set());
-
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   /* ========================================================
      GROUP DIALOG
   ======================================================== */
 
-  const [
-    groupDialogOpen,
-    setGroupDialogOpen,
-  ] = useState(false);
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
 
-  const [
-    editingGroup,
-    setEditingGroup,
-  ] = useState<StakeholderGroup | null>(
-    null
+  const [editingGroup, setEditingGroup] = useState<StakeholderGroup | null>(
+    null,
   );
-
 
   /* ========================================================
      STAKEHOLDER DIALOG
   ======================================================== */
 
-  const [
-    stakeholderDialogOpen,
-    setStakeholderDialogOpen,
-  ] = useState(false);
+  const [stakeholderDialogOpen, setStakeholderDialogOpen] = useState(false);
 
-  const [
-    selectedGroup,
-    setSelectedGroup,
-  ] = useState<StakeholderGroup | null>(
-    null
+  const [selectedGroup, setSelectedGroup] = useState<StakeholderGroup | null>(
+    null,
   );
 
-  const [editingStakeholder, setEditingStakeholder] = useState<Stakeholder | null>(null);
+  const [editingStakeholder, setEditingStakeholder] =
+    useState<Stakeholder | null>(null);
 
-  const [assessment, setAssessment] = useState<MaterialityAssessment | null>(null);
+  const [assessment, setAssessment] = useState<MaterialityAssessment | null>(
+    null,
+  );
   const isReadOnly = Boolean(assessment?.is_locked);
-
 
   /* ========================================================
      CSV INPUT
   ======================================================== */
 
-  const fileInputRef =
-    useRef<HTMLInputElement | null>(null);
-
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   /* ========================================================
      LOAD DATA
   ======================================================== */
 
-  const loadData = useCallback(
-    async () => {
+  const loadData = useCallback(async () => {
+    if (!id) {
+      return;
+    }
 
-      if (!id) {
-        return;
-      }
+    try {
+      setLoading(true);
+      setError(null);
 
-      try {
-
-        setLoading(true);
-        setError(null);
-
-        const [
-          groupsResponse,
-          stakeholdersResponse,
-          assessmentResponse,
-        ] = await Promise.all([
+      const [groupsResponse, stakeholdersResponse, assessmentResponse] =
+        await Promise.all([
           StakeholderApi.getGroups(id),
           StakeholderApi.getStakeholders(id),
           AssessmentApi.getById(id),
         ]);
 
-        setGroups(
-          groupsResponse.data
-        );
+      setGroups(groupsResponse.data);
 
-        setStakeholders(
-          stakeholdersResponse.data
-        );
-        setAssessment(assessmentResponse.data);
+      setStakeholders(stakeholdersResponse.data);
+      setAssessment(assessmentResponse.data);
+    } catch (err) {
+      console.error("Failed to load stakeholder data:", err);
 
-      } catch (err) {
-
-        console.error(
-          "Failed to load stakeholder data:",
-          err
-        );
-
-        setError(
-          "Unable to load stakeholder groups."
-        );
-
-      } finally {
-
-        setLoading(false);
-
-      }
-
-    },
-    [id]
-  );
-
+      setError("Unable to load stakeholder groups.");
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
   /* ========================================================
      INITIAL LOAD
   ======================================================== */
 
   useEffect(() => {
-
     loadData();
-
   }, [loadData]);
-
 
   /* ========================================================
      TOTAL WEIGHT
   ======================================================== */
 
-  const totalWeight = useMemo(
-    () => {
-
-      return groups.reduce(
-        (total, group) =>
-          total +
-          Number(group.weight || 0),
-        0
-      );
-
-    },
-    [groups]
-  );
-
+  const totalWeight = useMemo(() => {
+    return groups.reduce(
+      (total, group) => total + Number(group.weight || 0),
+      0,
+    );
+  }, [groups]);
 
   /* ========================================================
      REMAINING WEIGHT
   ======================================================== */
 
-  const remainingWeight = Math.max(
-    0,
-    100 - totalWeight
-  );
-
+  const remainingWeight = Math.max(0, 100 - totalWeight);
 
   /* ========================================================
      WEIGHT STATUS
@@ -288,211 +177,133 @@ export default function AssessmentStakeholders() {
         ? "over"
         : "incomplete";
 
-
   /* ========================================================
      FILTER GROUPS
   ======================================================== */
 
-  const filteredGroups = useMemo(
-    () => {
+  const filteredGroups = useMemo(() => {
+    const value = search.trim().toLowerCase();
 
-      const value =
-        search
-          .trim()
-          .toLowerCase();
+    if (!value) {
+      return groups;
+    }
 
-      if (!value) {
-        return groups;
-      }
-
-      return groups.filter(
-        (group) => {
-
-          const groupStakeholders =
-            stakeholders.filter(
-              (stakeholder) =>
-                stakeholder.group ===
-                group.id
-            );
-
-          const groupMatches =
-            group.name
-              .toLowerCase()
-              .includes(value) ||
-            group.description
-              ?.toLowerCase()
-              .includes(value);
-
-          const stakeholderMatches =
-            groupStakeholders.some(
-              (stakeholder) =>
-                stakeholder.name
-                  .toLowerCase()
-                  .includes(value) ||
-                stakeholder.email
-                  .toLowerCase()
-                  .includes(value) ||
-                stakeholder.organisation
-                  ?.toLowerCase()
-                  .includes(value) ||
-                stakeholder.designation
-                  ?.toLowerCase()
-                  .includes(value)
-            );
-
-          return (
-            groupMatches ||
-            stakeholderMatches
-          );
-        }
+    return groups.filter((group) => {
+      const groupStakeholders = stakeholders.filter(
+        (stakeholder) => stakeholder.group === group.id,
       );
 
-    },
-    [
-      groups,
-      stakeholders,
-      search,
-    ]
-  );
+      const groupMatches =
+        group.name.toLowerCase().includes(value) ||
+        group.description?.toLowerCase().includes(value);
 
+      const stakeholderMatches = groupStakeholders.some(
+        (stakeholder) =>
+          stakeholder.name.toLowerCase().includes(value) ||
+          stakeholder.email.toLowerCase().includes(value) ||
+          stakeholder.organisation?.toLowerCase().includes(value) ||
+          stakeholder.designation?.toLowerCase().includes(value),
+      );
+
+      return groupMatches || stakeholderMatches;
+    });
+  }, [groups, stakeholders, search]);
 
   /* ========================================================
      TOGGLE GROUP
   ======================================================== */
 
-  const toggleGroup = (
-    groupId: string
-  ) => {
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups((previous) => {
+      const next = new Set(previous);
 
-    setExpandedGroups(
-      (previous) => {
-
-        const next =
-          new Set(previous);
-
-        if (next.has(groupId)) {
-          next.delete(groupId);
-        } else {
-          next.add(groupId);
-        }
-
-        return next;
-
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
       }
-    );
-  };
 
+      return next;
+    });
+  };
 
   /* ========================================================
      OPEN CREATE GROUP
   ======================================================== */
 
   const handleAddGroup = () => {
-
     setEditingGroup(null);
 
     setGroupDialogOpen(true);
-
   };
-
 
   /* ========================================================
      SAVE GROUP
   ======================================================== */
-const handleSaveGroup = async (
-  data: StakeholderGroupFormData
-) => {
-  if (!id) {
-    return;
-  }
+  const handleSaveGroup = async (data: StakeholderGroupFormData) => {
+    if (!id) {
+      return;
+    }
 
-  const newWeight = Number(data.weight || 0);
+    const newWeight = Number(data.weight || 0);
 
-  const existingWeight = editingGroup
-    ? Number(editingGroup.weight || 0)
-    : 0;
+    const existingWeight = editingGroup ? Number(editingGroup.weight || 0) : 0;
 
-  const projectedTotal =
-    totalWeight -
-    existingWeight +
-    newWeight;
+    const projectedTotal = totalWeight - existingWeight + newWeight;
 
-  // ============================================
-  // VALIDATE TOTAL WEIGHT
-  // ============================================
+    // ============================================
+    // VALIDATE TOTAL WEIGHT
+    // ============================================
 
-  if (projectedTotal > 100) {
-    toast.error(
-      "Invalid weight allocation",
-      {
+    if (projectedTotal > 100) {
+      toast.error("Invalid weight allocation", {
         description:
           `Total stakeholder group weight cannot exceed 100%. ` +
           `You have ${remainingWeight.toFixed(2)}% remaining.`,
-      }
-    );
+      });
 
-    return;
-  }
+      return;
+    }
 
-  // ============================================
-  // SAVE GROUP
-  // ============================================
+    // ============================================
+    // SAVE GROUP
+    // ============================================
 
-  try {
-    setSavingGroup(true);
+    try {
+      setSavingGroup(true);
 
-    await StakeholderApi.createGroup(
-      id,
-      data
-    );
+      await StakeholderApi.createGroup(id, data);
 
-    toast.success(
-      "Stakeholder group added",
-      {
-        description:
-          `${data.name} has been added successfully.`,
-      }
-    );
+      toast.success("Stakeholder group added", {
+        description: `${data.name} has been added successfully.`,
+      });
 
-    setGroupDialogOpen(false);
-    setEditingGroup(null);
+      setGroupDialogOpen(false);
+      setEditingGroup(null);
 
-    await loadData();
+      await loadData();
+    } catch (err) {
+      console.error("Failed to create stakeholder group:", err);
 
-  } catch (err) {
-    console.error(
-      "Failed to create stakeholder group:",
-      err
-    );
+      toast.error("Unable to add stakeholder group", {
+        description: "Please check the group details and try again.",
+      });
 
-    toast.error(
-      "Unable to add stakeholder group",
-      {
-        description:
-          "Please check the group details and try again.",
-      }
-    );
-
-    throw err;
-
-  } finally {
-    setSavingGroup(false);
-  }
-};
+      throw err;
+    } finally {
+      setSavingGroup(false);
+    }
+  };
 
   /* ========================================================
      OPEN STAKEHOLDER DIALOG
   ======================================================== */
 
-  const handleAddStakeholder = (
-    group: StakeholderGroup
-  ) => {
-
+  const handleAddStakeholder = (group: StakeholderGroup) => {
     setSelectedGroup(group);
     setEditingStakeholder(null);
 
     setStakeholderDialogOpen(true);
-
   };
 
   const handleEditStakeholder = (stakeholder: Stakeholder) => {
@@ -503,64 +314,53 @@ const handleSaveGroup = async (
     setStakeholderDialogOpen(true);
   };
 
-
   /* ========================================================
      SAVE STAKEHOLDER
   ======================================================== */
 
-  const handleSaveStakeholder =
-    async (
-      data: StakeholderFormData
-    ) => {
+  const handleSaveStakeholder = async (data: StakeholderFormData) => {
+    if (!id) {
+      return;
+    }
 
-      if (!id) {
-        return;
+    try {
+      setSavingStakeholder(true);
+
+      if (editingStakeholder) {
+        await StakeholderApi.updateStakeholder(id, editingStakeholder.id, data);
+      } else {
+        await StakeholderApi.createStakeholder(id, data);
       }
 
-      try {
+      toast.success(
+        editingStakeholder
+          ? "Stakeholder updated successfully."
+          : "Stakeholder has been added successfully.",
+      );
 
-        setSavingStakeholder(true);
+      setStakeholderDialogOpen(false);
+      setSelectedGroup(null);
+      setEditingStakeholder(null);
 
-        if (editingStakeholder) {
-          await StakeholderApi.updateStakeholder(id, editingStakeholder.id, data);
-        } else {
-          await StakeholderApi.createStakeholder(id, data);
-        }
+      await loadData();
+    } catch (err) {
+      console.error("Failed to create stakeholder:", err);
 
-        toast.success(
-            editingStakeholder ? "Stakeholder updated successfully." : "Stakeholder has been added successfully.",
-        );
+      toast.error("Unable to add stakeholder");
 
-        setStakeholderDialogOpen(false);
-        setSelectedGroup(null);
-        setEditingStakeholder(null);
-
-        await loadData();
-
-      } catch (err) {
-
-        console.error(
-          "Failed to create stakeholder:",
-          err
-        );
-
-        toast.error(
-        
-            "Unable to add stakeholder",
-        
-        );
-
-        throw err;
-
-      } finally {
-
-        setSavingStakeholder(false);
-
-      }
-    };
+      throw err;
+    } finally {
+      setSavingStakeholder(false);
+    }
+  };
 
   const handleDeleteStakeholder = async (stakeholder: Stakeholder) => {
-    if (!id || !window.confirm(`Delete ${stakeholder.name}? This is only allowed before an invitation exists.`)) {
+    if (
+      !id ||
+      !window.confirm(
+        `Delete ${stakeholder.name}? This is only allowed before an invitation exists.`,
+      )
+    ) {
       return;
     }
     try {
@@ -570,44 +370,31 @@ const handleSaveGroup = async (
     } catch (err) {
       console.error("Failed to delete stakeholder:", err);
       toast.error("Unable to delete stakeholder.", {
-        description: "Stakeholders with invitation history are retained for auditability.",
+        description:
+          "Stakeholders with invitation history are retained for auditability.",
       });
     }
   };
-
 
   /* ========================================================
      IMPORT CSV
   ======================================================== */
 
   const handleImportClick = () => {
-
     fileInputRef.current?.click();
-
   };
 
-
   const handleFileChange = async (
-    event: React.ChangeEvent<HTMLInputElement>
+    event: React.ChangeEvent<HTMLInputElement>,
   ) => {
-
-    const file =
-      event.target.files?.[0];
+    const file = event.target.files?.[0];
 
     if (!file || !id) {
       return;
     }
 
-    if (
-      !file.name
-        .toLowerCase()
-        .endsWith(".csv")
-    ) {
-
-      toast.error(
-        "Invalid file",
-       
-      );
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      toast.error("Invalid file");
 
       event.target.value = "";
 
@@ -615,37 +402,23 @@ const handleSaveGroup = async (
     }
 
     try {
-
       setImporting(true);
 
       const response = await StakeholderApi.importStakeholders(id, file);
 
-      toast.success(
-          response.data?.message ?? "Stakeholders imported",
-      );
+      toast.success(response.data?.message ?? "Stakeholders imported");
 
       await loadData();
-
     } catch (err) {
-
-      console.error(
-        "Failed to import stakeholders:",
-        err
-      );
+      console.error("Failed to import stakeholders:", err);
 
       toast.error(
-        
-     
-          "Unable to import the CSV file. Please check the required columns.",
-        
+        "Unable to import the CSV file. Please check the required columns.",
       );
-
     } finally {
-
       setImporting(false);
 
       event.target.value = "";
-
     }
   };
 
@@ -653,7 +426,9 @@ const handleSaveGroup = async (
     if (!id) return;
     try {
       const response = await StakeholderApi.downloadTemplate(id);
-      const url = window.URL.createObjectURL(new Blob([response.data], { type: "text/csv" }));
+      const url = window.URL.createObjectURL(
+        new Blob([response.data], { type: "text/csv" }),
+      );
       const link = document.createElement("a");
       link.href = url;
       link.download = "stakeholder-import-template.csv";
@@ -665,35 +440,24 @@ const handleSaveGroup = async (
     }
   };
 
-
   /* ========================================================
      GET STAKEHOLDERS FOR GROUP
   ======================================================== */
 
-  const getGroupStakeholders = (
-    groupId: string
-  ) => {
-
-    return stakeholders.filter(
-      (stakeholder) =>
-        stakeholder.group === groupId
-    );
-
+  const getGroupStakeholders = (groupId: string) => {
+    return stakeholders.filter((stakeholder) => stakeholder.group === groupId);
   };
-
 
   /* ========================================================
      LOADING STATE
   ======================================================== */
 
   if (loading) {
-
     return (
       <AppShell
-        title="Stakeholders"
+        title="Stakeholder Setup"
         description="Manage stakeholder groups and participants."
       >
-
         <div
           className="
             flex
@@ -702,7 +466,6 @@ const handleSaveGroup = async (
             justify-center
           "
         >
-
           <Loader2
             className="
               h-7
@@ -711,14 +474,10 @@ const handleSaveGroup = async (
               text-emerald-600
             "
           />
-
         </div>
-
       </AppShell>
     );
-
   }
-
 
   /* ========================================================
      RENDER
@@ -726,13 +485,12 @@ const handleSaveGroup = async (
 
   return (
     <AppShell
-      title="Stakeholders"
+      title="Stakeholder Setup"
       description="
         Configure stakeholder groups and
         manage their individual participants.
       "
     >
-
       <div
         className="
           flex
@@ -741,7 +499,6 @@ const handleSaveGroup = async (
           p-6
         "
       >
-
         {/* ==================================================
             TOP ACTIONS
         ================================================== */}
@@ -756,32 +513,6 @@ const handleSaveGroup = async (
             sm:justify-between
           "
         >
-
-          <Button
-            variant="outline"
-            onClick={() =>
-              navigate(
-                "/materiality/assessments"
-              )
-            }
-            className="
-              w-fit
-              gap-2
-            "
-          >
-
-            <ArrowLeft
-              className="
-                h-4
-                w-4
-              "
-            />
-
-            Back to Assessments
-
-          </Button>
-
-
           <div
             className="
               flex
@@ -789,15 +520,12 @@ const handleSaveGroup = async (
               gap-2
             "
           >
-
             <input
               ref={fileInputRef}
               type="file"
               accept=".csv,text/csv"
               className="hidden"
-              onChange={
-                handleFileChange
-              }
+              onChange={handleFileChange}
             />
 
             <Button
@@ -809,60 +537,54 @@ const handleSaveGroup = async (
               Download CSV Template
             </Button>
 
-            {!isReadOnly && <Button
-              variant="outline"
-              onClick={handleImportClick}
-              disabled={importing}
-              className="gap-2"
-            >
-
-              {importing ? (
-                <Loader2
-                  className="
+            {!isReadOnly && (
+              <Button
+                variant="outline"
+                onClick={handleImportClick}
+                disabled={importing}
+                className="gap-2"
+              >
+                {importing ? (
+                  <Loader2
+                    className="
                     h-4
                     w-4
                     animate-spin
                   "
-                />
-              ) : (
-                <Upload
-                  className="
+                  />
+                ) : (
+                  <Upload
+                    className="
                     h-4
                     w-4
                   "
-                />
-              )}
+                  />
+                )}
+                Import CSV
+              </Button>
+            )}
 
-              Import CSV
-
-            </Button>}
-
-
-            {!isReadOnly && <Button
-              onClick={handleAddGroup}
-              className="
+            {!isReadOnly && (
+              <Button
+                onClick={handleAddGroup}
+                className="
                 gap-2
                 bg-emerald-600
                 text-white
                 hover:bg-emerald-700
               "
-            >
-
-              <Plus
-                className="
+              >
+                <Plus
+                  className="
                   h-4
                   w-4
                 "
-              />
-
-              Add Stakeholder Group
-
-            </Button>}
-
+                />
+                Add Stakeholder Group
+              </Button>
+            )}
           </div>
-
         </div>
-
 
         {/* ==================================================
             WEIGHT SUMMARY
@@ -875,13 +597,11 @@ const handleSaveGroup = async (
             shadow-sm
           "
         >
-
           <CardContent
             className="
               p-5
             "
           >
-
             <div
               className="
                 flex
@@ -892,7 +612,6 @@ const handleSaveGroup = async (
                 sm:justify-between
               "
             >
-
               <div
                 className="
                   flex
@@ -900,7 +619,6 @@ const handleSaveGroup = async (
                   gap-3
                 "
               >
-
                 <div
                   className="
                     flex
@@ -913,18 +631,15 @@ const handleSaveGroup = async (
                     text-emerald-600
                   "
                 >
-
                   <Users
                     className="
                       h-5
                       w-5
                     "
                   />
-
                 </div>
 
                 <div>
-
                   <p
                     className="
                       text-sm
@@ -944,11 +659,8 @@ const handleSaveGroup = async (
                   >
                     Group weights must total 100%.
                   </p>
-
                 </div>
-
               </div>
-
 
               <div
                 className="
@@ -957,7 +669,6 @@ const handleSaveGroup = async (
                   gap-3
                 "
               >
-
                 <span
                   className="
                     text-sm
@@ -1000,18 +711,12 @@ const handleSaveGroup = async (
                     text-slate-500
                   "
                 >
-                  {remainingWeight.toFixed(2)}%
-                  remaining
+                  {remainingWeight.toFixed(2)}% remaining
                 </span>
-
               </div>
-
             </div>
-
           </CardContent>
-
         </Card>
-
 
         {/* ==================================================
             GROUPS CARD
@@ -1024,7 +729,6 @@ const handleSaveGroup = async (
             shadow-sm
           "
         >
-
           <CardHeader
             className="
               border-b
@@ -1033,7 +737,6 @@ const handleSaveGroup = async (
               py-4
             "
           >
-
             <div
               className="
                 flex
@@ -1044,9 +747,7 @@ const handleSaveGroup = async (
                 lg:justify-between
               "
             >
-
               <div>
-
                 <CardTitle
                   className="
                     whitespace-nowrap
@@ -1065,15 +766,10 @@ const handleSaveGroup = async (
                     text-muted-foreground
                   "
                 >
-                  {groups.length}{" "}
-                  {groups.length === 1
-                    ? "group"
-                    : "groups"}{" "}
+                  {groups.length} {groups.length === 1 ? "group" : "groups"}{" "}
                   configured
                 </p>
-
               </div>
-
 
               <div
                 className="
@@ -1081,27 +777,16 @@ const handleSaveGroup = async (
                   lg:w-[300px]
                 "
               >
-
-                <DataTableToolbar
-                  search={search}
-                  onSearchChange={
-                    setSearch
-                  }
-                />
-
+                <DataTableToolbar search={search} onSearchChange={setSearch} />
               </div>
-
             </div>
-
           </CardHeader>
-
 
           <CardContent
             className="
               p-0
             "
           >
-
             {/* =================================================
                 ERROR
             ================================================= */}
@@ -1123,7 +808,6 @@ const handleSaveGroup = async (
                   text-red-700
                 "
               >
-
                 <AlertCircle
                   className="
                     h-4
@@ -1132,22 +816,17 @@ const handleSaveGroup = async (
                   "
                 />
 
-                <span>
-                  {error}
-                </span>
-
+                <span>{error}</span>
               </div>
             )}
-
 
             {/* =================================================
                 EMPTY
             ================================================= */}
 
-            {!error &&
-              filteredGroups.length === 0 && (
-                <div
-                  className="
+            {!error && filteredGroups.length === 0 && (
+              <div
+                className="
                     flex
                     flex-col
                     items-center
@@ -1156,10 +835,9 @@ const handleSaveGroup = async (
                     py-16
                     text-center
                   "
-                >
-
-                  <div
-                    className="
+              >
+                <div
+                  className="
                       mb-4
                       flex
                       h-12
@@ -1170,44 +848,40 @@ const handleSaveGroup = async (
                       bg-slate-100
                       text-slate-500
                     "
-                  >
-
-                    <Users
-                      className="
+                >
+                  <Users
+                    className="
                         h-5
                         w-5
                       "
-                    />
+                  />
+                </div>
 
-                  </div>
-
-                  <h3
-                    className="
+                <h3
+                  className="
                       text-sm
                       font-semibold
                       text-slate-900
                     "
-                  >
-                    No stakeholder groups
-                  </h3>
+                >
+                  No stakeholder groups
+                </h3>
 
-                  <p
-                    className="
+                <p
+                  className="
                       mt-1
                       max-w-sm
                       text-xs
                       text-slate-500
                     "
-                  >
-                    Create a stakeholder group
-                    to start adding participants
-                    to this assessment.
-                  </p>
+                >
+                  Create a stakeholder group to start adding participants to
+                  this assessment.
+                </p>
 
-                  {!isReadOnly && <Button
-                    onClick={
-                      handleAddGroup
-                    }
+                {!isReadOnly && (
+                  <Button
+                    onClick={handleAddGroup}
                     className="
                       mt-5
                       gap-2
@@ -1215,21 +889,17 @@ const handleSaveGroup = async (
                       hover:bg-emerald-700
                     "
                   >
-
                     <Plus
                       className="
                         h-4
                         w-4
                       "
                     />
-
                     Add Stakeholder Group
-
-                  </Button>}
-
-                </div>
-              )}
-
+                  </Button>
+                )}
+              </div>
+            )}
 
             {/* =================================================
                 GROUP LIST
@@ -1241,34 +911,24 @@ const handleSaveGroup = async (
                 divide-slate-100
               "
             >
+              {filteredGroups.map((group) => {
+                const isExpanded = expandedGroups.has(group.id);
 
-              {filteredGroups.map(
-                (group) => {
+                const groupStakeholders = getGroupStakeholders(group.id);
 
-                  const isExpanded =
-                    expandedGroups.has(
-                      group.id
-                    );
-
-                  const groupStakeholders =
-                    getGroupStakeholders(
-                      group.id
-                    );
-
-                  return (
-                    <div
-                      key={group.id}
-                      className="
+                return (
+                  <div
+                    key={group.id}
+                    className="
                         bg-white
                       "
-                    >
-
-                      {/* ========================================
+                  >
+                    {/* ========================================
                           GROUP HEADER
                       ======================================== */}
 
-                      <div
-                        className="
+                    <div
+                      className="
                           flex
                           cursor-pointer
                           items-center
@@ -1279,45 +939,38 @@ const handleSaveGroup = async (
                           transition-colors
                           hover:bg-slate-50
                         "
-                        onClick={() =>
-                          toggleGroup(
-                            group.id
-                          )
-                        }
-                      >
-
-                        <div
-                          className="
+                      onClick={() => toggleGroup(group.id)}
+                    >
+                      <div
+                        className="
                             flex
                             min-w-0
                             items-center
                             gap-3
                           "
-                        >
-
-                          {isExpanded ? (
-                            <ChevronDown
-                              className="
-                                h-4
-                                w-4
-                                shrink-0
-                                text-slate-400
-                              "
-                            />
-                          ) : (
-                            <ChevronRight
-                              className="
-                                h-4
-                                w-4
-                                shrink-0
-                                text-slate-400
-                              "
-                            />
-                          )}
-
-
-                          <div
+                      >
+                        {isExpanded ? (
+                          <ChevronDown
                             className="
+                                h-4
+                                w-4
+                                shrink-0
+                                text-slate-400
+                              "
+                          />
+                        ) : (
+                          <ChevronRight
+                            className="
+                                h-4
+                                w-4
+                                shrink-0
+                                text-slate-400
+                              "
+                          />
+                        )}
+
+                        <div
+                          className="
                               flex
                               h-9
                               w-9
@@ -1328,147 +981,124 @@ const handleSaveGroup = async (
                               bg-slate-100
                               text-slate-600
                             "
-                          >
-
-                            <Users
-                              className="
+                        >
+                          <Users
+                            className="
                                 h-4
                                 w-4
                               "
-                            />
+                          />
+                        </div>
 
-                          </div>
-
-
-                          <div
-                            className="
+                        <div
+                          className="
                               min-w-0
                             "
-                          >
-
-                            <div
-                              className="
+                        >
+                          <div
+                            className="
                                 flex
                                 items-center
                                 gap-2
                               "
-                            >
-
-                              <p
-                                className="
+                          >
+                            <p
+                              className="
                                   truncate
                                   text-sm
                                   font-semibold
                                   text-slate-900
                                 "
-                              >
-                                {group.name}
-                              </p>
+                            >
+                              {group.name}
+                            </p>
 
-                              <Badge
-                                variant="outline"
-                                className="
+                            <Badge
+                              variant="outline"
+                              className="
                                   shrink-0
                                   text-[10px]
                                 "
-                              >
-                                {group.is_internal
-                                  ? "Internal"
-                                  : "External"}
-                              </Badge>
+                            >
+                              {group.is_internal ? "Internal" : "External"}
+                            </Badge>
+                          </div>
 
-                            </div>
-
-                            {group.description && (
-                              <p
-                                className="
+                          {group.description && (
+                            <p
+                              className="
                                   mt-0.5
                                   truncate
                                   text-xs
                                   text-slate-500
                                 "
-                              >
-                                {group.description}
-                              </p>
-                            )}
-
-                          </div>
-
+                            >
+                              {group.description}
+                            </p>
+                          )}
                         </div>
+                      </div>
 
-
-                        <div
-                          className="
+                      <div
+                        className="
                             flex
                             shrink-0
                             items-center
                             gap-4
                           "
-                          onClick={(event) =>
-                            event.stopPropagation()
-                          }
-                        >
-
-                          <div
-                            className="
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <div
+                          className="
                               hidden
                               text-right
                               sm:block
                             "
-                          >
-
-                            <p
-                              className="
+                        >
+                          <p
+                            className="
                                 text-sm
                                 font-semibold
                                 text-slate-800
                               "
-                            >
-                              {Number(
-                                group.weight || 0
-                              ).toFixed(2)}
-                              %
-                            </p>
+                          >
+                            {Number(group.weight || 0).toFixed(2)}%
+                          </p>
 
-                            <p
-                              className="
+                          <p
+                            className="
                                 text-[10px]
                                 text-slate-400
                               "
-                            >
-                              Weight
-                            </p>
+                          >
+                            Weight
+                          </p>
+                        </div>
 
-                          </div>
-
-
-                          <Badge
-                            className="
+                        <Badge
+                          className="
                               border
                               border-slate-200
                               bg-slate-50
                               text-slate-600
                               hover:bg-slate-50
                             "
-                          >
-                            {groupStakeholders.length}{" "}
-                            {groupStakeholders.length === 1
-                              ? "stakeholder"
-                              : "stakeholders"}
-                          </Badge>
-
-                        </div>
-
+                        >
+                          {groupStakeholders.length}{" "}
+                          {groupStakeholders.length === 1
+                            ? "stakeholder"
+                            : "stakeholders"}
+                        </Badge>
                       </div>
+                    </div>
 
-
-                      {/* ========================================
+                    {/* ========================================
                           EXPANDED STAKEHOLDERS
                       ======================================== */}
 
-                      {isExpanded && (
-                        <div
-                          className="
+                    {isExpanded && (
+                      <div
+                        className="
                             border-t
                             border-slate-100
                             bg-slate-50/50
@@ -1476,24 +1106,22 @@ const handleSaveGroup = async (
                             pb-5
                             pt-4
                           "
-                        >
-
-                          <div
-                            className="
+                      >
+                        <div
+                          className="
                               overflow-hidden
                               rounded-lg
                               border
                               border-slate-200
                               bg-white
                             "
-                          >
-
-                            {/* ==================================
+                        >
+                          {/* ==================================
                                 TABLE HEADER
                             ================================== */}
 
-                            <div
-                              className="
+                          <div
+                            className="
                                 hidden
                                 grid-cols-[1.2fr_1.5fr_1.2fr_1.2fr_auto]
                                 gap-4
@@ -1507,53 +1135,33 @@ const handleSaveGroup = async (
                                 text-slate-500
                                 md:grid
                               "
-                            >
+                          >
+                            <span>Name</span>
 
-                              <span>
-                                Name
-                              </span>
+                            <span>Email</span>
 
-                              <span>
-                                Email
-                              </span>
+                            <span>Organisation</span>
 
-                              <span>
-                                Organisation
-                              </span>
+                            <span>Designation</span>
 
-                              <span>
-                                Designation
-                              </span>
+                            <span>Action</span>
+                          </div>
 
-                              <span>
-                                Action
-                              </span>
-
-                            </div>
-
-
-                            {/* ==================================
+                          {/* ==================================
                                 STAKEHOLDERS
                             ================================== */}
 
-                            {groupStakeholders.length >
-                            0 ? (
-                              <div
-                                className="
+                          {groupStakeholders.length > 0 ? (
+                            <div
+                              className="
                                   divide-y
                                   divide-slate-100
                                 "
-                              >
-
-                                {groupStakeholders.map(
-                                  (
-                                    stakeholder
-                                  ) => (
-                                    <div
-                                      key={
-                                        stakeholder.id
-                                      }
-                                      className="
+                            >
+                              {groupStakeholders.map((stakeholder) => (
+                                <div
+                                  key={stakeholder.id}
+                                  className="
                                         grid
                                         grid-cols-1
                                         gap-2
@@ -1563,94 +1171,95 @@ const handleSaveGroup = async (
                                         md:items-center
                                         md:gap-4
                                       "
-                                    >
-
-                                      <div>
-
-                                        <p
-                                          className="
+                                >
+                                  <div>
+                                    <p
+                                      className="
                                             text-sm
                                             font-medium
                                             text-slate-800
                                           "
-                                        >
-                                          {
-                                            stakeholder.name
-                                          }
-                                        </p>
+                                    >
+                                      {stakeholder.name}
+                                    </p>
 
-                                        <p
-                                          className="
+                                    <p
+                                      className="
                                             mt-0.5
                                             text-xs
                                             text-slate-500
                                             md:hidden
                                           "
-                                        >
-                                          {
-                                            stakeholder.email
-                                          }
-                                        </p>
+                                    >
+                                      {stakeholder.email}
+                                    </p>
+                                  </div>
 
-                                      </div>
-
-
-                                      <p
-                                        className="
+                                  <p
+                                    className="
                                           hidden
                                           truncate
                                           text-xs
                                           text-slate-600
                                           md:block
                                         "
-                                      >
-                                        {
-                                          stakeholder.email
-                                        }
-                                      </p>
+                                  >
+                                    {stakeholder.email}
+                                  </p>
 
-                                      <p
-                                        className="
+                                  <p
+                                    className="
                                           text-xs
                                           text-slate-600
                                         "
-                                      >
-                                        {
-                                          stakeholder.organisation ||
-                                          "—"
-                                        }
-                                      </p>
+                                  >
+                                    {stakeholder.organisation || "—"}
+                                  </p>
 
-
-                                      <p
-                                        className="
+                                  <p
+                                    className="
                                           text-xs
                                           text-slate-600
                                         "
-                                      >
-                                        {
-                                          stakeholder.designation ||
-                                          "—"
+                                  >
+                                    {stakeholder.designation || "—"}
+                                  </p>
+
+                                  {!isReadOnly && (
+                                    <div className="flex gap-1">
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        aria-label={`Edit ${stakeholder.name}`}
+                                        onClick={() =>
+                                          handleEditStakeholder(stakeholder)
                                         }
-                                      </p>
-
-                                      {!isReadOnly && <div className="flex gap-1">
-                                        <Button type="button" variant="ghost" size="icon" aria-label={`Edit ${stakeholder.name}`} onClick={() => handleEditStakeholder(stakeholder)}>
-                                          <Pencil className="h-3.5 w-3.5" />
-                                        </Button>
-                                        <Button type="button" variant="ghost" size="icon" aria-label={`Delete ${stakeholder.name}`} className="text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => void handleDeleteStakeholder(stakeholder)}>
-                                          <Trash2 className="h-3.5 w-3.5" />
-                                        </Button>
-                                      </div>}
-
+                                      >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        aria-label={`Delete ${stakeholder.name}`}
+                                        className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                                        onClick={() =>
+                                          void handleDeleteStakeholder(
+                                            stakeholder,
+                                          )
+                                        }
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
                                     </div>
-                                  )
-                                )}
-
-                              </div>
-                            ) : (
-                              <div
-                                className="
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div
+                              className="
                                   flex
                                   flex-col
                                   items-center
@@ -1659,58 +1268,53 @@ const handleSaveGroup = async (
                                   py-8
                                   text-center
                                 "
-                              >
-
-                                <UserPlus
-                                  className="
+                            >
+                              <UserPlus
+                                className="
                                     mb-2
                                     h-5
                                     w-5
                                     text-slate-400
                                   "
-                                />
+                              />
 
-                                <p
-                                  className="
+                              <p
+                                className="
                                     text-sm
                                     font-medium
                                     text-slate-700
                                   "
-                                >
-                                  No stakeholders yet
-                                </p>
+                              >
+                                No stakeholders yet
+                              </p>
 
-                                <p
-                                  className="
+                              <p
+                                className="
                                     mt-1
                                     text-xs
                                     text-slate-500
                                   "
-                                >
-                                  Add an individual
-                                  stakeholder to this
-                                  group.
-                                </p>
+                              >
+                                Add an individual stakeholder to this group.
+                              </p>
+                            </div>
+                          )}
 
-                              </div>
-                            )}
-
-
-                            {/* ==================================
+                          {/* ==================================
                                 ADD STAKEHOLDER
                             ================================== */}
 
-                            <div
-                              className="
+                          <div
+                            className="
                                 border-t
                                 border-slate-100
                                 bg-slate-50
                                 px-4
                                 py-3
                               "
-                            >
-
-                              {!isReadOnly && <Button
+                          >
+                            {!isReadOnly && (
+                              <Button
                                 variant="outline"
                                 size="sm"
                                 className="
@@ -1719,42 +1323,27 @@ const handleSaveGroup = async (
                                   text-emerald-700
                                   hover:bg-emerald-50
                                 "
-                                onClick={() =>
-                                  handleAddStakeholder(
-                                    group
-                                  )
-                                }
+                                onClick={() => handleAddStakeholder(group)}
                               >
-
                                 <UserPlus
                                   className="
                                     h-4
                                     w-4
                                   "
                                 />
-
                                 Add Stakeholder
-
-                              </Button>}
-
-                            </div>
-
+                              </Button>
+                            )}
                           </div>
-
                         </div>
-                      )}
-
-                    </div>
-                  );
-                }
-              )}
-
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-
           </CardContent>
-
         </Card>
-
 
         {/* ==================================================
             CSV INFORMATION
@@ -1773,7 +1362,6 @@ const handleSaveGroup = async (
             py-3
           "
         >
-
           <FileSpreadsheet
             className="
               mt-0.5
@@ -1785,7 +1373,6 @@ const handleSaveGroup = async (
           />
 
           <div>
-
             <p
               className="
                 text-xs
@@ -1803,36 +1390,30 @@ const handleSaveGroup = async (
                 text-slate-500
               "
             >
-              Required columns: group, name,
-              email. Optional columns:
+              Required columns: group, name, email. Optional columns:
               organisation, designation.
             </p>
-
           </div>
-
         </div>
-
       </div>
-
 
       {/* ====================================================
           GROUP DIALOG
       ==================================================== */}
 
-     <StakeholderGroupDialog
-  open={groupDialogOpen}
-  onClose={() => {
-    if (!savingGroup) {
-      setGroupDialogOpen(false);
-      setEditingGroup(null);
-    }
-  }}
-  group={editingGroup}
-  onSave={handleSaveGroup}
-  currentTotalWeight={totalWeight}
-  saving={savingGroup}
-/>
-
+      <StakeholderGroupDialog
+        open={groupDialogOpen}
+        onClose={() => {
+          if (!savingGroup) {
+            setGroupDialogOpen(false);
+            setEditingGroup(null);
+          }
+        }}
+        group={editingGroup}
+        onSave={handleSaveGroup}
+        currentTotalWeight={totalWeight}
+        saving={savingGroup}
+      />
 
       {/* ====================================================
           STAKEHOLDER DIALOG
@@ -1840,39 +1421,22 @@ const handleSaveGroup = async (
 
       {selectedGroup && (
         <StakeholderDialog
-          open={
-            stakeholderDialogOpen
-          }
+          open={stakeholderDialogOpen}
           onClose={() => {
-
             if (!savingStakeholder) {
-
-              setStakeholderDialogOpen(
-                false
-              );
+              setStakeholderDialogOpen(false);
 
               setSelectedGroup(null);
               setEditingStakeholder(null);
-
             }
-
           }}
-          groupId={
-            selectedGroup.id
-          }
-          groupName={
-            selectedGroup.name
-          }
-          onSave={
-            handleSaveStakeholder
-          }
-          saving={
-            savingStakeholder
-          }
+          groupId={selectedGroup.id}
+          groupName={selectedGroup.name}
+          onSave={handleSaveStakeholder}
+          saving={savingStakeholder}
           stakeholder={editingStakeholder}
         />
       )}
-
     </AppShell>
   );
 }

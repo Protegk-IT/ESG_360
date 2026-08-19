@@ -1,9 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useNavigate } from "react-router-dom";
 
@@ -16,11 +11,7 @@ import ConfirmDialog from "@/common/ConfirmDialog";
 import AssessmentApi from "@/api/materiality/AssessmentApi";
 import AssessmentCreateDialog from "./AssessmentCreateDialog";
 
-import {
-  Check,
-  Circle,
-  Trash2,
-} from "lucide-react";
+import { Check, Circle, Trash2 } from "lucide-react";
 
 import type {
   MaterialityAssessment,
@@ -39,7 +30,6 @@ import {
 import { type ColumnDef } from "@tanstack/react-table";
 
 import { Button } from "@/components/ui/button";
-
 
 /* ==========================================================
    TYPES
@@ -60,16 +50,14 @@ import { Button } from "@/components/ui/button";
  * }
  */
 
-type AssessmentWithProgress =
-  MaterialityAssessment & {
-    progress_percentage?: number | null;
-    progress?: number | null;
-    current_step?: string | null;
-    current_step_url?: string | null;
-    completed_steps?: number | null;
-    total_steps?: number | null;
-  };
-
+type AssessmentWithProgress = MaterialityAssessment & {
+  progress_percentage?: number | null;
+  progress?: number | null;
+  current_step?: string | null;
+  current_step_url?: string | null;
+  completed_steps?: number | null;
+  total_steps?: number | null;
+};
 
 /* ==========================================================
    STATUS LABELS
@@ -83,7 +71,6 @@ const STATUS_LABELS: Record<AssessmentStatus, string> = {
   APPROVED: "Approved",
 };
 
-
 /* ==========================================================
    MODE LABELS
 ========================================================== */
@@ -92,7 +79,6 @@ const MODE_LABELS: Record<AssessmentMode, string> = {
   SINGLE: "Single Materiality",
   DOUBLE: "Double Materiality",
 };
-
 
 /* ==========================================================
    ASSESSMENT WORKFLOW
@@ -108,7 +94,6 @@ const ASSESSMENT_STEPS = [
   "Materiality Matrix",
 ];
 
-
 /* ==========================================================
    PROGRESS HELPER
 ========================================================== */
@@ -117,14 +102,11 @@ const clampProgress = (value: number) => {
   return Math.min(100, Math.max(0, Math.round(value)));
 };
 
-
 /* ==========================================================
    GET PROGRESS
 ========================================================== */
 
-const getAssessmentProgress = (
-  assessment: AssessmentWithProgress
-): number => {
+const getAssessmentProgress = (assessment: AssessmentWithProgress): number => {
   /*
    * COMPLETED / APPROVED
    *
@@ -139,7 +121,6 @@ const getAssessmentProgress = (
     return 100;
   }
 
-
   /*
    * PRIMARY BACKEND VALUE
    *
@@ -148,27 +129,17 @@ const getAssessmentProgress = (
    * progress_percentage
    */
 
-  if (
-    typeof assessment.progress_percentage === "number"
-  ) {
-    return clampProgress(
-      assessment.progress_percentage
-    );
+  if (typeof assessment.progress_percentage === "number") {
+    return clampProgress(assessment.progress_percentage);
   }
-
 
   /*
    * SECONDARY BACKEND VALUE
    */
 
-  if (
-    typeof assessment.progress === "number"
-  ) {
-    return clampProgress(
-      assessment.progress
-    );
+  if (typeof assessment.progress === "number") {
+    return clampProgress(assessment.progress);
   }
-
 
   /*
    * COMPLETED STEPS
@@ -187,12 +158,9 @@ const getAssessmentProgress = (
     assessment.total_steps > 0
   ) {
     return clampProgress(
-      (assessment.completed_steps /
-        assessment.total_steps) *
-        100
+      (assessment.completed_steps / assessment.total_steps) * 100,
     );
   }
-
 
   /*
    * CURRENT STEP
@@ -205,20 +173,12 @@ const getAssessmentProgress = (
    */
 
   if (assessment.current_step) {
-    const currentIndex =
-      ASSESSMENT_STEPS.indexOf(
-        assessment.current_step
-      );
+    const currentIndex = ASSESSMENT_STEPS.indexOf(assessment.current_step);
 
     if (currentIndex >= 0) {
-      return clampProgress(
-        (currentIndex /
-          ASSESSMENT_STEPS.length) *
-          100
-      );
+      return clampProgress((currentIndex / ASSESSMENT_STEPS.length) * 100);
     }
   }
-
 
   /*
    * SAFE FALLBACK
@@ -236,14 +196,13 @@ const getAssessmentProgress = (
   return 0;
 };
 
-
 /* ==========================================================
    CURRENT STEP LABEL
 ========================================================== */
 
 const getCurrentStepLabel = (
   assessment: AssessmentWithProgress,
-  progress: number
+  progress: number,
 ) => {
   /*
    * Completed
@@ -258,7 +217,6 @@ const getCurrentStepLabel = (
     return "Completed";
   }
 
-
   /*
    * Backend current step
    */
@@ -266,7 +224,6 @@ const getCurrentStepLabel = (
   if (assessment.current_step) {
     return assessment.current_step;
   }
-
 
   /*
    * No progress information yet
@@ -276,22 +233,17 @@ const getCurrentStepLabel = (
     return "Assessment started";
   }
 
-
   /*
    * Calculate approximate step
    */
 
   const stepIndex = Math.min(
     ASSESSMENT_STEPS.length - 1,
-    Math.floor(
-      (progress / 100) *
-        ASSESSMENT_STEPS.length
-    )
+    Math.floor((progress / 100) * ASSESSMENT_STEPS.length),
   );
 
   return ASSESSMENT_STEPS[stepIndex];
 };
-
 
 /* ==========================================================
    PROGRESS COMPONENT
@@ -302,8 +254,7 @@ function AssessmentProgress({
 }: {
   assessment: AssessmentWithProgress;
 }) {
-  const progress =
-    getAssessmentProgress(assessment);
+  const progress = getAssessmentProgress(assessment);
 
   const completed =
     progress >= 100 ||
@@ -311,21 +262,14 @@ function AssessmentProgress({
     assessment.status === "COMPLETED" ||
     assessment.status === "APPROVED";
 
-  const currentStep =
-    getCurrentStepLabel(
-      assessment,
-      progress
-    );
+  const currentStep = getCurrentStepLabel(assessment, progress);
 
   return (
     <div className="min-w-[190px] max-w-[250px]">
-
       {/* Percentage + Step */}
 
       <div className="mb-1.5 flex items-center justify-between gap-3">
-
         <div className="flex min-w-0 items-center gap-2">
-
           {completed ? (
             <div
               className="
@@ -362,7 +306,6 @@ function AssessmentProgress({
           >
             {progress}%
           </span>
-
         </div>
 
         <span
@@ -376,9 +319,7 @@ function AssessmentProgress({
         >
           {currentStep}
         </span>
-
       </div>
-
 
       {/* Progress Bar */}
 
@@ -397,18 +338,13 @@ function AssessmentProgress({
             rounded-full
             transition-all
             duration-500
-            ${
-              completed
-                ? "bg-emerald-500"
-                : "bg-[#4A3FD6]"
-            }
+            ${completed ? "bg-emerald-500" : "bg-[#4A3FD6]"}
           `}
           style={{
             width: `${progress}%`,
           }}
         />
       </div>
-
 
       {/* Completed label */}
 
@@ -428,11 +364,9 @@ function AssessmentProgress({
           Assessment completed
         </div>
       )}
-
     </div>
   );
 }
-
 
 /* ==========================================================
    TABLE COLUMNS
@@ -442,15 +376,10 @@ const getAssessmentColumns = ({
   onContinue,
   onDelete,
 }: {
-  onContinue: (
-    id: string
-  ) => void;
+  onContinue: (id: string) => void;
 
-  onDelete: (
-    assessment: MaterialityAssessment
-  ) => void;
+  onDelete: (assessment: MaterialityAssessment) => void;
 }): ColumnDef<MaterialityAssessment>[] => [
-
   /* ========================================================
      ASSESSMENT
   ======================================================== */
@@ -461,19 +390,13 @@ const getAssessmentColumns = ({
     header: "Assessment",
 
     cell: ({ row }) => {
-      const assessment =
-        row.original;
+      const assessment = row.original;
 
       return (
         <div className="min-w-[220px]">
-
           <button
             type="button"
-            onClick={() =>
-              onContinue(
-                assessment.id
-              )
-            }
+            onClick={() => onContinue(assessment.id)}
             className="
               text-left
               font-semibold
@@ -492,16 +415,12 @@ const getAssessmentColumns = ({
               text-slate-500
             "
           >
-            {MODE_LABELS[
-              assessment.mode
-            ]}
+            {MODE_LABELS[assessment.mode]}
           </p>
-
         </div>
       );
     },
   },
-
 
   /* ========================================================
      REPORTING PERIOD
@@ -513,9 +432,7 @@ const getAssessmentColumns = ({
     header: "Reporting Period",
 
     cell: ({ row }) => {
-      const period =
-        row.original
-          .reporting_period_details;
+      const period = row.original.reporting_period_details;
 
       return (
         <span
@@ -530,7 +447,6 @@ const getAssessmentColumns = ({
     },
   },
 
-
   /* ========================================================
      PROGRESS
   ======================================================== */
@@ -541,17 +457,11 @@ const getAssessmentColumns = ({
     header: "Progress",
 
     cell: ({ row }) => {
-      const assessment =
-        row.original as AssessmentWithProgress;
+      const assessment = row.original as AssessmentWithProgress;
 
-      return (
-        <AssessmentProgress
-          assessment={assessment}
-        />
-      );
+      return <AssessmentProgress assessment={assessment} />;
     },
   },
-
 
   /* ========================================================
      ACTION
@@ -563,25 +473,18 @@ const getAssessmentColumns = ({
     header: "Action",
 
     cell: ({ row }) => {
-      const assessment =
-        row.original as AssessmentWithProgress;
+      const assessment = row.original as AssessmentWithProgress;
 
-      const progress =
-        getAssessmentProgress(
-          assessment
-        );
+      const progress = getAssessmentProgress(assessment);
 
       const completed =
         progress >= 100 ||
         assessment.status === "SCORED" ||
-        assessment.status ===
-          "COMPLETED" ||
-        assessment.status ===
-          "APPROVED";
+        assessment.status === "COMPLETED" ||
+        assessment.status === "APPROVED";
 
       return (
         <div className="flex items-center gap-2">
-
           {/* CONTINUE / COMPLETED */}
 
           {completed ? (
@@ -599,11 +502,7 @@ const getAssessmentColumns = ({
             <Button
               type="button"
               size="sm"
-              onClick={() =>
-                onContinue(
-                  assessment.id
-                )
-              }
+              onClick={() => onContinue(assessment.id)}
               className="
                 h-9
                 rounded-lg
@@ -622,18 +521,13 @@ const getAssessmentColumns = ({
             </Button>
           )}
 
-
           {/* DELETE */}
 
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            onClick={() =>
-              onDelete(
-                assessment
-              )
-            }
+            onClick={() => onDelete(assessment)}
             className="
               h-9
               w-9
@@ -652,333 +546,190 @@ const getAssessmentColumns = ({
               "
             />
           </Button>
-
         </div>
       );
     },
   },
 ];
 
-
 /* ==========================================================
    COMPONENT
 ========================================================== */
 
 export default function AssessmentList() {
-  const navigate =
-    useNavigate();
-
+  const navigate = useNavigate();
 
   /* ========================================================
      STATES
   ======================================================== */
 
-  const [
-    assessments,
-    setAssessments,
-  ] = useState<
-    MaterialityAssessment[]
-  >([]);
+  const [assessments, setAssessments] = useState<MaterialityAssessment[]>([]);
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const [
-    search,
-    setSearch,
-  ] = useState("");
+  const [search, setSearch] = useState("");
 
-  const [
-    modeFilter,
-    setModeFilter,
-  ] = useState("All");
+  const [modeFilter, setModeFilter] = useState("All");
 
-  const [
-    selectedAssessment,
-    setSelectedAssessment,
-  ] =
-    useState<MaterialityAssessment | null>(
-      null
-    );
+  const [selectedAssessment, setSelectedAssessment] =
+    useState<MaterialityAssessment | null>(null);
 
-  const [
-    deleting,
-    setDeleting,
-  ] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  const [
-    createDialogOpen,
-    setCreateDialogOpen,
-  ] = useState(false);
-
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   /* ========================================================
      LOAD ASSESSMENTS
   ======================================================== */
 
-  const loadAssessments =
-    useCallback(async () => {
-      try {
-        setLoading(true);
+  const loadAssessments = useCallback(async () => {
+    try {
+      setLoading(true);
 
-        const response =
-          await AssessmentApi.getAll();
+      const response = await AssessmentApi.getAll();
 
-        setAssessments(
-          response.data
-        );
-      } catch (error) {
-        console.error(
-          "Failed to load materiality assessments:",
-          error
-        );
-      } finally {
-        setLoading(false);
-      }
-    }, []);
-
+      setAssessments(response.data);
+    } catch (error) {
+      console.error("Failed to load materiality assessments:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     void loadAssessments();
   }, [loadAssessments]);
 
-
   /* ========================================================
      CONTINUE ASSESSMENT
   ======================================================== */
 
-const handleContinue = useCallback(
-  (id: string) => {
-    const assessment = assessments.find(
-      (item) => item.id === id
-    );
-
-    if (!assessment?.current_step_url) {
-      return;
-    }
-
-    navigate(assessment.current_step_url);
-  },
-  [assessments, navigate]
-);
+  const handleContinue = useCallback(
+    (id: string) => {
+      navigate(`/materiality/assessments/${id}`);
+    },
+    [navigate],
+  );
 
   /* ========================================================
      DELETE
   ======================================================== */
 
-  const handleDelete =
-    useCallback(
-      (
-        assessment: MaterialityAssessment
-      ) => {
-        setSelectedAssessment(
-          assessment
-        );
-      },
-      []
-    );
-
+  const handleDelete = useCallback((assessment: MaterialityAssessment) => {
+    setSelectedAssessment(assessment);
+  }, []);
 
   /* ========================================================
      FILTER
   ======================================================== */
 
-  const filteredAssessments =
-    useMemo(() => {
-      const keyword =
-        search
-          .trim()
-          .toLowerCase();
+  const filteredAssessments = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
 
-      return assessments.filter(
-        (assessment) => {
+    return assessments.filter((assessment) => {
+      const matchesSearch =
+        !keyword ||
+        assessment.name.toLowerCase().includes(keyword) ||
+        assessment.financial_year.toLowerCase().includes(keyword);
 
-          const matchesSearch =
-            !keyword ||
-            assessment.name
-              .toLowerCase()
-              .includes(keyword) ||
-            assessment.financial_year
-              .toLowerCase()
-              .includes(keyword);
+      const matchesMode =
+        modeFilter === "All" || assessment.mode === modeFilter;
 
-          const matchesMode =
-            modeFilter === "All" ||
-            assessment.mode ===
-              modeFilter;
-
-          return (
-            matchesSearch &&
-            matchesMode
-          );
-        }
-      );
-    }, [
-      assessments,
-      search,
-      modeFilter,
-    ]);
-
+      return matchesSearch && matchesMode;
+    });
+  }, [assessments, search, modeFilter]);
 
   /* ========================================================
      CONFIRM DELETE
   ======================================================== */
 
-  const confirmDelete =
-    async () => {
-      if (!selectedAssessment) {
-        return;
-      }
+  const confirmDelete = async () => {
+    if (!selectedAssessment) {
+      return;
+    }
 
-      try {
-        setDeleting(true);
+    try {
+      setDeleting(true);
 
-        await AssessmentApi.delete(
-          selectedAssessment.id
-        );
+      await AssessmentApi.delete(selectedAssessment.id);
 
-        await loadAssessments();
+      await loadAssessments();
 
-        setSelectedAssessment(
-          null
-        );
-      } catch (error) {
-        console.error(
-          "Failed to delete assessment:",
-          error
-        );
-      } finally {
-        setDeleting(false);
-      }
-    };
-
+      setSelectedAssessment(null);
+    } catch (error) {
+      console.error("Failed to delete assessment:", error);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   /* ========================================================
      TABLE COLUMNS
   ======================================================== */
 
-  const columns =
-    useMemo(
-      () =>
-        getAssessmentColumns({
-          onContinue:
-            handleContinue,
+  const columns = useMemo(
+    () =>
+      getAssessmentColumns({
+        onContinue: handleContinue,
 
-          onDelete:
-            handleDelete,
-        }),
-      [
-        handleContinue,
-        handleDelete,
-      ]
-    );
-
+        onDelete: handleDelete,
+      }),
+    [handleContinue, handleDelete],
+  );
 
   /* ========================================================
      EXPORT CSV
   ======================================================== */
 
-  const exportAssessments =
-    useCallback(() => {
+  const exportAssessments = useCallback(() => {
+    const header = [
+      "Assessment",
+      "Reporting Period",
+      "Mode",
+      "Progress",
+      "Status",
+    ];
 
-      const header = [
-        "Assessment",
-        "Reporting Period",
-        "Mode",
-        "Progress",
-        "Status",
+    const rows = filteredAssessments.map((assessment) => {
+      const assessmentWithProgress = assessment as AssessmentWithProgress;
+
+      const progress = getAssessmentProgress(assessmentWithProgress);
+
+      return [
+        assessment.name,
+        assessment.reporting_period_details?.name ?? "",
+        MODE_LABELS[assessment.mode],
+        `${progress}%`,
+        STATUS_LABELS[assessment.status],
       ];
+    });
 
-      const rows =
-        filteredAssessments.map(
-          (assessment) => {
+    const csv = [header, ...rows]
+      .map((row) =>
+        row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","),
+      )
+      .join("\n");
 
-            const assessmentWithProgress =
-              assessment as AssessmentWithProgress;
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;",
+    });
 
-            const progress =
-              getAssessmentProgress(
-                assessmentWithProgress
-              );
+    const url = URL.createObjectURL(blob);
 
-            return [
-              assessment.name,
-              assessment
-                .reporting_period_details
-                ?.name ?? "",
-              MODE_LABELS[
-                assessment.mode
-              ],
-              `${progress}%`,
-              STATUS_LABELS[
-                assessment.status
-              ],
-            ];
-          }
-        );
+    const anchor = document.createElement("a");
 
-      const csv = [
-        header,
-        ...rows,
-      ]
-        .map((row) =>
-          row
-            .map(
-              (value) =>
-                `"${String(
-                  value
-                ).replace(
-                  /"/g,
-                  '""'
-                )}"`
-            )
-            .join(",")
-        )
-        .join("\n");
+    anchor.href = url;
 
-      const blob =
-        new Blob(
-          [csv],
-          {
-            type:
-              "text/csv;charset=utf-8;",
-          }
-        );
+    anchor.download = "materiality-assessments.csv";
 
-      const url =
-        URL.createObjectURL(
-          blob
-        );
+    document.body.appendChild(anchor);
 
-      const anchor =
-        document.createElement(
-          "a"
-        );
+    anchor.click();
 
-      anchor.href = url;
+    document.body.removeChild(anchor);
 
-      anchor.download =
-        "materiality-assessments.csv";
-
-      document.body.appendChild(
-        anchor
-      );
-
-      anchor.click();
-
-      document.body.removeChild(
-        anchor
-      );
-
-      URL.revokeObjectURL(
-        url
-      );
-    }, [
-      filteredAssessments,
-    ]);
-
+    URL.revokeObjectURL(url);
+  }, [filteredAssessments]);
 
   /* ========================================================
      RETURN
@@ -989,9 +740,7 @@ const handleContinue = useCallback(
       title="Materiality Assessments"
       description="Create and manage materiality assessments for your organization."
     >
-
       <div className="space-y-6">
-
         {/* ==================================================
             TABLE
         ================================================== */}
@@ -1005,91 +754,51 @@ const handleContinue = useCallback(
           toolbar={
             <DataTableToolbar
               search={search}
-              onSearchChange={
-                setSearch
-              }
+              onSearchChange={setSearch}
 
               addLabel="Create Assessment"
 
-              onAdd={() =>
-                setCreateDialogOpen(
-                  true
-                )
-              }
+              onAdd={() => setCreateDialogOpen(true)}
 
-              onExport={
-                exportAssessments
-              }
+              onExport={exportAssessments}
             >
-
               {/* ==========================================
                   MODE FILTER
               ========================================== */}
 
-              <Select
-                value={modeFilter}
-                onValueChange={
-                  setModeFilter
-                }
-              >
-                <SelectTrigger
-                  className="w-48"
-                >
-                  <SelectValue
-                    placeholder="Assessment Mode"
-                  />
+              <Select value={modeFilter} onValueChange={setModeFilter}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Assessment Mode" />
                 </SelectTrigger>
 
                 <SelectContent>
+                  <SelectItem value="All">All Modes</SelectItem>
 
-                  <SelectItem value="All">
-                    All Modes
-                  </SelectItem>
+                  <SelectItem value="SINGLE">Single Materiality</SelectItem>
 
-                  <SelectItem value="SINGLE">
-                    Single Materiality
-                  </SelectItem>
-
-                  <SelectItem value="DOUBLE">
-                    Double Materiality
-                  </SelectItem>
-
+                  <SelectItem value="DOUBLE">Double Materiality</SelectItem>
                 </SelectContent>
               </Select>
-
             </DataTableToolbar>
           }
         />
-
 
         {/* ==================================================
             CREATE ASSESSMENT
         ================================================== */}
 
         <AssessmentCreateDialog
-          open={
-            createDialogOpen
-          }
-          onClose={() =>
-            setCreateDialogOpen(
-              false
-            )
-          }
-          onSaved={
-            loadAssessments
-          }
+          open={createDialogOpen}
+          onClose={() => setCreateDialogOpen(false)}
+          onSaved={loadAssessments}
         />
-
 
         {/* ==================================================
             DELETE CONFIRMATION
         ================================================== */}
 
         <ConfirmDialog
-          open={
-            selectedAssessment !==
-            null
-          }
+          open={selectedAssessment !== null}
 
           title="Delete Assessment"
 
@@ -1103,19 +812,11 @@ const handleContinue = useCallback(
 
           loading={deleting}
 
-          onConfirm={
-            confirmDelete
-          }
+          onConfirm={confirmDelete}
 
-          onCancel={() =>
-            setSelectedAssessment(
-              null
-            )
-          }
+          onCancel={() => setSelectedAssessment(null)}
         />
-
       </div>
-
     </AppShell>
   );
 }

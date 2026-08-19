@@ -1,13 +1,14 @@
-"""Seed a workflow-ready, repeatable Materiality Assessment demo.
+"""Seed deterministic Materiality Assessment UI/demo states.
 
 The command deliberately builds on ``seed_demo_foundation`` so a clean local
 installation needs only one Materiality seed command.  It creates realistic
-example records up to stakeholder setup; it does not pre-complete the survey
-or scoring workflow the developer is meant to exercise.
+three explicitly named assessments: a blank draft, a workflow-ready assessment
+for manual survey testing, and a completed historical record for results UI.
 """
 
 from datetime import date
 from decimal import Decimal
+from django.utils import timezone
 
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
@@ -18,27 +19,36 @@ from apps.companies.models import Company
 from apps.materiality.models import (
     AssessmentTopic,
     InternalScore,
+    ScaleDefinition,
     MaterialSubTopic,
     MaterialTopic,
     MaterialityAssessment,
     Stakeholder,
     StakeholderGroup,
     Survey,
+    SurveyInvitation,
+    SurveyGroupLink,
+    SurveyQuestion,
+    SurveyResponse,
+    SurveySubmission,
     TopicCategory,
 )
+from apps.materiality.services.scoring import run_scoring
 from apps.periods.models import ReportingPeriod
 
 
 class Command(BaseCommand):
     help = (
-        "Seed a workflow-ready FY 2025-26 Sahyadri Materiality demo with "
-        "topics, stakeholder groups, and named stakeholders."
+        "Reset the three named FY 2025-26 Sahyadri Materiality UI demos: "
+        "Draft, Workflow-ready, and Completed. User-created assessments are untouched."
     )
 
     # A deliberately distinct name prevents the seed command from attaching
     # demo groups/responses to a real assessment a developer already created
     # for the same financial year.
     assessment_name = "Demo — FY 2025-26 Materiality Assessment"
+    draft_assessment_name = "Demo — Draft Materiality Assessment"
+    completed_assessment_name = "Demo — Completed Materiality Assessment"
 
     # (category, topic/subtopic name)
     TOPICS = (
@@ -96,6 +106,14 @@ class Command(BaseCommand):
         ),
     }
 
+    # (impact/primary, financial/secondary) targets for the completed demo.
+    # They deliberately exercise every matrix quadrant while keeping the
+    # seed repeatable and easy for a developer to reason about.
+    COMPLETED_SCORE_PROFILES = (
+        (5, 5), (4, 2), (2, 4), (2, 2), (4, 4),
+        (3, 5), (5, 3), (1, 3), (3, 3), (4, 5),
+    )
+
     def add_arguments(self, parser):
         parser.add_argument(
             "--owner",
@@ -136,10 +154,12 @@ class Command(BaseCommand):
             groups = self._ensure_groups(assessment)
             self._ensure_stakeholders(groups)
             self._reset_workflow_state(assessment)
+            self._ensure_workflow_ready_survey(assessment, groups)
+            self._ensure_draft(company, period, owner)
+            self._ensure_completed(company, period, owner)
 
         self.stdout.write(self.style.SUCCESS(
-            "Materiality demo seeded: 1 workflow-ready double-materiality assessment, "
-            "10 topics, 6 weighted stakeholder groups, and 18 named stakeholders."
+            "Materiality demo seeded: draft, workflow-ready, and completed/locked assessments."
         ))
 
     def _owner(self, username):
@@ -253,3 +273,141 @@ class Command(BaseCommand):
             override_reason="",
             override_by=None,
         )
+
+    def _ensure_draft(self, company, period, owner):
+        draft, _ = MaterialityAssessment.objects.update_or_create(
+            company=company, reporting_period=period, name=self.draft_assessment_name,
+            defaults={"mode": "DOUBLE", "status": "DRAFT", "primary_threshold": Decimal("3.50"),
+                      "secondary_threshold": Decimal("3.50"), "scale_min": 1, "scale_max": 5,
+                      "internal_blend_weight": Decimal("0.50"), "created_by": owner,
+                      "is_locked": False, "approved_by": None, "approved_at": None},
+        )
+        Survey.objects.filter(assessment=draft).delete()
+        draft.score_runs.all().delete()
+        draft.assessment_topics.all().delete()
+
+    @staticmethod
+    def _survey_questions(assessment, survey):
+        """Create the same two dimensions the DOUBLE-mode generator uses."""
+        scales = {
+            scale.dimension: scale
+            for scale in ScaleDefinition.objects.filter(assessment__isnull=True)
+        }
+        questions = []
+        for order, topic in enumerate(
+            assessment.assessment_topics.select_related("subtopic").order_by("display_order"),
+            start=1,
+        ):
+            questions.extend([
+                SurveyQuestion(
+                    survey=survey, assessment_topic=topic, scale=scales["IMPACT"],
+                    dimension="IMPACT", question_text=f"Impact: {topic.subtopic.name}",
+                    display_order=order * 2 - 1,
+                ),
+                SurveyQuestion(
+                    survey=survey, assessment_topic=topic, scale=scales["FINANCIAL"],
+                    dimension="FINANCIAL", question_text=f"Financial: {topic.subtopic.name}",
+                    display_order=order * 2,
+                ),
+            ])
+        SurveyQuestion.objects.bulk_create(questions)
+
+    def _ensure_workflow_ready_survey(self, assessment, groups):
+        """Create real READY survey, invitation, and group-link records for UI testing."""
+        survey = Survey.objects.create(
+            assessment=assessment,
+            title="Workflow-ready Materiality Survey",
+            status="READY",
+        )
+        self._survey_questions(assessment, survey)
+        SurveyGroupLink.objects.bulk_create([
+            SurveyGroupLink(survey=survey, stakeholder_group=group)
+            for group in groups.values()
+        ])
+        SurveyInvitation.objects.bulk_create([
+            SurveyInvitation(survey=survey, stakeholder=stakeholder, status="NOT_SENT")
+            for group in groups.values()
+            for stakeholder in group.stakeholders.all()
+        ])
+
+    def _ensure_completed(self, company, period, owner):
+        assessment, _ = MaterialityAssessment.objects.update_or_create(
+            company=company, reporting_period=period, name=self.completed_assessment_name,
+            defaults={"mode": "DOUBLE", "status": "IN_PROGRESS", "primary_threshold": Decimal("3.50"),
+                      "secondary_threshold": Decimal("3.50"), "scale_min": 1, "scale_max": 5,
+                      "internal_blend_weight": Decimal("0.50"), "created_by": owner,
+                      "is_locked": False, "approved_by": None, "approved_at": None},
+        )
+        self._ensure_assessment_configuration(assessment, owner)
+        topics = self._ensure_topics(assessment)
+        groups = self._ensure_groups(assessment)
+        self._ensure_stakeholders(groups)
+        Survey.objects.filter(assessment=assessment).delete()
+        assessment.score_runs.all().delete()
+        InternalScore.objects.filter(assessment_topic__assessment=assessment).delete()
+        survey = Survey.objects.create(assessment=assessment, title="Completed Materiality Survey", status="CLOSED")
+        self._survey_questions(assessment, survey)
+        questions = list(survey.questions.all())
+        for group_index, group in enumerate(groups.values()):
+            SurveyGroupLink.objects.create(survey=survey, stakeholder_group=group)
+            for respondent_index in range(3):
+                # One tracked invitation and multiple independent anonymous
+                # submissions demonstrate both distribution methods while
+                # giving each group enough data for a useful matrix fixture.
+                invitation = None
+                if group_index == 0 and respondent_index == 0:
+                    invitation = SurveyInvitation.objects.create(
+                        survey=survey,
+                        stakeholder=group.stakeholders.order_by("id").first(),
+                        status="SUBMITTED",
+                        submitted_at=timezone.now(),
+                    )
+                submission = SurveySubmission.objects.create(
+                    survey=survey,
+                    stakeholder_group=group,
+                    invitation=invitation,
+                    source="IDENTIFIED" if invitation else "ANONYMOUS",
+                    submitted_at=timezone.now(),
+                )
+                SurveyResponse.objects.bulk_create([
+                    SurveyResponse(
+                        submission=submission,
+                        question=question,
+                        # Three independent submissions per group provide a
+                        # small response distribution whose average is the
+                        # profile target. The matrix therefore remains
+                        # scattered while the result is deterministic.
+                        value=max(
+                            1,
+                            min(
+                                5,
+                                self.COMPLETED_SCORE_PROFILES[(question.display_order - 1) // 2][
+                                    1 if question.dimension == "FINANCIAL" else 0
+                                ] + respondent_index - 1,
+                            ),
+                        ),
+                        answered_at=timezone.now(),
+                    )
+                    for question in questions
+                ])
+        InternalScore.objects.bulk_create([
+            InternalScore(
+                assessment_topic=topic,
+                impact_type="ACTUAL",
+                scale=self.COMPLETED_SCORE_PROFILES[index][0],
+                scope=self.COMPLETED_SCORE_PROFILES[index][0],
+                irremediability=self.COMPLETED_SCORE_PROFILES[index][0],
+                financial_magnitude=self.COMPLETED_SCORE_PROFILES[index][1],
+                financial_likelihood=5,
+                rationale="Deterministic completed demo score.",
+                scored_by=owner,
+            )
+            for index, topic in enumerate(assessment.assessment_topics.order_by("display_order"))
+        ])
+        first_topic = assessment.assessment_topics.order_by("display_order").first()
+        first_topic.is_override, first_topic.override_reason, first_topic.override_by = True, "Seeded example of a documented management override.", owner
+        first_topic.classification = "DOUBLE_MATERIAL"
+        first_topic.save(update_fields=["is_override", "override_reason", "override_by", "classification"])
+        run_scoring(assessment, owner)
+        assessment.status, assessment.is_locked, assessment.approved_by, assessment.approved_at = "COMPLETED", True, owner, timezone.now()
+        assessment.save(update_fields=["status", "is_locked", "approved_by", "approved_at"])
