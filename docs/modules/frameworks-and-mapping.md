@@ -12,11 +12,11 @@ M7 — Frameworks and Mapping
 
 Status
 
-Implemented
+Implemented — Complete
 
 Test Status
 
-70 / 70 tests passing
+71 / 71 tests passing
 
 Primary API Prefix
 
@@ -34,7 +34,7 @@ Future Reporting Consumer
 
 M8 / Future Reporting Modules
 
-1. Overview
+Overview
 
 The M7 Frameworks and Mapping module provides the backend foundation for managing:
 
@@ -63,22 +63,22 @@ M4 remains the source of truth for canonical datapoints.
 The architectural relationship is:
 
 Framework
-    |
-    v
+|
+v
 FrameworkVersion
-    |
-    v
+|
+v
 FrameworkNode
-    |
-    v
+|
+v
 DatapointMapping
-    |
-    v
+|
+v
 M4 Datapoint
 
 M7 does not duplicate or redefine the M4 Datapoint model.
 
-2. Module Responsibilities
+Module Responsibilities
 
 M7 is responsible for
 
@@ -138,20 +138,20 @@ Auditor workflows
 
 Materiality assessment logic
 
-3. Architectural Boundary
+Architectural Boundary
 
 The platform separates canonical data definitions from framework requirements.
 
 M4
 Canonical Datapoint Catalog
-        |
-        | canonical datapoints
-        v
+|
+| canonical datapoints
+v
 M7
 Frameworks + Versions + Nodes + Mappings
-        |
-        | framework requirements
-        v
+|
+| framework requirements
+v
 Future Reporting Modules / M8
 Report Runs + Answers + Reporting Output
 
@@ -165,21 +165,21 @@ Collect Once, Report Many
 
 architecture.
 
-4. Core M7 Models
+Core M7 Models
 
 M7 contains four primary models:
 
 Framework
-    |
-    +-- FrameworkVersion
-            |
-            +-- FrameworkNode
-                    |
-                    +-- DatapointMapping
-                            |
-                            +-- M4 Datapoint
+|
++-- FrameworkVersion
+|
++-- FrameworkNode
+|
++-- DatapointMapping
+|
++-- M4 Datapoint
 
-5. Framework
+Framework
 
 Framework represents the identity of an external reporting framework or standard.
 
@@ -233,15 +233,15 @@ Frameworks are ordered by:
 
 code
 
-6. FrameworkVersion
+FrameworkVersion
 
 FrameworkVersion represents a specific edition or version of a framework.
 
 Framework
-    |
-    +-- FrameworkVersion
-    +-- FrameworkVersion
-    +-- FrameworkVersion
+|
++-- FrameworkVersion
++-- FrameworkVersion
++-- FrameworkVersion
 
 Fields
 
@@ -280,7 +280,7 @@ Versions are ordered by:
 framework.code
 version_code
 
-7. FrameworkNode
+FrameworkNode
 
 FrameworkNode represents an individual element in a framework hierarchy.
 
@@ -310,7 +310,7 @@ updated_at
 
 depth and path are maintained as tree metadata.
 
-8. Framework Node Types
+Framework Node Types
 
 The currently implemented node types are:
 
@@ -342,7 +342,7 @@ A further subdivision of an indicator.
 
 The node type describes the structural role of the framework node. It does not define an M4 datapoint.
 
-9. Framework Tree
+Framework Tree
 
 The framework hierarchy is represented using the self-referencing parent relationship.
 
@@ -351,14 +351,14 @@ Representative structure:
 GRI 2021
 |
 +-- TOPIC-STANDARDS
-    |
-    +-- GRI-300
-        |
-        +-- GRI-302
-            |
-            +-- 302-1
-            |
-            +-- 302-2
+|
++-- GRI-300
+|
++-- GRI-302
+|
++-- 302-1
+|
++-- 302-2
 
 The database stores the parent-child relationship.
 
@@ -367,7 +367,7 @@ The model additionally stores materialized tree metadata:
 depth
 path
 
-10. Tree Metadata
+Tree Metadata
 
 Depth
 
@@ -400,7 +400,7 @@ Example:
 
 The path is calculated automatically when a node is saved.
 
-11. Framework Node Validation
+Framework Node Validation
 
 The current implementation enforces the following hierarchy rules.
 
@@ -413,8 +413,8 @@ Invalid:
 GRI 2021
 |
 +-- Node A
-      |
-      +-- Parent from GRI 2022
+|
++-- Parent from GRI 2022
 
 The operation is rejected.
 
@@ -423,8 +423,8 @@ The operation is rejected.
 A node cannot be its own parent.
 
 Node A
-   |
-   +-- parent = Node A
+|
++-- parent = Node A
 
 The operation is rejected.
 
@@ -437,8 +437,8 @@ Invalid:
 A
 |
 +-- B
-    |
-    +-- C
+|
++-- C
 
 Attempting to make A a child of C is rejected.
 
@@ -452,7 +452,7 @@ must be unique.
 
 The same code may exist in different framework versions.
 
-12. Node Save and Subtree Rebuild
+Node Save and Subtree Rebuild
 
 When a FrameworkNode is saved:
 
@@ -478,13 +478,13 @@ Before:
 
 ROOT-A
 └── CHILD
-    └── GRANDCHILD
+└── GRANDCHILD
 
 After moving CHILD:
 
 ROOT-B
 └── CHILD
-    └── GRANDCHILD
+└── GRANDCHILD
 
 Result:
 
@@ -496,16 +496,16 @@ GRANDCHILD
 depth = 2
 path = /ROOT-B/CHILD/GRANDCHILD/
 
-13. DatapointMapping
+DatapointMapping
 
 DatapointMapping connects a framework node to a canonical M4 datapoint.
 
 FrameworkNode
-      |
-      v
+|
+v
 DatapointMapping
-      |
-      v
+|
+v
 M4 Datapoint
 
 A framework node may have multiple mappings.
@@ -514,7 +514,7 @@ The same canonical datapoint can be reused by different framework nodes where ap
 
 This supports the platform's "Collect Once, Report Many" architecture.
 
-14. M4 Datapoint Ownership
+M4 Datapoint Ownership
 
 M7 does not create a second datapoint model.
 
@@ -523,11 +523,11 @@ The canonical datapoint remains owned by M4.
 The relationship is:
 
 M4 Datapoint
-      |
-      v
+|
+v
 DatapointMapping
-      |
-      v
+|
+v
 FrameworkNode
 
 M4 remains the source of truth for datapoint-specific information such as:
@@ -548,7 +548,7 @@ frequency
 
 M7 stores the mapping relationship and mapping metadata.
 
-15. Mapping Types
+Mapping Types
 
 The current implementation supports:
 
@@ -572,7 +572,7 @@ The framework node depends on a calculated or derived value.
 
 M7 stores mapping metadata only. Calculation execution belongs to a future calculation/reporting layer.
 
-16. Mapping Aggregation
+Mapping Aggregation
 
 The current aggregation options are:
 
@@ -604,7 +604,7 @@ NARRATIVE + AVG
 
 is invalid.
 
-17. Mapping Metadata
+Mapping Metadata
 
 The mapping model contains:
 
@@ -648,7 +648,7 @@ Reviewed At
 
 Optional timestamp indicating when the mapping was reviewed.
 
-18. Mapping Validation
+Mapping Validation
 
 The current implementation enforces:
 
@@ -678,7 +678,7 @@ Only one mapping per node can have:
 
 is_primary = true
 
-19. API Overview
+API Overview
 
 All M7 APIs are registered under:
 
@@ -692,7 +692,7 @@ Current API groups:
 /api/frameworks/mappings/
 /api/frameworks/versions/<version_id>/tree/
 
-20. Framework API
+Framework API
 
 List
 
@@ -705,10 +705,10 @@ POST /api/frameworks/
 Example:
 
 {
-    "code": "GRI",
-    "name": "Global Reporting Initiative",
-    "description": "GRI Standards",
-    "is_enabled": true
+"code": "GRI",
+"name": "Global Reporting Initiative",
+"description": "GRI Standards",
+"is_enabled": true
 }
 
 Detail
@@ -727,7 +727,7 @@ Delete
 
 DELETE /api/frameworks/<framework_id>/
 
-21. Framework Filters
+Framework Filters
 
 Search
 
@@ -743,7 +743,7 @@ or:
 
 GET /api/frameworks/?is_enabled=false
 
-22. Framework Version API
+Framework Version API
 
 Framework versions use non-nested routes.
 
@@ -777,7 +777,7 @@ The current implementation does not use:
 
 for version routing.
 
-23. Framework Version Filters
+Framework Version Filters
 
 Framework
 
@@ -804,7 +804,7 @@ GET /api/frameworks/versions/?search=2021
 
 Filters can be combined.
 
-24. Framework Node API
+Framework Node API
 
 List
 
@@ -830,7 +830,7 @@ Delete
 
 DELETE /api/frameworks/nodes/<node_id>/
 
-25. Framework Node Filters
+Framework Node Filters
 
 Framework Version
 
@@ -856,7 +856,7 @@ Example:
 
 GET /api/frameworks/nodes/?framework_version=<id>&node_type=DISCLOSURE&is_active=true
 
-26. Complete Framework Tree API
+Complete Framework Tree API
 
 GET /api/frameworks/versions/<version_id>/tree/
 
@@ -871,31 +871,31 @@ Complete nested active-node hierarchy
 Example:
 
 {
-    "framework": {
-        "id": "...",
-        "code": "GRI",
-        "name": "Global Reporting Initiative"
-    },
-    "version": {
-        "id": "...",
-        "code": "2021",
-        "name": "GRI Standards 2021"
-    },
-    "tree": [
-        {
-            "id": "...",
-            "code": "TOPIC-STANDARDS",
-            "title": "Topic Standards",
-            "node_type": "SECTION",
-            "display_order": 1,
-            "depth": 0,
-            "path": "/TOPIC-STANDARDS/",
-            "is_answerable": false,
-            "is_core": true,
-            "is_active": true,
-            "children": []
-        }
-    ]
+"framework": {
+"id": "...",
+"code": "GRI",
+"name": "Global Reporting Initiative"
+},
+"version": {
+"id": "...",
+"code": "2021",
+"name": "GRI Standards 2021"
+},
+"tree": [
+{
+"id": "...",
+"code": "TOPIC-STANDARDS",
+"title": "Topic Standards",
+"node_type": "SECTION",
+"display_order": 1,
+"depth": 0,
+"path": "/TOPIC-STANDARDS/",
+"is_answerable": false,
+"is_core": true,
+"is_active": true,
+"children": []
+}
+]
 }
 
 Only active nodes are returned.
@@ -905,7 +905,7 @@ Sibling nodes are ordered deterministically using:
 display_order
 code
 
-27. Datapoint Mapping API
+Datapoint Mapping API
 
 List
 
@@ -931,23 +931,23 @@ Delete
 
 DELETE /api/frameworks/mappings/<mapping_id>/
 
-28. Mapping Create Example
+Mapping Create Example
 
 POST /api/frameworks/mappings/
 
 Example:
 
 {
-    "framework_node": "<framework-node-id>",
-    "datapoint": "<m4-datapoint-id>",
-    "mapping_type": "DIRECT",
-    "aggregation": "NONE",
-    "is_primary": true,
-    "confidence": "CONFIRMED",
-    "mapping_note": "Primary framework mapping."
+"framework_node": "<framework-node-id>",
+"datapoint": "<m4-datapoint-id>",
+"mapping_type": "DIRECT",
+"aggregation": "NONE",
+"is_primary": true,
+"confidence": "CONFIRMED",
+"mapping_note": "Primary framework mapping."
 }
 
-29. Mapping Serializer Response
+Mapping Serializer Response
 
 The serializer exposes:
 
@@ -993,7 +993,7 @@ datapoint
 
 and use the related descriptive fields returned by the API.
 
-30. Mapping Filters
+Mapping Filters
 
 Framework Node
 
@@ -1035,33 +1035,50 @@ Example:
 
 GET /api/frameworks/mappings/?framework_version=<id>&mapping_type=DIRECT&is_primary=true
 
-31. Authentication and RBAC
+Authentication and RBAC
 
 M7 uses the existing project-wide authentication and RBAC infrastructure.
 
-Framework, version, node, and mapping CRUD APIs use:
+Framework, version, node, and mapping CRUD APIs use the shared RBACModelViewSet infrastructure through the M7 catalog base viewset.
 
-RBACModelViewSet
+Read contract:
 
-The framework tree endpoint uses:
+Authenticated users can consume framework/catalog data.
 
-IsAuthenticated
+Administrative write contract:
+
+Create, update, partial update, and delete operations require:
+
+framework_mapping.manage
+
+The canonical permission is resolved through the existing:
+
 HasRolePermission
+|
+v
+RBACService.has_permission()
+|
+v
+UserRoleAssignment
+|
+v
+Role
+|
+v
+Permission
 
-The tree endpoint requires:
+M7 does not derive unsupported permissions such as:
 
-framework_node.view
+framework.view
+framework.create
+framework_version.view
+framework_node.create
 
-The M7 viewsets use these module codes:
-
-framework
-framework_version
-framework_node
-framework_mapping
+The framework tree endpoint is read-only and requires authentication.
 
 M7 does not implement a separate authentication or authorization system.
 
-32. Serializer Validation
+Serializer Validation
 
 FrameworkVersion
 
@@ -1086,7 +1103,7 @@ inactive datapoint
 DIRECT + aggregation
 NARRATIVE + aggregation
 
-33. Read-Only Fields
+Read-Only Fields
 
 Framework
 
@@ -1118,7 +1135,7 @@ datapoint_data_type
 created_at
 updated_at
 
-34. Seed / Import Strategy
+Seed / Import Strategy
 
 M7 may contain representative framework content to demonstrate:
 
@@ -1142,15 +1159,26 @@ python manage.py seed_frameworks
 
 The seed should be idempotent, meaning repeated execution should not create duplicate framework, version, or node records.
 
-35. Testing
+Testing
 
-The M7 test suite covers the implemented model, serializer, API, tree, validation, mapping, and filtering behavior.
+The M7 test suite covers the implemented model, serializer, API, tree, validation, mapping, filtering, authentication, and real RBAC authorization behavior.
 
-Current Test Status
+Final Verified Test Status
 
-70 tests
-70 passed
+71 tests
+71 passed
 0 failed
+
+Verified command:
+
+python manage.py test apps.frameworks
+
+Verified result:
+
+Found 71 test(s).
+Ran 71 tests in 16.803s
+
+OK
 
 Run all M7 tests
 
@@ -1172,7 +1200,7 @@ API/view tests
 
 python manage.py test apps.frameworks.test.test_views
 
-36. Test Coverage
+Test Coverage
 
 The current test suite covers:
 
@@ -1278,7 +1306,27 @@ Mapping filtering
 
 Related datapoint serializer output
 
-37. Django Verification
+RBAC
+
+Unauthenticated API access rejection
+
+Authenticated framework/catalog reads
+
+Administrative writes without framework_mapping.manage rejected
+
+Administrative writes with framework_mapping.manage allowed
+
+Inactive role assignments rejected
+
+Inactive role definitions rejected
+
+Expired role assignments rejected
+
+Superuser administrative access
+
+Real RBACService authorization path without bypassing HasRolePermission
+
+Django Verification
 
 Run:
 
@@ -1294,27 +1342,33 @@ python manage.py test apps.frameworks
 
 Expected test result:
 
-Ran 70 tests
+Ran 71 tests
 
 OK
 
-38. Representative Mapping Flow
+Final verified result:
+
+Found 71 test(s).
+Ran 71 tests in 16.803s
+OK
+
+Representative Mapping Flow
 
 M4 Datapoint Catalog
-        |
-        v
+|
+v
 M4 Datapoint
-        ^
-        |
+^
+|
 DatapointMapping
-        ^
-        |
+^
+|
 FrameworkNode
-        ^
-        |
+^
+|
 FrameworkVersion
-        ^
-        |
+^
+|
 Framework
 
 Example:
@@ -1322,41 +1376,41 @@ Example:
 GRI
 |
 +-- GRI 2021
-    |
-    +-- GRI-300
-        |
-        +-- GRI-302
-            |
-            +-- 302-1
-                |
-                v
-          DatapointMapping
-                |
-                v
-          M4 Datapoint
+|
++-- GRI-300
+|
++-- GRI-302
+|
++-- 302-1
+|
+v
+DatapointMapping
+|
+v
+M4 Datapoint
 
-39. Relationship to Future M8 Reporting
+Relationship to Future M8 Reporting
 
 M7 provides the framework structure and mapping foundation for future reporting functionality.
 
 Expected future flow:
 
 Framework
-    |
+|
 FrameworkVersion
-    |
+|
 FrameworkNode
-    |
+|
 DatapointMapping
-    |
+|
 Canonical Datapoint
-    |
+|
 Company Data / Answer Storage
-    |
+|
 Report Run
-    |
+|
 Disclosure Assignment / Resolution
-    |
+|
 Report Output
 
 M7 stops before report-run and answer-storage stages.
@@ -1381,7 +1435,7 @@ mapping type;
 
 mapping metadata.
 
-40. Future Work Outside M7
+Future Work Outside M7
 
 The following remain outside the current M7 boundary:
 
@@ -1427,7 +1481,7 @@ Auditor Workflows
 
 Auditor-specific access, review, and approval workflows remain outside M7.
 
-41. M7 Completion Boundary
+M7 Completion Boundary
 
 The current M7 foundation is considered implemented when:
 
@@ -1475,46 +1529,53 @@ API filtering is available.
 
 Existing project RBAC is integrated.
 
-Automated M7 tests pass.
+Authenticated reads are permitted through the agreed catalog access contract.
+
+Administrative changes require the canonical framework_mapping.manage capability.
+
+Real RBAC authorization is covered by API tests without mocking HasRolePermission.
+
+Automated M7 tests pass 71/71.
 
 Django system checks can be executed.
 
 M7 remains independent of future M8 reporting functionality.
 
-42. Final Architecture
+Final Architecture
 
-                         ESG Platform
-                              |
-              +---------------+---------------+
-              |                               |
-             M4                              M7
-              |                               |
-              v                               v
-    Canonical Datapoints             Framework Catalog
-                                              |
-                                              v
-                                      FrameworkVersion
-                                              |
-                                              v
-                                        FrameworkNode
-                                              |
-                                              v
-                                      DatapointMapping
-                                              |
-                                              v
-                                        M4 Datapoint
-                                              |
-                                              v
-                                      Future M8
-                                              |
-                               +--------------+--------------+
-                               |                             |
-                          Report Runs                    Answers
-                               |
-                               v
-                         Report Output
+                 ESG Platform
+                      |
+      +---------------+---------------+
+      |                               |
+     M4                              M7
+      |                               |
+      v                               v
 
-43. Final Model Summary
+Canonical Datapoints             Framework Catalog
+|
+v
+FrameworkVersion
+|
+v
+FrameworkNode
+|
+v
+DatapointMapping
+|
+v
+M4 Datapoint
+|
+v
+Future M8
+|
++--------------+--------------+
+|                             |
+Report Runs                    Answers
+|
+v
+Report Output
+
+Final Model Summary
 
 Framework
 │
@@ -1522,92 +1583,98 @@ Framework
 ├── name
 ├── description
 └── is_enabled
-      │
-      └── FrameworkVersion
-            │
-            ├── version_code
-            ├── version_name
-            ├── effective_from
-            ├── effective_to
-            ├── published_at
-            ├── is_active
-            └── is_default
-                  │
-                  └── FrameworkNode
-                        │
-                        ├── code
-                        ├── title
-                        ├── description
-                        ├── instructions
-                        ├── node_type
-                        ├── display_order
-                        ├── depth
-                        ├── path
-                        ├── response_format
-                        ├── is_answerable
-                        ├── is_core
-                        └── is_active
-                              │
-                              └── DatapointMapping
-                                    │
-                                    ├── mapping_type
-                                    ├── aggregation
-                                    ├── transform_expression
-                                    ├── is_primary
-                                    ├── confidence
-                                    ├── mapping_note
-                                    └── reviewed_at
-                                          │
-                                          v
-                                    M4 Datapoint
+│
+└── FrameworkVersion
+│
+├── version_code
+├── version_name
+├── effective_from
+├── effective_to
+├── published_at
+├── is_active
+└── is_default
+│
+└── FrameworkNode
+│
+├── code
+├── title
+├── description
+├── instructions
+├── node_type
+├── display_order
+├── depth
+├── path
+├── response_format
+├── is_answerable
+├── is_core
+└── is_active
+│
+└── DatapointMapping
+│
+├── mapping_type
+├── aggregation
+├── transform_expression
+├── is_primary
+├── confidence
+├── mapping_note
+└── reviewed_at
+│
+v
+M4 Datapoint
 
-44. Final Status
+Final Status
 
 M7 currently provides the framework catalog and framework-to-datapoint mapping foundation for the ESG platform.
 
 Current implementation:
 
 Framework
-        ✓
+✓
 
 FrameworkVersion
-        ✓
+✓
 
 FrameworkNode
-        ✓
+✓
 
 Hierarchy validation
-        ✓
+✓
 
 Self-parent prevention
-        ✓
+✓
 
 Cycle prevention
-        ✓
+✓
 
 Depth/path metadata
-        ✓
+✓
 
 Tree API
-        ✓
+✓
 
 DatapointMapping
-        ✓
+✓
 
 Mapping validation
-        ✓
+✓
 
 Mapping filters
-        ✓
+✓
 
 Framework/version/node APIs
-        ✓
+✓
 
 RBAC integration
-        ✓
+✓
+
+Canonical framework_mapping.manage write authorization
+✓
+
+Real RBAC authorization tests
+✓
 
 Automated tests
-        ✓ 70/70 passing
+✓ 71/71 passing
 
 Final architectural boundary:
 
@@ -1616,3 +1683,46 @@ M7 = Where that data participates in a framework
 M8 = How that framework is used for reporting
 
 M7 therefore provides a stable, versioned, validated framework and mapping foundation while keeping canonical datapoint ownership in M4 and future reporting execution in M8.
+
+Handover / Completion Statement
+
+M7 — Frameworks and Mapping is complete for the current agreed backend scope.
+
+The implementation has been verified against the current M7 model, serializer, view, URL, and RBAC architecture.
+
+Final verification:
+
+python manage.py test apps.frameworks
+
+Result:
+
+71 tests discovered
+71 tests passed
+0 failures
+0 errors
+
+The final authorization contract is:
+
+Authenticated read
+|
++-- Framework
++-- FrameworkVersion
++-- FrameworkNode
++-- Framework Tree
++-- DatapointMapping
+|
+v
+Allowed
+
+Administrative write
+|
+v
+framework_mapping.manage
+|
++-- Create
++-- Update
++-- Partial Update
++-- Delete
+
+The authorization tests exercise the real RBACService path rather than bypassing HasRolePermission.
+

@@ -1,12 +1,13 @@
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 
-from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
+
 from apps.accounts.permissions import HasRolePermission
 from apps.accounts.viewsets import RBACModelViewSet
+
 from apps.frameworks.models import (
     Framework,
     FrameworkNode,
@@ -21,12 +22,74 @@ from apps.frameworks.serializers import (
     FrameworkVersionSerializer,
     DatapointMappingSerializer,
 )
-class FrameworkViewSet(RBACModelViewSet):
+
+
+class FrameworkCatalogModelViewSet(RBACModelViewSet):
     """
-    Framework CRUD API.
+    Base ViewSet for M7 framework/catalog APIs.
+
+    Read operations:
+        Any authenticated user.
+
+    Administrative operations:
+        Require the canonical platform capability:
+
+            framework_mapping.manage
     """
 
-    module_code = "framework"
+    permission_code = "framework_mapping.manage"
+
+    def get_permissions(self):
+        """
+        Authenticated users can consume framework/catalog data.
+
+        Administrative changes require the canonical
+        framework_mapping.manage capability.
+        """
+
+        if self.action in {
+            "create",
+            "update",
+            "partial_update",
+            "destroy",
+        }:
+            return [
+                IsAuthenticated(),
+                HasRolePermission(),
+            ]
+
+        return [
+            IsAuthenticated(),
+        ]
+
+    def get_required_permission(self):
+        """
+        Return the canonical administrative capability.
+
+        This intentionally avoids deriving permissions such as:
+
+            framework.view
+            framework.create
+            framework_version.view
+            framework_node.create
+
+        because those permissions are not part of the
+        stabilized M7 RBAC vocabulary.
+        """
+
+        return self.permission_code
+
+
+class FrameworkViewSet(FrameworkCatalogModelViewSet):
+    """
+    Framework CRUD API.
+
+    Read:
+        Authenticated users.
+
+    Create/update/delete:
+        framework_mapping.manage.
+    """
 
     serializer_class = FrameworkSerializer
 
@@ -61,12 +124,18 @@ class FrameworkViewSet(RBACModelViewSet):
         return queryset
 
 
-class FrameworkVersionViewSet(RBACModelViewSet):
+class FrameworkVersionViewSet(
+    FrameworkCatalogModelViewSet
+):
     """
     Framework version CRUD API.
-    """
 
-    module_code = "framework_version"
+    Read:
+        Authenticated users.
+
+    Create/update/delete:
+        framework_mapping.manage.
+    """
 
     serializer_class = FrameworkVersionSerializer
 
@@ -125,15 +194,18 @@ class FrameworkVersionViewSet(RBACModelViewSet):
         return queryset
 
 
-class FrameworkNodeViewSet(RBACModelViewSet):
+class FrameworkNodeViewSet(
+    FrameworkCatalogModelViewSet
+):
     """
     Framework node CRUD API.
 
-    Supports filtering by framework version,
-    node type, code and active state.
-    """
+    Read:
+        Authenticated users.
 
-    module_code = "framework_node"
+    Create/update/delete:
+        framework_mapping.manage.
+    """
 
     serializer_class = FrameworkNodeSerializer
 
@@ -166,8 +238,10 @@ class FrameworkNodeViewSet(RBACModelViewSet):
             )
         )
 
-        code = self.request.query_params.get(
-            "code"
+        code = (
+            self.request.query_params.get(
+                "code"
+            )
         )
 
         node_type = (
@@ -210,18 +284,16 @@ class FrameworkTreeView(APIView):
     Retrieve the complete framework tree for one
     framework version.
 
-    One request returns the complete hierarchy.
+    Read access:
+        Any authenticated user.
+
+    No administrative RBAC capability is required
+    for reading the framework tree.
     """
 
     permission_classes = (
         IsAuthenticated,
-        HasRolePermission,
     )
-
-    module_code = "framework_node"
-
-    def get_required_permission(self):
-        return f"{self.module_code}.view"
 
     def get(self, request, version_id):
         version = get_object_or_404(
@@ -294,12 +366,19 @@ class FrameworkTreeView(APIView):
         )
 
 
-class DatapointMappingViewSet(RBACModelViewSet):
+class DatapointMappingViewSet(
+    FrameworkCatalogModelViewSet
+):
     """
-    Framework-node to canonical-datapoint mapping CRUD API.
-    """
+    Framework-node to canonical-datapoint mapping
+    CRUD API.
 
-    module_code = "framework_mapping"
+    Read:
+        Authenticated users.
+
+    Create/update/delete:
+        framework_mapping.manage.
+    """
 
     serializer_class = (
         DatapointMappingSerializer
@@ -371,8 +450,9 @@ class DatapointMappingViewSet(RBACModelViewSet):
 
         if framework_version:
             queryset = queryset.filter(
-                framework_node__framework_version_id=
-                framework_version
+                framework_node__framework_version_id=(
+                    framework_version
+                )
             )
 
         if datapoint:

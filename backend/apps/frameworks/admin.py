@@ -115,7 +115,7 @@ class DatapointMappingAdmin(admin.ModelAdmin):
 
     autocomplete_fields = (
         "framework_node",
-        "datapoint",
+        # "datapoint",
     )
 
 
