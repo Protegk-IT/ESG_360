@@ -41,6 +41,10 @@ class ExcelParser:
 
         File-like objects are used by Django storage backends so that
         parsing does not depend on a physical filesystem path.
+
+        Parsed rows are yielded incrementally so callers can process
+        large files in bounded chunks instead of storing all rows
+        in memory at once.
         """
 
         self._validate_file_size(file_source)
@@ -52,6 +56,7 @@ class ExcelParser:
 
             workbook_source = path
         else:
+            self._validate_file_name(file_source)
             workbook_source = file_source
 
         try:
@@ -81,8 +86,6 @@ class ExcelParser:
 
             headers = self._get_headers(header_row)
 
-            parsed_rows = []
-
             for excel_row_number, values in enumerate(
                 row_iterator,
                 start=2,
@@ -101,14 +104,10 @@ class ExcelParser:
 
                     raw_data[header] = self._json_safe(value)
 
-                parsed_rows.append(
-                    {
-                        "row_number": excel_row_number,
-                        "raw_data": raw_data,
-                    }
-                )
-
-            return parsed_rows
+                yield {
+                    "row_number": excel_row_number,
+                    "raw_data": raw_data,
+                }
 
         finally:
             workbook.close()
@@ -124,10 +123,25 @@ class ExcelParser:
             raise ImportFileError(
                 "Unsupported file type. Only .xlsx files are supported."
             )
+
         if path.stat().st_size > cls.MAX_FILE_SIZE:
             raise ImportFileError(
                 "The uploaded file is too large. "
                 "Maximum allowed size is 10 MB."
+            )
+
+    @classmethod
+    def _validate_file_name(cls, file_source):
+        file_name = getattr(file_source, "name", None)
+
+        if not file_name:
+            raise ImportFileError(
+                "The uploaded file must have a .xlsx extension."
+            )
+
+        if Path(file_name).suffix.lower() not in cls.SUPPORTED_EXTENSIONS:
+            raise ImportFileError(
+                "Unsupported file type. Only .xlsx files are supported."
             )
 
     @staticmethod

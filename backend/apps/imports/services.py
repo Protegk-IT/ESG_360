@@ -335,6 +335,7 @@ class ImportBatchService:
 
         return locked_batch
 
+
 class ImportUploadService:
     """
     Service responsible for creating import batches from uploaded files.
@@ -431,6 +432,55 @@ class ImportUploadService:
         return module
 
     @staticmethod
+    def validate_active_context(
+        *,
+        org_node=None,
+        reporting_period=None,
+    ):
+        """
+        Validate optional upload context.
+
+        Supplied org_node and reporting_period must reference
+        active database records.
+
+        Both fields remain optional.
+        """
+
+        if org_node is not None:
+            if (
+                not getattr(org_node, "pk", None)
+                or not type(org_node).objects.filter(
+                    pk=org_node.pk,
+                    is_active=True,
+                ).exists()
+            ):
+                raise ValidationError(
+                    {
+                        "org_node": (
+                            "The selected organization node is "
+                            "inactive or does not exist."
+                        )
+                    }
+                )
+
+        if reporting_period is not None:
+            if (
+                not getattr(reporting_period, "pk", None)
+                or not type(reporting_period).objects.filter(
+                    pk=reporting_period.pk,
+                    is_active=True,
+                ).exists()
+            ):
+                raise ValidationError(
+                    {
+                        "reporting_period": (
+                            "The selected reporting period is "
+                            "inactive or does not exist."
+                        )
+                    }
+                )
+
+    @staticmethod
     @transaction.atomic
     def create_batch(
         *,
@@ -472,6 +522,15 @@ class ImportUploadService:
 
         ImportUploadService.validate_module_code(
             module_code
+        )
+
+        # ---------------------------------------------------------
+        # Validate optional upload context
+        # ---------------------------------------------------------
+
+        ImportUploadService.validate_active_context(
+            org_node=org_node,
+            reporting_period=reporting_period,
         )
 
         # ---------------------------------------------------------

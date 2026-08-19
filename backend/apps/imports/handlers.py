@@ -119,33 +119,3 @@ class ImportHandlerRegistry:
         cls._handlers.clear()
 
 
-class FakeAnswersImportHandler(ImportHandler):
-    """
-    Test-only handler for validating the generic
-    import-batch infrastructure.
-    """
-
-    def validate_row(self, raw_data):
-        errors = {}
-
-        facility_code = raw_data.get("facility_code")
-        quantity = raw_data.get("quantity")
-
-        if not facility_code:
-            errors["facility_code"] = [
-                "Facility code is required."
-            ]
-
-        if quantity is None:
-            errors["quantity"] = [
-                "Quantity is required."
-            ]
-        elif quantity < 0:
-            errors["quantity"] = [
-                "Quantity cannot be negative."
-            ]
-
-        return raw_data, errors
-
-    def commit(self, batch):
-        return None

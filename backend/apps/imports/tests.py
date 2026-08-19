@@ -3,7 +3,6 @@ import tempfile
 import uuid
 from datetime import date, datetime
 from unittest.mock import patch
-import uuid
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -13,17 +12,11 @@ from django.utils import timezone
 from apps.organizations.models import OrgNode
 from apps.periods.models import ReportingPeriod
 from apps.companies.models import Company
-
 from openpyxl import Workbook
-
-import threading
-from concurrent.futures import ThreadPoolExecutor
 from django.db import close_old_connections
-
 from rest_framework.test import APIClient
 
 from apps.imports.handlers import (
-    FakeAnswersImportHandler,
     ImportHandlerRegistry,
     ImportHandler
 )
@@ -36,6 +29,37 @@ from apps.imports.services import (
 
 
 User = get_user_model()
+
+class FakeAnswersImportHandler(ImportHandler):
+    """
+    Test-only handler for validating the generic
+    import-batch infrastructure.
+    """
+
+    def validate_row(self, raw_data):
+        errors = {}
+
+        facility_code = raw_data.get("facility_code")
+        quantity = raw_data.get("quantity")
+
+        if not facility_code:
+            errors["facility_code"] = [
+                "Facility code is required."
+            ]
+
+        if quantity is None:
+            errors["quantity"] = [
+                "Quantity is required."
+            ]
+        elif quantity < 0:
+            errors["quantity"] = [
+                "Quantity cannot be negative."
+            ]
+
+        return raw_data, errors
+
+    def commit(self, batch):
+        return None
 
 class TestDestinationCommitHandler(ImportHandler):
     """
@@ -621,7 +645,7 @@ class ExcelParserTests(ImportTestMixin,TestCase):
         )
 
         try:
-            result = self.parser.parse(path)
+            result = list(self.parser.parse(path))
         finally:
             if os.path.exists(path):
                 os.unlink(path)
@@ -658,7 +682,7 @@ class ExcelParserTests(ImportTestMixin,TestCase):
         )
 
         try:
-            result = self.parser.parse(path)
+            result = list(self.parser.parse(path))
         finally:
             if os.path.exists(path):
                 os.unlink(path)
@@ -682,7 +706,7 @@ class ExcelParserTests(ImportTestMixin,TestCase):
         )
 
         try:
-            result = self.parser.parse(path)
+            result = list(self.parser.parse(path))
         finally:
             if os.path.exists(path):
                 os.unlink(path)
@@ -712,15 +736,15 @@ class ExcelParserTests(ImportTestMixin,TestCase):
 
         try:
             with self.assertRaises(ImportFileError):
-                self.parser.parse(path)
+                list(self.parser.parse(path))
         finally:
             if os.path.exists(path):
                 os.unlink(path)
 
         with self.assertRaises(ImportFileError):
-            self.parser.parse(
+            list(self.parser.parse(
                 "does-not-exist.xlsx"
-            )
+            ))
 
     def test_common_cell_values_are_json_safe(self):
         path = self.create_workbook_file(
@@ -739,7 +763,7 @@ class ExcelParserTests(ImportTestMixin,TestCase):
         )
 
         try:
-            result = self.parser.parse(path)
+            result = list(self.parser.parse(path))
         finally:
             if os.path.exists(path):
                 os.unlink(path)
@@ -771,7 +795,7 @@ class ExcelParserTests(ImportTestMixin,TestCase):
             ]
         )
 
-        result = self.parser.parse(uploaded_file)
+        result = list(self.parser.parse(uploaded_file))
 
         self.assertEqual(
             len(result),
@@ -793,6 +817,20 @@ class ExcelParserTests(ImportTestMixin,TestCase):
             10,
         )
 
+    def test_file_like_object_must_have_xlsx_extension(self):
+        uploaded_file = SimpleUploadedFile(
+            "import_test.csv",
+            b"facility_code,quantity\nFAC-001,10",
+            content_type="text/csv",
+        )
+
+        with self.assertRaisesMessage(
+            ImportFileError,
+            "Unsupported file type. Only .xlsx files are supported.",
+        ):
+            list(self.parser.parse(uploaded_file))
+
+
     def test_file_size_limit_is_enforced(self):
         oversized_file = SimpleUploadedFile(
             "large.xlsx",
@@ -807,7 +845,7 @@ class ExcelParserTests(ImportTestMixin,TestCase):
             ImportFileError,
             "The uploaded file is too large. Maximum allowed size is 10 MB.",
         ):
-            self.parser.parse(oversized_file)
+            list(self.parser.parse(oversized_file))
 # ============================================================================
 # Validation lifecycle tests
 # ============================================================================
@@ -1776,6 +1814,58 @@ class ImportBatchAPITests(
             ImportBatch.objects.exists()
         )
 
+    def test_upload_rejects_inactive_org_node(self):
+        company = Company.objects.create(
+            company_name="Inactive Node Company",
+            company_code="INACT001",
+            contact_person="Test User",
+            email="inactive@example.com",
+            mobile_number="9876543210",
+        )
+
+        org_node = OrgNode.objects.create(
+            company=company,
+            node_type="BUSINESS_UNIT",
+            code="INACTIVE-ORG",
+            name="Inactive Organization Node",
+            is_active=False,
+        )
+
+        uploaded_file = self.create_excel_file()
+
+        self.client.force_authenticate(
+            user=self.uploader,
+        )
+
+        response = self.client.post(
+            reverse("import-batch-upload"),
+            {
+                "file": uploaded_file,
+                "import_type": ImportBatch.ImportType.ANSWERS,
+                "org_node": str(org_node.pk),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            400,
+        )
+
+        self.assertIn(
+            "org_node",
+            response.data,
+        )
+
+        self.assertIn(
+            "inactive",
+            str(response.data).lower(),
+        )
+
+        self.assertFalse(
+            ImportBatch.objects.exists()
+        )
+
     def test_upload_rejects_unknown_reporting_period(self):
         uploaded_file = self.create_excel_file()
 
@@ -1800,6 +1890,83 @@ class ImportBatchAPITests(
 
         self.assertFalse(
             ImportBatch.objects.exists()
+        )
+
+    def test_upload_rejects_inactive_reporting_period(self):
+        reporting_period = ReportingPeriod.objects.create(
+            name="Inactive FY 2026",
+            period_type="ANNUAL",
+            start_date=date(2026, 4, 1),
+            end_date=date(2027, 3, 31),
+            is_active=False,
+        )
+
+        uploaded_file = self.create_excel_file()
+
+        self.client.force_authenticate(
+            user=self.uploader,
+        )
+
+        response = self.client.post(
+            reverse("import-batch-upload"),
+            {
+                "file": uploaded_file,
+                "import_type": ImportBatch.ImportType.ANSWERS,
+                "reporting_period": str(reporting_period.pk),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            400,
+        )
+
+        self.assertIn(
+            "reporting_period",
+            response.data,
+        )
+
+        self.assertIn(
+            "inactive",
+            str(response.data).lower(),
+        )
+
+        self.assertFalse(
+            ImportBatch.objects.exists()
+        )
+
+    def test_upload_allows_missing_optional_context(self):
+        uploaded_file = self.create_excel_file()
+
+        self.client.force_authenticate(
+            user=self.uploader,
+        )
+
+        response = self.client.post(
+            reverse("import-batch-upload"),
+            {
+                "file": uploaded_file,
+                "import_type": ImportBatch.ImportType.ANSWERS,
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            201,
+        )
+
+        batch = ImportBatch.objects.get(
+            pk=response.data["id"]
+        )
+
+        self.assertIsNone(
+            batch.org_node_id
+        )
+
+        self.assertIsNone(
+            batch.reporting_period_id
         )
 
     def test_batch_rows_are_paginated(self):
