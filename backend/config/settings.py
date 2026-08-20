@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'apps.periods',
     "apps.materiality",
     'apps.datapoints',
+    'apps.frameworks',
     "rest_framework",
     "corsheaders",
     "django_filters",
