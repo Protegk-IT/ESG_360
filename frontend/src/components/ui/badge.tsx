@@ -1,6 +1,9 @@
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
-import { cva, type VariantProps } from "class-variance-authority";
+import {
+  cva,
+  type VariantProps,
+} from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
@@ -18,10 +21,10 @@ const badgeVariants = cva(
   border
 
   px-3
-  py-1
+  py-[5px]
 
-  text-xs
-  font-medium
+  text-[10.5px]
+  font-bold
 
   leading-none
 
@@ -32,7 +35,8 @@ const badgeVariants = cva(
 
   focus-visible:outline-none
   focus-visible:ring-2
-  focus-visible:ring-[#4A3FD6]/25
+  focus-visible:ring-[#4A3FD6]
+  focus-visible:ring-offset-2
 
   [&>svg]:h-3.5
   [&>svg]:w-3.5
@@ -41,70 +45,132 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
+
+        /* ==================================================
+           DEFAULT
+        ================================================== */
+
         default: `
-          border-[#D9DEE8]
+          border-[#8891A3]
           bg-white
-          text-[#374151]
+          text-[#22243A]
         `,
+
+        /* ==================================================
+           SECONDARY / ACCENT SUBTLE
+        ================================================== */
 
         secondary: `
-          border-[#E5E7EB]
-          bg-[#F8FAFC]
-          text-[#475569]
+          border-transparent
+          bg-[#ECE9FB]
+          text-[#4A3FD6]
         `,
+
+        /* ==================================================
+           SUCCESS
+        ================================================== */
 
         success: `
-          border-[#BBF7D0]
-          bg-[#ECFDF5]
-          text-[#15803D]
+          border-transparent
+          bg-[#E6F7EF]
+          text-[#167A54]
         `,
+
+        /* ==================================================
+           WARNING
+        ================================================== */
 
         warning: `
-          border-[#FDE68A]
-          bg-[#FFFBEB]
-          text-[#B45309]
+          border-transparent
+          bg-[#FDF1DE]
+          text-[#8A5C12]
         `,
 
-        info: `
-          border-[#BFDBFE]
-          bg-[#EFF6FF]
-          text-[#2563EB]
+        /* ==================================================
+           DANGER
+        ================================================== */
+
+        destructive: `
+          border-transparent
+          bg-[#FBE9E8]
+          text-[#B3403B]
         `,
 
-        system: `
-          border-[#DDD6FE]
-          bg-[#F5F3FF]
-          text-[#6D28D9]
-        `,
+        /* ==================================================
+           NEUTRAL / LOCKED / INACTIVE
+        ================================================== */
 
         inactive: `
-          border-[#E5E7EB]
-          bg-[#F9FAFB]
+          border-transparent
+          bg-[#E9E9EE]
+          text-[#22243A]
+        `,
+
+        /* ==================================================
+           DRAFT
+        ================================================== */
+
+        draft: `
+          border-transparent
+          bg-[#F0F1F6]
           text-[#6B7280]
         `,
 
-        destructive: `
-          border-[#FECACA]
-          bg-[#FEF2F2]
-          text-[#DC2626]
-        `,
+        /* ==================================================
+           OUTLINE
+        ================================================== */
 
         outline: `
-          border-[#D9DEE8]
-          bg-transparent
-          text-[#4A5565]
+          border-transparent
+         bg-[#F3E8FF] text-[#7E22CE]
+
         `,
+
+        /* ==================================================
+           SYSTEM
+           -----------------------------------------------
+           System is not a semantic token in the design
+           reference, so use the accent-subtle treatment.
+        ================================================== */
+
+        system: `
+          border-transparent
+          bg-[#ECE9FB]
+          text-[#4A3FD6]
+        `,
+
+        /* ==================================================
+           INFO
+           -----------------------------------------------
+           There is no separate INFO token in the official
+           design reference. Use secondary/accent treatment.
+        ================================================== */
+
+        info: `
+          border-transparent
+          bg-[#ECE9FB]
+          text-[#4A3FD6]
+        `,
+
+        /* ==================================================
+           GHOST
+        ================================================== */
 
         ghost: `
           border-transparent
-          bg-[#F5F7FB]
-          text-[#4A5565]
+           bg-[#EEF0FF]
+          text-[#22243A]
         `,
+
+        /* ==================================================
+           LINK
+        ================================================== */
 
         link: `
           border-transparent
           bg-transparent
-          p-0
+          px-0
+          py-0
           text-[#4A3FD6]
           underline-offset-4
           hover:underline
