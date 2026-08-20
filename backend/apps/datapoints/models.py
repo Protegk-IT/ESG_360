@@ -92,6 +92,9 @@ class Unit(BaseModel):
         self.full_clean()
         super().save(*args, **kwargs)   
 
+    def convert_value_to_base(self, value):
+        return Decimal(str(value)) * self.factor_to_base
+
     def __str__(self):
         return f"{self.name} ({self.code})"
     
@@ -238,6 +241,17 @@ class Datapoint(BaseModel):
         default=False,
     )
 
+    allow_dynamic_rows = models.BooleanField(
+        default=False,
+        help_text="For TABLE datapoints, whether data entry may add rows beyond the fixed catalog rows.",
+    )
+
+    validation_metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Definition-driven validation hints consumed by downstream data capture.",
+    )
+
     display_order = models.PositiveIntegerField(
         default=0,
     )
@@ -251,6 +265,17 @@ class Datapoint(BaseModel):
 
     def clean(self):
         super().clean()
+
+        if (
+            self.category_id
+            and self.module_id
+            and self.category.module_id != self.module_id
+        ):
+            raise ValidationError(
+                {
+                    "module": "Datapoint module must match the selected category module."
+                }
+            )
 
         if self.default_unit_id and not self.unit_family_id:
             raise ValidationError(
@@ -269,6 +294,22 @@ class Datapoint(BaseModel):
                     "default_unit": (
                         "Default unit must belong to the selected unit family."
                     )
+                }
+            )
+
+        if self.allow_dynamic_rows and self.data_type != DatapointDataType.TABLE:
+            raise ValidationError(
+                {
+                    "allow_dynamic_rows": (
+                        "Dynamic rows can only be enabled for TABLE datapoints."
+                    )
+                }
+            )
+
+        if not isinstance(self.validation_metadata, dict):
+            raise ValidationError(
+                {
+                    "validation_metadata": "Validation metadata must be a JSON object."
                 }
             )
 
@@ -389,6 +430,12 @@ class DatapointTableColumn(BaseModel):
         default=False,
     )
 
+    validation_metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Definition-driven validation hints for this table column.",
+    )
+
     display_order = models.PositiveIntegerField(
         default=0,
     )
@@ -419,6 +466,52 @@ class DatapointTableColumn(BaseModel):
                         "Table columns can only be defined "
                         "for TABLE datapoints."
                     )
+                }
+            )
+
+        if self.default_unit_id and not self.unit_family_id:
+            raise ValidationError(
+                {
+                    "default_unit": "Default unit requires a unit family."
+                }
+            )
+
+        if (
+            self.default_unit_id
+            and self.unit_family_id
+            and self.default_unit.family_id != self.unit_family_id
+        ):
+            raise ValidationError(
+                {
+                    "default_unit": (
+                        "Default unit must belong to the selected unit family."
+                    )
+                }
+            )
+
+        if self.unit_family_id and self.data_type not in {
+            DatapointDataType.DECIMAL,
+            DatapointDataType.INTEGER,
+        }:
+            raise ValidationError(
+                {
+                    "unit_family": (
+                        "Unit family can only be used with DECIMAL or INTEGER table columns."
+                    )
+                }
+            )
+
+        if self.data_type == DatapointDataType.TABLE:
+            raise ValidationError(
+                {
+                    "data_type": "Nested TABLE columns are not supported by the M4 catalog."
+                }
+            )
+
+        if not isinstance(self.validation_metadata, dict):
+            raise ValidationError(
+                {
+                    "validation_metadata": "Validation metadata must be a JSON object."
                 }
             )
 

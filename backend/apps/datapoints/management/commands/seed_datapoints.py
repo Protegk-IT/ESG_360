@@ -176,6 +176,7 @@ class Command(BaseCommand):
                 "default_unit": "KWH",
                 "collection_level": CollectionLevel.ORG_NODE,
                 "frequency": CollectionFrequency.MONTHLY,
+                "validation_metadata": {"min": "0", "decimal_places": 4},
             },
             {
                 "code": "ENERGY_SOURCE_TYPE",
@@ -187,6 +188,7 @@ class Command(BaseCommand):
                 "default_unit": None,
                 "collection_level": CollectionLevel.ORG_NODE,
                 "frequency": CollectionFrequency.ANNUAL,
+                "validation_metadata": {},
             },
             {
                 "code": "ENERGY_DESCRIPTION",
@@ -198,6 +200,7 @@ class Command(BaseCommand):
                 "default_unit": None,
                 "collection_level": CollectionLevel.ORG_NODE,
                 "frequency": CollectionFrequency.ANNUAL,
+                "validation_metadata": {"max_length": 2000},
             },
             {
                 "code": "WATER_TOTAL_CONSUMPTION",
@@ -209,6 +212,7 @@ class Command(BaseCommand):
                 "default_unit": "M3",
                 "collection_level": CollectionLevel.FACILITY,
                 "frequency": CollectionFrequency.MONTHLY,
+                "validation_metadata": {"min": "0", "decimal_places": 4},
             },
             {
                 "code": "WATER_REUSED",
@@ -220,6 +224,7 @@ class Command(BaseCommand):
                 "default_unit": None,
                 "collection_level": CollectionLevel.FACILITY,
                 "frequency": CollectionFrequency.ANNUAL,
+                "validation_metadata": {},
             },
             {
                 "code": "WASTE_GENERATED",
@@ -231,6 +236,7 @@ class Command(BaseCommand):
                 "default_unit": "KG",
                 "collection_level": CollectionLevel.FACILITY,
                 "frequency": CollectionFrequency.MONTHLY,
+                "validation_metadata": {"min": "0"},
             },
             {
                 "code": "EMISSIONS_REPORTING_DATE",
@@ -242,6 +248,7 @@ class Command(BaseCommand):
                 "default_unit": None,
                 "collection_level": CollectionLevel.COMPANY,
                 "frequency": CollectionFrequency.ANNUAL,
+                "validation_metadata": {},
             },
             {
                 "code": "EMISSIONS_REFERENCE",
@@ -253,6 +260,7 @@ class Command(BaseCommand):
                 "default_unit": None,
                 "collection_level": CollectionLevel.COMPANY,
                 "frequency": CollectionFrequency.ANNUAL,
+                "validation_metadata": {"max_length": 255},
             },
             {
                 "code": "EMISSIONS_TABLE",
@@ -264,6 +272,21 @@ class Command(BaseCommand):
                 "default_unit": None,
                 "collection_level": CollectionLevel.ORG_NODE,
                 "frequency": CollectionFrequency.ANNUAL,
+                "allow_dynamic_rows": False,
+                "validation_metadata": {},
+            },
+            {
+                "code": "WASTE_STREAMS_TABLE",
+                "category": "WASTE",
+                "module": "waste",
+                "label": "Waste streams",
+                "data_type": DatapointDataType.TABLE,
+                "unit_family": None,
+                "default_unit": None,
+                "collection_level": CollectionLevel.FACILITY,
+                "frequency": CollectionFrequency.MONTHLY,
+                "allow_dynamic_rows": True,
+                "validation_metadata": {"min_rows": 1},
             },
         ]
 
@@ -300,6 +323,8 @@ class Command(BaseCommand):
                     "collection_level": data["collection_level"],
                     "frequency": data["frequency"],
                     "is_required": False,
+                    "allow_dynamic_rows": data.get("allow_dynamic_rows", False),
+                    "validation_metadata": data.get("validation_metadata", {}),
                     "display_order": index,
                     "is_active": True,
                 },
@@ -335,6 +360,7 @@ class Command(BaseCommand):
                 "unit_family": None,
                 "default_unit": None,
                 "is_required": True,
+                "validation_metadata": {"max_length": 255},
                 "display_order": 1,
             },
             {
@@ -344,6 +370,7 @@ class Command(BaseCommand):
                 "unit_family": "MASS",
                 "default_unit": "KG",
                 "is_required": True,
+                "validation_metadata": {"min": "0", "decimal_places": 4},
                 "display_order": 2,
             },
         ]
@@ -372,6 +399,7 @@ class Command(BaseCommand):
                     "unit_family": unit_family,
                     "default_unit": default_unit,
                     "is_required": column["is_required"],
+                    "validation_metadata": column["validation_metadata"],
                     "display_order": column["display_order"],
                 },
             )
@@ -394,6 +422,21 @@ class Command(BaseCommand):
                 "label": "Scope 2",
                 "display_order": 2,
                 
+            },
+        )
+
+        dynamic_table = datapoint_objects["WASTE_STREAMS_TABLE"]
+        DatapointTableColumn.objects.update_or_create(
+            datapoint=dynamic_table,
+            code="WASTE_STREAM",
+            defaults={
+                "label": "Waste Stream",
+                "data_type": DatapointDataType.TEXT,
+                "unit_family": None,
+                "default_unit": None,
+                "is_required": True,
+                "validation_metadata": {"max_length": 255},
+                "display_order": 1,
             },
         )
 
