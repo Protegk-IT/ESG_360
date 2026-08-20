@@ -19,6 +19,27 @@ records. `seed_modules` creates the canonical module catalog; `seed_rbac`
 creates/updates roles and permissions and removes retired `org.*` / `period.*`
 permissions; `seed_locations` loads country, state, and city reference data.
 
+## Materiality visual demo states
+
+For a deterministic local Materiality workspace, create a superuser (or pass
+an existing active username) and run:
+
+```bash
+python manage.py seed_demo_materiality --owner <username>
+```
+
+The command also calls the foundation seed and creates exactly three named demo
+assessments: **Demo — Draft Materiality Assessment** (blank scope), **Demo — FY
+2025-26 Materiality Assessment** (topics, weighted groups, known stakeholders,
+invitations, and group links ready for manual survey testing), and **Demo —
+Completed Materiality Assessment** (a locked historical score run, matrix, and
+documented override). The completed fixture includes eighteen submitted
+responses across all six stakeholder groups (one identified and seventeen
+anonymous), producing examples in every materiality-matrix quadrant.
+Re-running the command resets only those named demo
+assessments to those deterministic states; it never changes user-created
+assessments.
+
 Create a superuser and minimum company, organisation node, department, and
 normal user through the API, admin, or Django shell as needed for manual
 testing. Keep test identities and generated records in the disposable database.

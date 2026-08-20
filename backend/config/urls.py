@@ -18,6 +18,7 @@ from django.contrib import admin
 from django.urls import path,include
 from django.conf import settings
 from django.conf.urls.static import static
+from apps.materiality.urls import public_urlpatterns as materiality_public_urls
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -25,8 +26,11 @@ urlpatterns = [
     path("api/", include("apps.core.urls")),
     path('api/company/', include('apps.companies.urls')),
     path("api/org/", include("apps.organizations.urls")),
-    path("api/periods/", include("apps.periods.urls")), 
+    path("api/periods/", include("apps.periods.urls")),
     path("api/modules/", include("apps.modules.urls")),
+    path("api/materiality/", include("apps.materiality.urls")),
+    path("api/public/materiality/", include(materiality_public_urls)),
+    path("api/imports/", include("apps.imports.urls")),
 ]
 
 if settings.DEBUG:

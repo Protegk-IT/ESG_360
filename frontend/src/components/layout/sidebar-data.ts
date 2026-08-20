@@ -1,18 +1,17 @@
 import {
   FileBarChart2,
+  FileText,
   FolderTree,
   LayoutDashboard,
   ShieldCheck,
 } from "lucide-react";
-
 import type { LucideIcon } from "lucide-react";
-
 export interface SidebarSubItem {
   title: string;
   url: string;
   permission: string;
+  companyAdminOnly?: boolean;
 }
-
 export interface SidebarItem {
   title: string;
   icon: LucideIcon;
@@ -20,7 +19,6 @@ export interface SidebarItem {
   permission?: string;
   items?: SidebarSubItem[];
 }
-
 export const navMain: SidebarItem[] = [
   {
     title: "Dashboard",
@@ -28,7 +26,6 @@ export const navMain: SidebarItem[] = [
     icon: LayoutDashboard,
     permission: "dashboard.view",
   },
-
   {
     title: "Administration",
     icon: ShieldCheck,
@@ -48,14 +45,13 @@ export const navMain: SidebarItem[] = [
         url: "/accounts/roles",
         permission: "role.view",
       },
-       {
+      {
         title: "Departments",
         url: "/company/departments",
         permission: "department.view",
       },
     ],
   },
-
   {
     title: "Organization",
     icon: FolderTree,
@@ -67,7 +63,6 @@ export const navMain: SidebarItem[] = [
       },
     ],
   },
-
   {
     title: "Reports",
     icon: FileBarChart2,
@@ -76,6 +71,23 @@ export const navMain: SidebarItem[] = [
         title: "Reporting Periods",
         url: "/periods",
         permission: "reporting_period.view",
+      },
+    ],
+  },
+  {
+    title: "Materiality Assessment",
+    icon: FileText,
+    items: [
+      {
+        title: "Topic Library",
+        url: "/materiality/topics",
+        permission: "materiality.view",
+        companyAdminOnly: true,
+      },
+      {
+        title: "Assessments",
+        url: "/materiality/assessments",
+        permission: "materiality.view",
       },
     ],
   },
