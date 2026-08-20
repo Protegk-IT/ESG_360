@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from apps.modules.models import Module
@@ -25,6 +25,11 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
 
         self.stdout.write("Seeding M4 datapoint catalog...")
+        if not Module.objects.exists():
+            raise CommandError(
+                 "No modules found, Please seed the module command first"
+            )
+
 
         self.seed_units()
         self.seed_datapoints()
