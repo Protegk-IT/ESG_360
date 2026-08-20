@@ -252,16 +252,14 @@ export const getReportingPeriodColumns = ({
             <DropdownMenuSeparator />
 
             <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onClick={() =>
-                onDelete(period)
-              }
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-
-              Delete
-
-            </DropdownMenuItem>
+                variant="destructive"
+                onClick={() =>
+                  onDelete(period)
+                }
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </DropdownMenuItem>
 
           </DropdownMenuContent>
 

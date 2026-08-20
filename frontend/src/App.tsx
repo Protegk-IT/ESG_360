@@ -40,6 +40,17 @@ const MaterialityMatrixPage = lazy(
   () => import("./pages/materiality/MaterialityMatrixPage"),
 );
 
+//Datapoints
+import DatapointList from "./pages/datapoints/DatapointList";
+import DatapointDetail from "./pages/datapoints/DatapointDetail";
+import DatapointCreate from "./pages/datapoints/DatapointCreate";
+import DatapointOptionsManager from "./pages/datapoints/Datapointoptionsmanager ";
+import DatapointTableDefinitionManager from "./pages/datapoints/DPtabledefinitionmanager";
+import UnitFamilyManager from "./pages/datapoints/Unitfamilymanager";
+import UnitManager from "./pages/datapoints/Unitmanager";
+import DatapointEdit from "./pages/datapoints/Datapointedit";
+import CategoryManager from "./pages/datapoints/Categorymanager";
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -230,6 +241,110 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+{/* DataPoints Routes */}
+
+
+<Route
+  path="/datapoints"
+  element={
+    <ProtectedRoute permission="datapoint.view">
+      <DatapointList />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/datapoints/create"
+  element={
+    <ProtectedRoute permission="datapoint.view">
+      <DatapointCreate />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/datapoints/:id/edit"
+  element={
+    <ProtectedRoute permission="datapoint.edit">
+      <DatapointEdit />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/datapoints/:id"
+  element={
+    <ProtectedRoute permission="datapoint.view">
+      <DatapointDetail />
+    </ProtectedRoute>
+  }
+/>
+
+{/* ==================================================
+    DATAPOINT — OPTIONS (SELECT datapoints)
+    Contextual to a single datapoint; linked from the
+    datapoint detail/edit page rather than the sidebar.
+================================================== */}
+<Route
+  path="/datapoints/:id/options"
+  element={
+    <ProtectedRoute permission="datapoint.view">
+      <DatapointOptionsManager />
+    </ProtectedRoute>
+  }
+/>
+
+{/* ==================================================
+    DATAPOINT — TABLE DEFINITION (TABLE datapoints)
+================================================== */}
+<Route
+  path="/datapoints/:id/table-definition"
+  element={
+    <ProtectedRoute permission="datapoint.view">
+      <DatapointTableDefinitionManager />
+    </ProtectedRoute>
+  }
+/>
+
+{/* ==================================================
+    UNIT FAMILIES
+================================================== */}
+<Route
+  path="/units/families"
+  element={
+    <ProtectedRoute permission="unit_family.view">
+      <UnitFamilyManager />
+    </ProtectedRoute>
+  }
+/>
+
+{/* ==================================================
+    UNITS
+================================================== */}
+<Route
+  path="/units"
+  element={
+    <ProtectedRoute permission="unit.view">
+      <UnitManager />
+    </ProtectedRoute>
+  }
+/>
+
+
+{/* Category */}
+
+<Route
+  path="/datapoints/categories"
+  element={
+    <ProtectedRoute permission="datapoint_category.view">
+      <CategoryManager />
+    </ProtectedRoute>
+  }
+/>
+
+{/* Materiality */}
+
+
 
         <Route
           path="/materiality/assessments"

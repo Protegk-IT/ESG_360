@@ -2,8 +2,6 @@ import * as React from "react"
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-
 function AlertDialog({
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
@@ -72,6 +70,8 @@ function AlertDialogContent({
         data-size={size}
        className={cn(
   `
+  group/alert-dialog-content
+
   fixed
   left-1/2
   top-1/2
@@ -132,10 +132,14 @@ function AlertDialogHeader({
 
   px-6
   pt-6
+  pb-2
 
-  text-center
+  text-left
 
-  sm:text-left
+  group-has-[[data-slot=alert-dialog-media]]/alert-dialog-content:grid
+  group-has-[[data-slot=alert-dialog-media]]/alert-dialog-content:grid-cols-[auto_1fr]
+  group-has-[[data-slot=alert-dialog-media]]/alert-dialog-content:items-start
+  group-has-[[data-slot=alert-dialog-media]]/alert-dialog-content:gap-x-4
   `,
   className
 )}
@@ -155,19 +159,18 @@ function AlertDialogFooter({
   `
   flex
 
-  justify-end
+  flex-col-reverse
 
   gap-3
-
-  border-t
-
-  border-[#F1F5F9]
 
   bg-white
 
   px-6
+  pb-6
+  pt-4
 
-  py-5
+  sm:flex-row
+  sm:justify-end
   `,
   className
 )}
@@ -201,11 +204,11 @@ function AlertDialogTitle({
       data-slot="alert-dialog-title"
       className={cn(
   `
-  text-xl
+  text-lg
 
   font-semibold
 
-  text-[#111827]
+  text-[#0A0A0A]
   `,
   className
 )}
@@ -227,7 +230,7 @@ function AlertDialogDescription({
 
   leading-6
 
-  text-[#6B7280]
+  text-[#737373]
   `,
   className
 )}
@@ -238,37 +241,91 @@ function AlertDialogDescription({
 
 function AlertDialogAction({
   className,
-  variant = "default",
-  size = "default",
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Action> &
-  Pick<React.ComponentProps<typeof Button>, "variant" | "size">) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Action>) {
   return (
-    <Button variant={variant} size={size} asChild>
-      <AlertDialogPrimitive.Action
-        data-slot="alert-dialog-action"
-        className={cn(className)}
-        {...props}
-      />
-    </Button>
+    <AlertDialogPrimitive.Action
+      data-slot="alert-dialog-action"
+      className={cn(
+        `
+  inline-flex
+  h-9
+  items-center
+  justify-center
+
+  rounded-lg
+
+  bg-[#171717]
+  px-4
+
+  text-sm
+  font-medium
+  text-white
+
+  shadow-sm
+
+  transition-colors
+
+  hover:bg-[#0A0A0A]
+
+  focus-visible:outline-none
+  focus-visible:ring-2
+  focus-visible:ring-[#171717]
+  focus-visible:ring-offset-2
+
+  disabled:pointer-events-none
+  disabled:opacity-50
+  `,
+        className
+      )}
+      {...props}
+    />
   )
 }
 
 function AlertDialogCancel({
   className,
-  variant = "outline",
-  size = "default",
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Cancel> &
-  Pick<React.ComponentProps<typeof Button>, "variant" | "size">) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Cancel>) {
   return (
-    <Button variant={variant} size={size} asChild>
-      <AlertDialogPrimitive.Cancel
-        data-slot="alert-dialog-cancel"
-        className={cn(className)}
-        {...props}
-      />
-    </Button>
+    <AlertDialogPrimitive.Cancel
+      data-slot="alert-dialog-cancel"
+      className={cn(
+        `
+  inline-flex
+  h-9
+  items-center
+  justify-center
+
+  rounded-lg
+
+  border
+  border-[#E5E5E5]
+  bg-white
+  px-4
+
+  text-sm
+  font-medium
+  text-[#0A0A0A]
+
+  shadow-sm
+
+  transition-colors
+
+  hover:bg-[#F5F5F5]
+
+  focus-visible:outline-none
+  focus-visible:ring-2
+  focus-visible:ring-[#D4D4D4]
+  focus-visible:ring-offset-2
+
+  disabled:pointer-events-none
+  disabled:opacity-50
+  `,
+        className
+      )}
+      {...props}
+    />
   )
 }
 

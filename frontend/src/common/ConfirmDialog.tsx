@@ -79,16 +79,16 @@ export default function ConfirmDialog({
                 rounded-xl
 
                 border
-                border-red-100
+                border-[#E8D3D2]
 
-                bg-red-50
+                bg-[#F6ECEB]
               "
             >
               <AlertTriangle
                 className="
                   h-6
                   w-6
-                  text-red-600
+                  text-[#B3453F]
                 "
               />
             </div>
@@ -152,9 +152,9 @@ export default function ConfirmDialog({
             className="
               min-w-[110px]
 
-              bg-[#DC2626]
+              bg-[#B3453F]
 
-              hover:bg-[#B91C1C]
+              hover:bg-[#9C3B36]
             "
           >
             {loading

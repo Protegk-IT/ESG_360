@@ -1,4 +1,5 @@
 import {
+  Database,
   FileBarChart2,
   FileText,
   FolderTree,
@@ -63,6 +64,34 @@ export const navMain: SidebarItem[] = [
       },
     ],
   },
+{
+    title: "Data Management",
+    icon: Database,
+    items: [
+      {
+        title: "Datapoint Catalog",
+        url: "/datapoints",
+        // TODO: #24 BACKEND/RBAC CONTRACT
+        // Confirm the canonical permission code.
+        permission: "datapoint.view",
+      },
+      {
+        title: "Units Manager",
+        url: "/units/families",
+        // TODO: #24 BACKEND/RBAC CONTRACT
+        // Confirm the canonical permission code.
+        permission: "unit_family.view",
+      },
+      {
+        title: "Category Manager",
+        url: "/datapoints/categories",
+        // TODO: #24 BACKEND/RBAC CONTRACT
+        // Confirm the canonical permission code.
+        permission: "unit_family.view",
+      },
+    ],
+  },
+
   {
     title: "Reports",
     icon: FileBarChart2,
