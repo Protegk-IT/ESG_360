@@ -71,23 +71,17 @@ export const navMain: SidebarItem[] = [
       {
         title: "Datapoint Catalog",
         url: "/datapoints",
-        // TODO: #24 BACKEND/RBAC CONTRACT
-        // Confirm the canonical permission code.
-        permission: "datapoint.view",
+        permission: "datapoint.manage",
       },
       {
         title: "Units Manager",
         url: "/units/families",
-        // TODO: #24 BACKEND/RBAC CONTRACT
-        // Confirm the canonical permission code.
-        permission: "unit_family.view",
+        permission: "datapoint.manage",
       },
       {
         title: "Category Manager",
         url: "/datapoints/categories",
-        // TODO: #24 BACKEND/RBAC CONTRACT
-        // Confirm the canonical permission code.
-        permission: "unit_family.view",
+        permission: "datapoint.manage",
       },
     ],
   },

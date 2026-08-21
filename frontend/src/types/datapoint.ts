@@ -32,6 +32,8 @@ export type DatapointDataType =
   | "DATE"
   | "TABLE";
 
+export type ValidationMetadata = Record<string, unknown>;
+
 
 /* ==========================================================
    COLLECTION LEVEL
@@ -232,6 +234,7 @@ export interface DatapointTableColumn {
   default_unit: string | null;
 
   is_required: boolean;
+  validation_metadata: ValidationMetadata;
 
   display_order: number;
 
@@ -297,14 +300,8 @@ export interface Datapoint {
 
   code: string;
 
-  /*
-   * ForeignKey -> DatapointCategory
-   */
   category: string;
 
-  /*
-   * ForeignKey -> modules.Module
-   */
   module: string;
 
   label: string;
@@ -313,11 +310,8 @@ export interface Datapoint {
 
   data_type: DatapointDataType;
 
-  /*
-   * ForeignKey -> UnitFamily
-   */
-  
   unit_family: string | UnitFamily | null;
+
   default_unit: string | Unit | null;
 
   collection_level: CollectionLevel;
@@ -326,14 +320,18 @@ export interface Datapoint {
 
   is_required: boolean;
 
+  allow_dynamic_rows: boolean;
+
+  validation_metadata: ValidationMetadata;
+
   display_order: number;
 
   is_active: boolean;
 
   created_at: string;
+
   updated_at: string;
 }
-
 
 /* ==========================================================
    DATAPOINT DETAIL
@@ -468,6 +466,10 @@ export interface DatapointFormData {
 
   is_required: boolean;
 
+  allow_dynamic_rows: boolean; 
+
+  validation_metadata: ValidationMetadata;
+
   display_order: number;
 
   is_active: boolean;
@@ -507,6 +509,8 @@ export interface DatapointTableColumnFormData {
   unit_family?: string | null;
 
   default_unit?: string | null;
+
+  validation_metadata: ValidationMetadata;
 
   is_required: boolean;
 

@@ -252,9 +252,13 @@ export default function AssessmentDetail() {
     }
   }, [id]);
 
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
+useEffect(() => {
+  const load = async () => {
+    await loadData();
+  };
+
+  void load();
+}, [loadData]);
 
   /* ---------------------------- lookup maps ---------------------------- */
 
@@ -325,13 +329,12 @@ export default function AssessmentDetail() {
      individually match are shown. Same idea one level up for categories.
   ------------------------------------------------------------------- */
 
-  const visibleTree = useMemo<VisibleCategory[]>(() => {
-    const keyword = search.trim().toLowerCase();
-
+  const getVisibleTree = useCallback(
+  (keyword: string, filter: StatusFilter): VisibleCategory[] => {
     const matchesStatus = (topic: MaterialTopic) =>
-      statusFilter === "All" ||
-      (statusFilter === "Active" && topic.is_active) ||
-      (statusFilter === "Inactive" && !topic.is_active);
+      filter === "All" ||
+      (filter === "Active" && topic.is_active) ||
+      (filter === "Inactive" && !topic.is_active);
 
     return categories.reduce<VisibleCategory[]>(
       (visibleCategories, category) => {
@@ -384,8 +387,14 @@ export default function AssessmentDetail() {
       },
       [],
     );
-  }, [categories, topicsByCategory, subTopicsByTopic, search, statusFilter]);
+  },
+  [categories, topicsByCategory, subTopicsByTopic],
+);
 
+const visibleTree = useMemo<VisibleCategory[]>(
+  () => getVisibleTree(search.trim().toLowerCase(), statusFilter),
+  [getVisibleTree, search, statusFilter],
+);
   /* ---------------------------- derived counts ---------------------------- */
 
   const selectedCount = selectedSubTopicIds.size;
@@ -456,22 +465,6 @@ export default function AssessmentDetail() {
   };
 
   /* Auto-expand everything that's currently visible while searching. */
-  useEffect(() => {
-    if (!search.trim()) {
-      return;
-    }
-
-    setExpandedCategories(
-      new Set(visibleTree.map(({ category }) => category.id)),
-    );
-    setExpandedTopics(
-      new Set(
-        visibleTree.flatMap(({ topics: topicList }) =>
-          topicList.map(({ topic }) => topic.id),
-        ),
-      ),
-    );
-  }, [search, visibleTree]);
 
   /* ---------------------------- save ---------------------------- */
 
@@ -1023,11 +1016,29 @@ export default function AssessmentDetail() {
               <div className="relative w-full md:max-w-md">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search topics or sub-topics..."
-                  className="pl-9"
-                />
+  value={search}
+  onChange={(event) => {
+    const value = event.target.value;
+    setSearch(value);
+
+    const keyword = value.trim().toLowerCase();
+    if (keyword) {
+      const tree = getVisibleTree(keyword, statusFilter);
+      setExpandedCategories(
+        new Set(tree.map(({ category }) => category.id)),
+      );
+      setExpandedTopics(
+        new Set(
+          tree.flatMap(({ topics: topicList }) =>
+            topicList.map(({ topic }) => topic.id),
+          ),
+        ),
+      );
+    }
+  }}
+  placeholder="Search topics or sub-topics..."
+  className="pl-9"
+/>
               </div>
 
               <Select

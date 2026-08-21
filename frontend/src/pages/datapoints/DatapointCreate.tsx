@@ -36,6 +36,7 @@ import {
 import { Loader2 } from "lucide-react";
 
 import DatapointApi from "@/api/datapoints/DatapointApi";
+import { ValidationMetadataFields } from "@/pages/datapoints/ValidationMetadataFields";
 
 import type {
   DatapointFormData,
@@ -83,7 +84,8 @@ const DATA_TYPE_VALUES = DATA_TYPE_OPTIONS.map((o) => o.value) as [
 const COLLECTION_LEVEL_OPTIONS = [
   { value: "COMPANY", label: "Company" },
   { value: "FACILITY", label: "Facility" },
-  {value: "ORG_NODE", label: "Org_node"},
+  { value: "ORG_NODE", label: "Org_node" },
+  { value: "ANY", label: "Any" },
 ] as const satisfies readonly { value: string; label: string }[];
 
 const COLLECTION_LEVEL_VALUES = COLLECTION_LEVEL_OPTIONS.map((o) => o.value) as [
@@ -104,6 +106,11 @@ const FREQUENCY_VALUES = FREQUENCY_OPTIONS.map((o) => o.value) as [
 
 /* ============================================================
    ZOD SCHEMA
+   ------------------------------------------------------------
+   validation_metadata is a plain object (built by the
+   ValidationMetadataFields rule builder), not a JSON string —
+   there is nothing to parse or validate for shape here since
+   the builder only ever writes known, well-typed keys.
 ============================================================ */
 
 const datapointSchema = z.object({
@@ -122,6 +129,9 @@ const datapointSchema = z.object({
   frequency: z.enum(FREQUENCY_VALUES),
 
   is_required: z.boolean(),
+  allow_dynamic_rows: z.boolean(),
+
+  validation_metadata: z.record(z.string(), z.unknown()),
 
   display_order: z
     .number()
@@ -153,6 +163,9 @@ const defaultValues: DatapointFormValues = {
   frequency: "ANNUAL",
 
   is_required: false,
+  allow_dynamic_rows: false,
+  validation_metadata: {},
+
   display_order: 0,
   is_active: true,
 };
@@ -173,14 +186,9 @@ function RequiredMark() {
   );
 }
 
-
 // Error Msg handler
 function getApiErrorMessage(error: unknown): string {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "response" in error
-  ) {
+  if (typeof error === "object" && error !== null && "response" in error) {
     const response = (
       error as {
         response?: {
@@ -201,9 +209,7 @@ function getApiErrorMessage(error: unknown): string {
 
     // Fallback to field-level validation errors
     if (data?.errors) {
-      const firstError = Object.values(data.errors)
-        .flat()
-        .find(Boolean);
+      const firstError = Object.values(data.errors).flat().find(Boolean);
 
       if (firstError) {
         return firstError;
@@ -213,6 +219,7 @@ function getApiErrorMessage(error: unknown): string {
 
   return "Failed to create datapoint. Please try again.";
 }
+
 /* ============================================================
    COMPONENT
 ============================================================ */
@@ -255,43 +262,38 @@ export default function DatapointCreate() {
   ========================================================== */
 
   useEffect(() => {
-  let ignore = false;
+    let ignore = false;
 
-  const loadModules = async () => {
-    try {
-      setModulesLoading(true);
+    const loadModules = async () => {
+      try {
+        setModulesLoading(true);
 
-      const response = await ModuleApi.getEnabled();
+        const response = await ModuleApi.getEnabled();
 
-      if (!ignore) {
-        setModules(response.data);
+        if (!ignore) {
+          setModules(response.data);
+        }
+      } catch (error) {
+        if (!ignore) {
+          console.error("Failed to load modules:", error);
+
+          toast.error("Failed to load modules. Please try again.");
+
+          setModules([]);
+        }
+      } finally {
+        if (!ignore) {
+          setModulesLoading(false);
+        }
       }
-    } catch (error) {
-      if (!ignore) {
-        console.error(
-          "Failed to load modules:",
-          error
-        );
+    };
 
-        toast.error(
-          "Failed to load modules. Please try again."
-        );
+    void loadModules();
 
-        setModules([]);
-      }
-    } finally {
-      if (!ignore) {
-        setModulesLoading(false);
-      }
-    }
-  };
-
-  void loadModules();
-
-  return () => {
-    ignore = true;
-  };
-}, []);
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -383,50 +385,57 @@ export default function DatapointCreate() {
 
   /* ==========================================================
      SUBMIT
+     ----------------------------------------------------------
+     validation_metadata is already a plain object here (the
+     ValidationMetadataFields builder writes directly into form
+     state) — no JSON.parse step needed anymore.
   ========================================================== */
 
   const onSubmit = async (values: DatapointFormValues) => {
-  setSubmitting(true);
+    setSubmitting(true);
 
-  try {
-    const payload: DatapointFormData = {
-      code: values.code.trim(),
-      category: values.category,
-      module: values.module,
-      label: values.label.trim(),
-      description: values.description.trim(),
-      data_type: values.data_type,
-      unit_family: values.unit_family || null,
-      default_unit: values.default_unit || null,
-      collection_level: values.collection_level,
-      frequency: values.frequency,
-      is_required: values.is_required,
-      display_order: values.display_order,
-      is_active: values.is_active,
-    };
+    try {
+      const payload: DatapointFormData = {
+        code: values.code.trim(),
+        category: values.category,
+        module: values.module,
+        label: values.label.trim(),
+        description: values.description.trim(),
+        data_type: values.data_type,
+        unit_family: values.unit_family || null,
+        default_unit: values.default_unit || null,
+        collection_level: values.collection_level,
+        frequency: values.frequency,
+        is_required: values.is_required,
+        allow_dynamic_rows: values.allow_dynamic_rows,
+        validation_metadata: values.validation_metadata,
+        display_order: values.display_order,
+        is_active: values.is_active,
+      };
 
-    const response = await DatapointApi.create(payload);
-    const newId = response.data.id;
+      const response = await DatapointApi.create(payload);
+      const newId = response.data.id;
 
-    toast.success("Datapoint created successfully.");
+      toast.success("Datapoint created successfully.");
 
-    // For SELECT/TABLE types, take the user straight into the
-    // follow-up config screen instead of back to the list —
-    // there's nothing to configure until the datapoint exists.
-    if (values.data_type === "SELECT") {
-      navigate(`/datapoints/${newId}/options`);
-    } else if (values.data_type === "TABLE") {
-      navigate(`/datapoints/${newId}/table-definition`);
-    } else {
-      navigate("/datapoints");
+      // For SELECT/TABLE types, take the user straight into the
+      // follow-up config screen instead of back to the list —
+      // there's nothing to configure until the datapoint exists.
+      if (values.data_type === "SELECT") {
+        navigate(`/datapoints/${newId}/options`);
+      } else if (values.data_type === "TABLE") {
+        navigate(`/datapoints/${newId}/table-definition`);
+      } else {
+        navigate("/datapoints");
+      }
+    } catch (error) {
+      console.error("Failed to create datapoint:", error);
+      toast.error(getApiErrorMessage(error));
+    } finally {
+      setSubmitting(false);
     }
-  } catch (error) {
-    console.error("Failed to create datapoint:", error);
-    toast.error(getApiErrorMessage(error));
-  } finally {
-    setSubmitting(false);
-  }
-};
+  };
+
   /* ==========================================================
      LOADING
   ========================================================== */
@@ -468,7 +477,6 @@ export default function DatapointCreate() {
           <CardContent className="px-6 py-6">
             <Form {...form}>
               <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-8">
-
                 {/* ==================================================
                     BASIC INFORMATION
                 ================================================== */}
@@ -517,10 +525,7 @@ export default function DatapointCreate() {
                           Category
                           <RequiredMark />
                         </FormLabel>
-                        <Select
-                          value={field.value || undefined}
-                          onValueChange={field.onChange}
-                        >
+                        <Select value={field.value || undefined} onValueChange={field.onChange}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select category" />
@@ -539,49 +544,44 @@ export default function DatapointCreate() {
                     )}
                   />
 
-                         <FormField
-  control={control}
-  name="module"
-  render={({ field }) => (
-    <FormItem>
-      <FormLabel>
-        Module
-        <RequiredMark />
-      </FormLabel>
+                  <FormField
+                    control={control}
+                    name="module"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Module
+                          <RequiredMark />
+                        </FormLabel>
 
-      <Select
-        value={field.value}
-        onValueChange={field.onChange}
-        disabled={modulesLoading}
-      >
-        <FormControl>
-          <SelectTrigger>
-            <SelectValue
-              placeholder={
-                modulesLoading
-                  ? "Loading modules..."
-                  : "Select module"
-              }
-            />
-          </SelectTrigger>
-        </FormControl>
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                          disabled={modulesLoading}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue
+                                placeholder={
+                                  modulesLoading ? "Loading modules..." : "Select module"
+                                }
+                              />
+                            </SelectTrigger>
+                          </FormControl>
 
-        <SelectContent>
-          {modules.map((module) => (
-            <SelectItem
-              key={module.code}
-              value={module.code}
-            >
-              {module.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+                          <SelectContent>
+                            {modules.map((module) => (
+                              <SelectItem key={module.code} value={module.code}>
+                                {module.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
 
-      <FormMessage />
-    </FormItem>
-            )}
-        />
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
 
                 {/* ==================================================
@@ -790,9 +790,7 @@ export default function DatapointCreate() {
                             {...field}
                             onChange={(event) =>
                               field.onChange(
-                                event.target.value === ""
-                                  ? 0
-                                  : Number(event.target.value)
+                                event.target.value === "" ? 0 : Number(event.target.value)
                               )
                             }
                           />
@@ -819,9 +817,7 @@ export default function DatapointCreate() {
                             onCheckedChange={(checked) => field.onChange(checked === true)}
                           />
                         </FormControl>
-                        <FormLabel className="font-normal">
-                          Required datapoint
-                        </FormLabel>
+                        <FormLabel className="font-normal">Required datapoint</FormLabel>
                       </FormItem>
                     )}
                   />
@@ -841,7 +837,55 @@ export default function DatapointCreate() {
                       </FormItem>
                     )}
                   />
+
+                  {dataType === "TABLE" && (
+                    <FormField
+                      control={control}
+                      name="allow_dynamic_rows"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center gap-3 space-y-0">
+                          <FormControl>
+                            <Checkbox
+                              checked={field.value}
+                              onCheckedChange={(checked) => field.onChange(checked === true)}
+                            />
+                          </FormControl>
+                          <FormLabel className="font-normal">
+                            Allow dynamic rows (in addition to fixed rows)
+                          </FormLabel>
+                        </FormItem>
+                      )}
+                    />
+                  )}
                 </div>
+
+                {/* ==================================================
+                    VALIDATION RULES
+                    --------------------------------------------------
+                    User-friendly rule builder, scoped to the current
+                    data_type. BOOLEAN/SELECT still render (with a
+                    "no rules apply" message from the component
+                    itself) rather than disappearing entirely, so the
+                    layout doesn't jump around as data_type changes.
+                ================================================== */}
+
+                <FormField
+                  control={control}
+                  name="validation_metadata"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Validation Rules</FormLabel>
+                      <FormControl>
+                        <ValidationMetadataFields
+                          dataType={dataType}
+                          value={field.value}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 {/* ==================================================
                     DATA TYPE NOTE
