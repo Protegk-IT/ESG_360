@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'apps.periods',
     "apps.materiality",
     'apps.datapoints',
+    'apps.data_capture.apps.DataCaptureConfig',
     'apps.frameworks',
     "rest_framework",
     "corsheaders",

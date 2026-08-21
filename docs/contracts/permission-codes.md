@@ -17,6 +17,7 @@ codes.
 | `role` | `.view`, `.create`, `.edit`, `.delete` |
 | `permission` | `.view` |
 | `dashboard`, `activity_log` | `.view` |
+| `data` | `.enter`, `.submit`, `.approve`, `.manage` |
 
 `/api/accounts/permissions/` is read-only; `permission.create`,
 `permission.edit`, and `permission.delete` are not valid active codes.
@@ -27,6 +28,10 @@ Feature capability codes (`data.*`, `evidence.*`, `report.*`, `disclosure.*`,
 and related catalog codes) are reserved in the seed catalog for subsequent
 modules. A future endpoint may only use a code already in this catalog or add
 the code, role mapping, test, and documentation in the same change.
+
+`data.manage` creates and reassigns M5 Data Requests. It does not grant draft
+entry, submission, or approval; those remain `data.enter`, `data.submit`, and
+`data.approve` respectively.
 
 ## Scoped resolution
 
