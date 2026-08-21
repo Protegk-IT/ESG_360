@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   Building2,
@@ -89,15 +89,26 @@ export default function ProfileTab({
       React 19 Safe
   ========================================================== */
 
-  useEffect(() => {
+ /* ==========================================================
+    LOAD MASTER DATA
+    React 19 Safe
+========================================================== */
+
+// Keeps the latest updateField without needing it as an effect
+// dependency — avoids re-fetching on every parent render if
+// updateField isn't memoized by the parent.
+const updateFieldRef = useRef(updateField);
+
+useEffect(() => {
+  updateFieldRef.current = updateField;
+});
+
+useEffect(() => {
   let cancelled = false;
 
   async function fetchMasterData() {
     try {
-      const [
-        companyRes,
-        departmentRes,
-      ] = await Promise.all([
+      const [companyRes, departmentRes] = await Promise.all([
         CompanyApi.getProfile(),
         UserApi.getDepartments(),
       ]);
@@ -107,8 +118,7 @@ export default function ProfileTab({
       setCompany(companyRes.data);
       setDepartments(departmentRes.data);
 
-      updateField("company", companyRes.data.id);
-
+      updateFieldRef.current("company", companyRes.data.id);
     } catch (error) {
       console.error(error);
     }

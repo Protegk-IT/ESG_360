@@ -99,9 +99,13 @@ export default function OrgTree() {
     }
   }, []);
 
-  useEffect(() => {
-    loadTree();
-  }, [loadTree]);
+useEffect(() => {
+  const load = async () => {
+    await loadTree();
+  };
+
+  void load();
+}, [loadTree]);
 
   /* ==========================================================
       SEARCH / FILTER

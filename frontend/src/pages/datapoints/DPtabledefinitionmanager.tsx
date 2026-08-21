@@ -61,11 +61,15 @@ import {
 import { Loader2, Plus, Pencil, Trash2, ChevronLeft } from "lucide-react";
 
 import DatapointApi from "@/api/datapoints/DatapointApi";
+import { ValidationMetadataFields } from "@/pages/datapoints/ValidationMetadataFields";
 import type {
   Datapoint,
   DatapointTableColumn,
+  DatapointTableColumnFormData,
   DatapointTableRow,
+  DatapointTableRowFormData,
   DatapointDataType,
+  ValidationMetadata,
   UnitFamily,
   Unit,
 } from "@/types/datapoint";
@@ -96,6 +100,14 @@ const COLUMN_DATA_TYPE_VALUES = COLUMN_DATA_TYPE_OPTIONS.map(
 
 /* ============================================================
    ZOD SCHEMAS
+   ------------------------------------------------------------
+   validation_metadata is a structured ValidationMetadata object
+   now, built and edited entirely through ValidationMetadataFields
+   (a plain-language rule builder) rather than typed as raw JSON.
+   There's nothing for zod to check here beyond "it's an object" —
+   ValidationMetadataFields only ever writes known, well-typed keys,
+   so the per-field constraints (numbers, valid regex, etc.) are
+   already enforced at the point of entry.
 ============================================================ */
 
 const columnSchema = z.object({
@@ -105,6 +117,9 @@ const columnSchema = z.object({
   unit_family: z.string().nullable(),
   default_unit: z.string().nullable(),
   is_required: z.boolean(),
+  validation_metadata: z.custom<ValidationMetadata>(
+    (val) => typeof val === "object" && val !== null
+  ),
   display_order: z
     .number()
     .int("Display order must be a whole number.")
@@ -120,6 +135,7 @@ const columnDefaultValues: ColumnFormValues = {
   unit_family: null,
   default_unit: null,
   is_required: false,
+  validation_metadata: {},
   display_order: 0,
 };
 
@@ -194,6 +210,13 @@ export default function DatapointTableDefinitionManager() {
   const selectedUnitFamily = useWatch({
     control: columnForm.control,
     name: "unit_family",
+  });
+
+  // Drives which set of rule fields ValidationMetadataFields renders —
+  // changing data_type mid-edit should change the rule builder in place.
+  const selectedDataType = useWatch({
+    control: columnForm.control,
+    name: "data_type",
   });
 
   /* ==========================================================
@@ -305,6 +328,7 @@ export default function DatapointTableDefinitionManager() {
       unit_family: column.unit_family,
       default_unit: column.default_unit,
       is_required: column.is_required,
+      validation_metadata: column.validation_metadata ?? {},
       display_order: column.display_order,
     });
     setColumnDialogOpen(true);
@@ -316,7 +340,7 @@ export default function DatapointTableDefinitionManager() {
     setSubmittingColumn(true);
 
     try {
-      const payload = {
+      const payload: DatapointTableColumnFormData = {
         datapoint: id,
         code: values.code.trim(),
         label: values.label.trim(),
@@ -324,6 +348,7 @@ export default function DatapointTableDefinitionManager() {
         unit_family: values.unit_family || null,
         default_unit: values.default_unit || null,
         is_required: values.is_required,
+        validation_metadata: values.validation_metadata ?? {},
         display_order: values.display_order,
       };
 
@@ -342,7 +367,9 @@ export default function DatapointTableDefinitionManager() {
       toast.error(
         getApiErrorMessage(
           error,
-        "Failed to save column. Please check the form and try again."));
+          "Failed to save column. Please check the form and try again."
+        )
+      );
     } finally {
       setSubmittingColumn(false);
     }
@@ -392,7 +419,7 @@ export default function DatapointTableDefinitionManager() {
     setSubmittingRow(true);
 
     try {
-      const payload = {
+      const payload: DatapointTableRowFormData = {
         datapoint: id,
         code: values.code.trim(),
         label: values.label.trim(),
@@ -414,7 +441,9 @@ export default function DatapointTableDefinitionManager() {
       toast.error(
         getApiErrorMessage(
           error,
-        "Failed to save row. Please check the form and try again."));
+          "Failed to save row. Please check the form and try again."
+        )
+      );
     } finally {
       setSubmittingRow(false);
     }
@@ -654,7 +683,18 @@ export default function DatapointTableDefinitionManager() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Data Type</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
+                      <Select
+                        value={field.value}
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          // Rule shapes differ per data type (e.g. min/max vs
+                          // min_length/max_length) — stale rules from the
+                          // previous type would silently persist otherwise.
+                          columnForm.setValue("validation_metadata", {}, {
+                            shouldDirty: true,
+                          });
+                        }}
+                      >
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue />
@@ -772,6 +812,26 @@ export default function DatapointTableDefinitionManager() {
                   )}
                 />
               </div>
+
+              {/* Structured rule builder — replaces the old raw-JSON
+                  textarea. Shape shown depends on the selected data_type
+                  (see ValidationMetadataFields for per-type field sets). */}
+              <FormField
+                control={columnForm.control}
+                name="validation_metadata"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <ValidationMetadataFields
+                        dataType={selectedDataType}
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <FormField
                 control={columnForm.control}

@@ -24,10 +24,12 @@ import type {
   Datapoint,
   DatapointCategory,
   DatapointDataType,
+  Module,
 } from "@/types/datapoint";
 
 import DatapointApi from "@/api/datapoints/DatapointApi";
 import { getDatapointColumns } from "./datapoint-columns";
+import ModuleApi from "@/api/modules/ModuleApi";
 
 /* ==========================================================
    DATAPOINT LIST
@@ -62,7 +64,39 @@ export default function DatapointList() {
 
   const [categoryFilter, setCategoryFilter] =
     useState("All");
+  
+  const [moduleFilter, setModuleFilter] = useState("All");
+  const [modules, setModules] = useState<Module[]>([]);
 
+
+  // Load Modules 
+
+  useEffect(() => {
+  let ignore = false;
+
+  const loadModules = async () => {
+    try {
+      const response = await ModuleApi.getEnabled();
+
+      if (!ignore) {
+        setModules(response.data);
+      }
+    } catch (error) {
+      if (!ignore) {
+        console.error("Failed to load modules:", error);
+        setModules([]);
+      }
+    }
+  };
+
+  void loadModules();
+
+  return () => {
+    ignore = true;
+  };
+}, []);
+
+  
   /* ========================================================
      LOAD DATAPOINTS
   ======================================================== */
@@ -172,7 +206,8 @@ const categoryOptions = useMemo(
       const matchesType =
         typeFilter === "All" ||
         datapoint.data_type === typeFilter;
-
+      
+       
       /* ----------------------------------------------------
          CATEGORY
       ---------------------------------------------------- */
@@ -181,20 +216,23 @@ const categoryOptions = useMemo(
         categoryFilter === "All" ||
         datapoint.category === categoryFilter;
 
+       /* ----------------------------------------------------
+               MODULE
+              ---------------------------------------------------- */
+
+      const matchesModule =
+      moduleFilter === "All" ||
+      datapoint.module === moduleFilter;
+
       return (
         matchesSearch &&
         matchesStatus &&
         matchesType &&
-        matchesCategory
+        matchesCategory &&
+        matchesModule
       );
     });
-  }, [
-    datapoints,
-    search,
-    statusFilter,
-    typeFilter,
-    categoryFilter,
-  ]);
+  }, [search, datapoints, statusFilter, typeFilter, categoryFilter, moduleFilter]);
 
 
 
@@ -256,125 +294,96 @@ const columns = useMemo(
             onAdd={() => {
               navigate("/datapoints/create");
             }}
+            searchClassName="sm:w-64"
+          actionButtonSize="sm"
           >
-            {/* ==================================================
-                CATEGORY FILTER
-            ================================================== */}
+          {/* ==================================================
+    CATEGORY FILTER
+================================================== */}
 
-           <Select
-  value={categoryFilter}
-  onValueChange={setCategoryFilter}
->
-  <SelectTrigger className="w-44">
+<Select value={categoryFilter} onValueChange={setCategoryFilter}>
+  <SelectTrigger className="h-9 w-34 shrink-0">
     <SelectValue placeholder="Category" />
   </SelectTrigger>
 
   <SelectContent>
-    <SelectItem value="All">
-      All Categories
-    </SelectItem>
+    <SelectItem value="All">Categories</SelectItem>
 
     {categoryOptions.map((category) => (
-      <SelectItem
-        key={category.id}
-        value={category.id}
-      >
+      <SelectItem key={category.id} value={category.id}>
         {category.name}
       </SelectItem>
     ))}
   </SelectContent>
 </Select>
 
-            {/* ==================================================
-                DATA TYPE FILTER
-            ================================================== */}
+{/* ==================================================
+    DATA TYPE FILTER
+================================================== */}
 
-            <Select
-              value={typeFilter}
-              onValueChange={(value) => {
-                setTypeFilter(
-                  value as
-                    | "All"
-                    | DatapointDataType
-                );
-              }}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Data Type" />
-              </SelectTrigger>
+<Select
+  value={typeFilter}
+  onValueChange={(value) => {
+    setTypeFilter(value as "All" | DatapointDataType);
+  }}
+>
+  <SelectTrigger className="h-9 w-28 shrink-0">
+    <SelectValue placeholder="Data Type" />
+  </SelectTrigger>
 
-              <SelectContent>
-                <SelectItem value="All">
-                  All Types
-                </SelectItem>
+  <SelectContent>
+    <SelectItem value="All">Types</SelectItem>
+    <SelectItem value="DECIMAL">Decimal</SelectItem>
+    <SelectItem value="INTEGER">Integer</SelectItem>
+    <SelectItem value="TEXT">Text</SelectItem>
+    <SelectItem value="LONG_TEXT">Long Text</SelectItem>
+    <SelectItem value="BOOLEAN">Boolean</SelectItem>
+    <SelectItem value="SELECT">Select</SelectItem>
+    <SelectItem value="DATE">Date</SelectItem>
+    <SelectItem value="TABLE">Table</SelectItem>
+  </SelectContent>
+</Select>
 
-                <SelectItem value="DECIMAL">
-                  Decimal
-                </SelectItem>
+{/* ==================================================
+    MODULE FILTER
+================================================== */}
 
-                <SelectItem value="INTEGER">
-                  Integer
-                </SelectItem>
+<Select value={moduleFilter} onValueChange={setModuleFilter}>
+  <SelectTrigger className="h-9 w-32 shrink-0">
+    <SelectValue placeholder="Module" />
+  </SelectTrigger>
 
-                <SelectItem value="TEXT">
-                  Text
-                </SelectItem>
+  <SelectContent>
+    <SelectItem value="All"> Modules</SelectItem>
 
-                <SelectItem value="LONG_TEXT">
-                  Long Text
-                </SelectItem>
+    {modules.map((module) => (
+      <SelectItem key={module.code} value={module.code}>
+        {module.name}
+      </SelectItem>
+    ))}
+  </SelectContent>
+</Select>
 
-                <SelectItem value="BOOLEAN">
-                  Boolean
-                </SelectItem>
+{/* ==================================================
+    STATUS FILTER
+================================================== */}
 
-                <SelectItem value="SELECT">
-                  Select
-                </SelectItem>
+<Select
+  value={statusFilter}
+  onValueChange={(value) => {
+    setStatusFilter(value as "All" | "Active" | "Inactive");
+  }}
+>
+  <SelectTrigger className="h-9 w-26 shrink-0">
+    <SelectValue placeholder="Status" />
+  </SelectTrigger>
 
-                <SelectItem value="DATE">
-                  Date
-                </SelectItem>
-
-                <SelectItem value="TABLE">
-                  Table
-                </SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* ==================================================
-                STATUS FILTER
-            ================================================== */}
-
-            <Select
-              value={statusFilter}
-              onValueChange={(value) => {
-                setStatusFilter(
-                  value as
-                    | "All"
-                    | "Active"
-                    | "Inactive"
-                );
-              }}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-
-              <SelectContent>
-                <SelectItem value="All">
-                  All Status
-                </SelectItem>
-
-                <SelectItem value="Active">
-                  Active
-                </SelectItem>
-
-                <SelectItem value="Inactive">
-                  Inactive
-                </SelectItem>
-              </SelectContent>
-            </Select>
+  <SelectContent>
+    <SelectItem value="All">Status</SelectItem>
+    <SelectItem value="Active">Active</SelectItem>
+    <SelectItem value="Inactive">Inactive</SelectItem>
+  </SelectContent>
+</Select>
           </DataTableToolbar>
         }
       />

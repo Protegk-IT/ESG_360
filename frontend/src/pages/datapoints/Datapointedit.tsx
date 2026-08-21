@@ -37,6 +37,7 @@ import { Loader2, ListChecks, Table2 } from "lucide-react";
 
 import DatapointApi from "@/api/datapoints/DatapointApi";
 import ModuleApi from "@/api/modules/ModuleApi";
+import { ValidationMetadataFields } from "@/pages/datapoints/ValidationMetadataFields";
 
 import type {
   DatapointFormData,
@@ -44,6 +45,7 @@ import type {
   UnitFamily,
   Unit,
   Module,
+  CollectionLevel,
 } from "@/types/datapoint";
 
 /* ============================================================
@@ -54,6 +56,12 @@ import type {
    not DB-backed rows, so there's nothing to fetch them from
    yet. Keep these two files' option lists in sync until the
    backend exposes a shared /choices/ endpoint.
+
+   IMPORTANT: this list must always cover every value of the
+   CollectionLevel type (types/datapoint.ts). If it doesn't,
+   z.enum(COLLECTION_LEVEL_VALUES) below will reject an
+   existing record that legitimately has one of the missing
+   values the moment it's loaded into this form.
 ============================================================ */
 
 const DATA_TYPE_OPTIONS = [
@@ -75,7 +83,8 @@ const DATA_TYPE_VALUES = DATA_TYPE_OPTIONS.map((o) => o.value) as [
 const COLLECTION_LEVEL_OPTIONS = [
   { value: "COMPANY", label: "Company" },
   { value: "FACILITY", label: "Facility" },
-  { value: "ORG_NODE", label: "Org_node" },
+  { value: "ORG_NODE", label: "Org Node" },
+  { value: "ANY", label: "Any" },
 ] as const satisfies readonly { value: string; label: string }[];
 
 const COLLECTION_LEVEL_VALUES = COLLECTION_LEVEL_OPTIONS.map((o) => o.value) as [
@@ -97,10 +106,12 @@ const FREQUENCY_VALUES = FREQUENCY_OPTIONS.map((o) => o.value) as [
 /* ============================================================
    ZOD SCHEMA
    ------------------------------------------------------------
-   Same shape as create. `code` stays editable — if your
-   backend treats code as immutable after creation, disable
-   the field in the form below rather than dropping it from
-   the schema, so the payload shape stays consistent.
+   Same shape as create, now including allow_dynamic_rows and
+   validation_metadata so an edit round-trip doesn't drop them.
+   `code` stays editable — if your backend treats code as
+   immutable after creation, disable the field in the form
+   below rather than dropping it from the schema, so the
+   payload shape stays consistent.
 ============================================================ */
 
 const datapointSchema = z.object({
@@ -119,6 +130,9 @@ const datapointSchema = z.object({
   frequency: z.enum(FREQUENCY_VALUES),
 
   is_required: z.boolean(),
+  allow_dynamic_rows: z.boolean(),
+
+  validation_metadata: z.record(z.string(), z.unknown()),
 
   display_order: z
     .number()
@@ -193,6 +207,8 @@ export default function DatapointEdit() {
       collection_level: "COMPANY",
       frequency: "ANNUAL",
       is_required: false,
+      allow_dynamic_rows: false,
+      validation_metadata: {},
       display_order: 0,
       is_active: true,
     },
@@ -282,22 +298,36 @@ export default function DatapointEdit() {
   }, []);
 
   function getRelationId(
-  value:
-    | string
-    | { id: string }
-    | null
-    | undefined
-): string | null {
-  if (!value) {
-    return null;
+    value: string | { id: string } | null | undefined
+  ): string | null {
+    if (!value) {
+      return null;
+    }
+
+    if (typeof value === "string") {
+      return value;
+    }
+
+    return value.id;
   }
 
-  if (typeof value === "string") {
-    return value;
+  // Every member of CollectionLevel is valid here — this just
+  // guards against a genuinely unexpected value from the API
+  // (e.g. a typo'd string) rather than against ANY specifically.
+  // Previously this list omitted "ANY", which meant a real ANY
+  // record from the backend fell into the same bucket as bad
+  // data and got silently rewritten to COMPANY on load.
+  function toCollectionLevel(value: unknown): CollectionLevel {
+    if (
+      value === "COMPANY" ||
+      value === "FACILITY" ||
+      value === "ORG_NODE" ||
+      value === "ANY"
+    ) {
+      return value;
+    }
+    return "COMPANY";
   }
-
-  return value.id;
-}
 
   /* ==========================================================
      LOAD THE DATAPOINT ITSELF AND POPULATE THE FORM
@@ -317,40 +347,36 @@ export default function DatapointEdit() {
 
         if (ignore) return;
 
-      const datapoint = response.data;
+        const datapoint = response.data;
 
-reset({
-  code: datapoint.code,
+        reset({
+          code: datapoint.code,
 
-  category:
-    datapoint.category &&
-    typeof datapoint.category === "object"
-      ? String((datapoint.category as { id: string | number }).id)
-      : datapoint.category != null
-        ? String(datapoint.category)
-        : "",
+          category:
+            datapoint.category && typeof datapoint.category === "object"
+              ? String((datapoint.category as { id: string | number }).id)
+              : datapoint.category != null
+                ? String(datapoint.category)
+                : "",
 
-   module: datapoint.module,
-  label: datapoint.label,
-  description: datapoint.description,
-  data_type: datapoint.data_type,
+          module: datapoint.module,
+          label: datapoint.label,
+          description: datapoint.description,
+          data_type: datapoint.data_type,
 
-  unit_family: getRelationId(datapoint.unit_family),
+          unit_family: getRelationId(datapoint.unit_family),
 
-  default_unit: getRelationId(datapoint.default_unit),
+          default_unit: getRelationId(datapoint.default_unit),
 
-  collection_level:
-    datapoint.collection_level === "COMPANY" ||
-    datapoint.collection_level === "FACILITY" ||
-    datapoint.collection_level === "ORG_NODE"
-      ? datapoint.collection_level
-      : "COMPANY",
+          collection_level: toCollectionLevel(datapoint.collection_level),
 
-  frequency: datapoint.frequency,
-  is_required: datapoint.is_required,
-  display_order: datapoint.display_order,
-  is_active: datapoint.is_active,
-});
+          frequency: datapoint.frequency,
+          is_required: datapoint.is_required,
+          allow_dynamic_rows: datapoint.allow_dynamic_rows ?? false,
+          validation_metadata: datapoint.validation_metadata ?? {},
+          display_order: datapoint.display_order,
+          is_active: datapoint.is_active,
+        });
       } catch (error) {
         if (ignore) return;
 
@@ -442,6 +468,8 @@ reset({
         collection_level: values.collection_level,
         frequency: values.frequency,
         is_required: values.is_required,
+        allow_dynamic_rows: values.allow_dynamic_rows,
+        validation_metadata: values.validation_metadata,
         display_order: values.display_order,
         is_active: values.is_active,
       };
@@ -882,7 +910,49 @@ reset({
                       </FormItem>
                     )}
                   />
+
+                  {dataType === "TABLE" && (
+                    <FormField
+                      control={control}
+                      name="allow_dynamic_rows"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center gap-3 space-y-0">
+                          <FormControl>
+                            <Checkbox
+                              checked={field.value}
+                              onCheckedChange={(checked) => field.onChange(checked === true)}
+                            />
+                          </FormControl>
+                          <FormLabel className="font-normal">
+                            Allow dynamic rows (in addition to fixed rows)
+                          </FormLabel>
+                        </FormItem>
+                      )}
+                    />
+                  )}
                 </div>
+
+                {/* ==================================================
+                    VALIDATION RULES
+                ================================================== */}
+
+                <FormField
+                  control={control}
+                  name="validation_metadata"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Validation Rules</FormLabel>
+                      <FormControl>
+                        <ValidationMetadataFields
+                          dataType={dataType}
+                          value={field.value}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 {/* ==================================================
                     RELATED CONFIGURATION

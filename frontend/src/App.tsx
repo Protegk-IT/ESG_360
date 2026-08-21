@@ -247,7 +247,7 @@ export default function App() {
 <Route
   path="/datapoints"
   element={
-    <ProtectedRoute permission="datapoint.view">
+    <ProtectedRoute permission="datapoint.manage">
       <DatapointList />
     </ProtectedRoute>
   }
@@ -256,7 +256,7 @@ export default function App() {
 <Route
   path="/datapoints/create"
   element={
-    <ProtectedRoute permission="datapoint.view">
+    <ProtectedRoute permission="datapoint.manage">
       <DatapointCreate />
     </ProtectedRoute>
   }
@@ -265,7 +265,7 @@ export default function App() {
 <Route
   path="/datapoints/:id/edit"
   element={
-    <ProtectedRoute permission="datapoint.edit">
+    <ProtectedRoute permission="datapoint.manage">
       <DatapointEdit />
     </ProtectedRoute>
   }
@@ -274,7 +274,7 @@ export default function App() {
 <Route
   path="/datapoints/:id"
   element={
-    <ProtectedRoute permission="datapoint.view">
+    <ProtectedRoute permission="datapoint.manage">
       <DatapointDetail />
     </ProtectedRoute>
   }
@@ -288,7 +288,7 @@ export default function App() {
 <Route
   path="/datapoints/:id/options"
   element={
-    <ProtectedRoute permission="datapoint.view">
+    <ProtectedRoute permission="datapoint.manage">
       <DatapointOptionsManager />
     </ProtectedRoute>
   }
@@ -300,7 +300,7 @@ export default function App() {
 <Route
   path="/datapoints/:id/table-definition"
   element={
-    <ProtectedRoute permission="datapoint.view">
+    <ProtectedRoute permission="datapoint.manage">
       <DatapointTableDefinitionManager />
     </ProtectedRoute>
   }
@@ -312,7 +312,7 @@ export default function App() {
 <Route
   path="/units/families"
   element={
-    <ProtectedRoute permission="unit_family.view">
+    <ProtectedRoute permission="datapoint.manage">
       <UnitFamilyManager />
     </ProtectedRoute>
   }
@@ -324,7 +324,7 @@ export default function App() {
 <Route
   path="/units"
   element={
-    <ProtectedRoute permission="unit.view">
+    <ProtectedRoute permission="datapoint.manage">
       <UnitManager />
     </ProtectedRoute>
   }
@@ -336,7 +336,7 @@ export default function App() {
 <Route
   path="/datapoints/categories"
   element={
-    <ProtectedRoute permission="datapoint_category.view">
+    <ProtectedRoute permission="datapoint.manage">
       <CategoryManager />
     </ProtectedRoute>
   }
