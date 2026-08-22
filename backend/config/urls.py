@@ -33,6 +33,7 @@ urlpatterns = [
     path("api/imports/", include("apps.imports.urls")),
     path("api/datapoints/", include("apps.datapoints.urls")),
     path("api/frameworks/", include("apps.frameworks.urls")),
+    path("api/calculations/", include("apps.calculations.urls"))
 ]
 
 if settings.DEBUG:
