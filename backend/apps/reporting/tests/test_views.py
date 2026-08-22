@@ -1,5 +1,4 @@
 import uuid
-from unittest.mock import patch
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.urls import reverse
@@ -7,7 +6,12 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from apps.accounts.models import User
+from apps.accounts.models import (
+    Permission,
+    Role,
+    User,
+    UserRoleAssignment,
+)
 from apps.datapoints.models import (
     CollectionFrequency,
     CollectionLevel,
@@ -62,6 +66,27 @@ class ReportingViewTestMixin:
             full_name="M8 Test User",
             is_superuser=is_superuser,
             is_staff=is_superuser,
+        )
+
+    def grant_report_permission(self):
+        permission, _ = Permission.objects.get_or_create(
+            code="report.create_run",
+            defaults={
+                "name": "Create report run",
+                "module_code": "report",
+                "action": "CREATE",
+            },
+        )
+        role, _ = Role.objects.get_or_create(
+            role_code="reporting_test_writer",
+            defaults={
+                "role_name": "Reporting Test Writer",
+            },
+        )
+        role.permissions.add(permission)
+        UserRoleAssignment.objects.get_or_create(
+            user=self.normal_user,
+            role=role,
         )
 
     def create_module(self):
@@ -2201,14 +2226,8 @@ class ReportRunRBACViewTests(
             user=self.normal_user
         )
 
-    @patch(
-        "apps.accounts.permissions."
-        "HasRolePermission.has_permission",
-        return_value=False,
-    )
     def test_83_rbac_denies_create(
         self,
-        mock_permission,
     ):
         response = self.client.post(
             "/api/reporting/report-runs/",
@@ -2228,14 +2247,8 @@ class ReportRunRBACViewTests(
             status.HTTP_403_FORBIDDEN,
         )
 
-    @patch(
-        "apps.accounts.permissions."
-        "HasRolePermission.has_permission",
-        return_value=False,
-    )
     def test_84_rbac_denies_update(
         self,
-        mock_permission,
     ):
         run = self.create_report_run(
             created_by=self.normal_user
@@ -2256,14 +2269,8 @@ class ReportRunRBACViewTests(
             status.HTTP_403_FORBIDDEN,
         )
 
-    @patch(
-        "apps.accounts.permissions."
-        "HasRolePermission.has_permission",
-        return_value=False,
-    )
     def test_85_rbac_denies_delete(
         self,
-        mock_permission,
     ):
         run = self.create_report_run(
             created_by=self.normal_user
@@ -2278,14 +2285,8 @@ class ReportRunRBACViewTests(
             status.HTTP_403_FORBIDDEN,
         )
 
-    @patch(
-        "apps.accounts.permissions."
-        "HasRolePermission.has_permission",
-        return_value=False,
-    )
     def test_86_rbac_denies_freeze(
         self,
-        mock_permission,
     ):
         run = self.create_report_run(
             created_by=self.normal_user
@@ -2300,15 +2301,11 @@ class ReportRunRBACViewTests(
             status.HTTP_403_FORBIDDEN,
         )
 
-    @patch(
-        "apps.accounts.permissions."
-        "HasRolePermission.has_permission",
-        return_value=True,
-    )
     def test_87_rbac_allows_create(
         self,
-        mock_permission,
     ):
+        self.grant_report_permission()
+
         response = self.client.post(
             "/api/reporting/report-runs/",
             {
@@ -2327,15 +2324,11 @@ class ReportRunRBACViewTests(
             status.HTTP_201_CREATED,
         )
 
-    @patch(
-        "apps.accounts.permissions."
-        "HasRolePermission.has_permission",
-        return_value=True,
-    )
     def test_88_rbac_allows_freeze(
         self,
-        mock_permission,
     ):
+        self.grant_report_permission()
+
         run = self.create_report_run(
             created_by=self.normal_user
         )

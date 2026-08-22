@@ -44,10 +44,10 @@ class M8TestDataMixin:
         self.user = self.make_user()
 
         permission = Permission.objects.create(
-            code="framework_mapping.manage",
-            name="Manage framework mappings",
-            module_code="framework_mapping",
-            action="MANAGE",
+            code="report.create_run",
+            name="Create report run",
+            module_code="report",
+            action="CREATE",
         )
         role = Role.objects.create(
             role_code="reporting-test",

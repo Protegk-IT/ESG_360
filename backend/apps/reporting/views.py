@@ -36,7 +36,13 @@ class ReportingModelViewSet(RBACModelViewSet):
     permission from the platform permission catalog.
     """
 
-    permission_code = "framework_mapping.manage"
+    permission_code = "report.create_run"
+
+    def get_permissions(self):
+        if self.action in {"list", "retrieve"}:
+            return [IsAuthenticated()]
+
+        return super().get_permissions()
 
 
 # ============================================================
@@ -268,7 +274,7 @@ class ReportRunFreezeView(APIView):
     #
     # unless the platform RBAC contract explicitly requires it.
 
-    permission_code = "framework_mapping.manage"
+    permission_code = "report.create_run"
 
     def post(self, request, run_id):
         """

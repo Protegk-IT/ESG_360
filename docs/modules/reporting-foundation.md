@@ -262,22 +262,19 @@ RBACService
 allow / deny
 ```
 
-The M8 reporting APIs use the existing canonical permission:
+Reporting reads require authentication. Report-run creation, updates,
+deletion, and freezing require the existing canonical permission:
+
+```text
+report.create_run
+```
+
+The implementation deliberately does not invent separate reporting permissions
+such as:
 
 ```text
 framework_mapping.manage
 ```
-
-The implementation deliberately does not invent independent permissions such as:
-
-```text
-report_run.create
-report_run.edit
-report_run.delete
-report_run.freeze
-```
-
-unless the platform RBAC contract later requires such permissions.
 
 ---
 
