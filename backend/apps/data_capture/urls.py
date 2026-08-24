@@ -1,6 +1,13 @@
 from django.urls import path
 
 from .views import (
+    CollectionCampaignBulkReassignAPIView,
+    CollectionCampaignCloseAPIView,
+    CollectionCampaignDetailAPIView,
+    CollectionCampaignGenerateAPIView,
+    CollectionCampaignListCreateAPIView,
+    CollectionCampaignProgressAPIView,
+    CollectionCampaignTargetListAPIView,
     DataRequestDetailAPIView,
     DataRequestListCreateAPIView,
     DataRequestReassignAPIView,
@@ -22,6 +29,13 @@ from .views import (
 app_name = "data_capture"
 
 urlpatterns = [
+    path("campaigns/", CollectionCampaignListCreateAPIView.as_view(), name="campaign-list"),
+    path("campaigns/<uuid:campaign_id>/", CollectionCampaignDetailAPIView.as_view(), name="campaign-detail"),
+    path("campaigns/<uuid:campaign_id>/targets/", CollectionCampaignTargetListAPIView.as_view(), name="campaign-targets"),
+    path("campaigns/<uuid:campaign_id>/generate/", CollectionCampaignGenerateAPIView.as_view(), name="campaign-generate"),
+    path("campaigns/<uuid:campaign_id>/progress/", CollectionCampaignProgressAPIView.as_view(), name="campaign-progress"),
+    path("campaigns/<uuid:campaign_id>/bulk-reassign/", CollectionCampaignBulkReassignAPIView.as_view(), name="campaign-bulk-reassign"),
+    path("campaigns/<uuid:campaign_id>/close/", CollectionCampaignCloseAPIView.as_view(), name="campaign-close"),
     path("requests/", DataRequestListCreateAPIView.as_view(), name="request-list"),
     path("requests/mine/", MyDataRequestListAPIView.as_view(), name="request-mine"),
     path("requests/<uuid:request_id>/", DataRequestDetailAPIView.as_view(), name="request-detail"),

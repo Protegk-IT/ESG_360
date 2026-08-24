@@ -27,6 +27,12 @@ class SubmissionStatus(models.TextChoices):
     REJECTED = "REJECTED", "Rejected"
 
 
+class CollectionCampaignStatus(models.TextChoices):
+    DRAFT = "DRAFT", "Draft"
+    ACTIVE = "ACTIVE", "Active"
+    CLOSED = "CLOSED", "Closed"
+
+
 def _submission_is_editable(submission_id):
     """Read the persisted status instead of trusting a stale related cache."""
 
@@ -109,6 +115,171 @@ class DataRequest(ActivityLogMixin, BaseModel):
 
     def __str__(self):
         return f"{self.datapoint.code} for {self.org_node}"
+
+
+class CollectionCampaign(ActivityLogMixin, BaseModel):
+    """Manager-owned orchestration metadata for normal M5 data requests.
+
+    A campaign never owns answer or review state.  Its explicit targets link
+    to the existing ``DataRequest`` records that remain the workflow source of
+    truth.
+    """
+
+    company = models.ForeignKey(
+        "companies.Company", on_delete=models.PROTECT, related_name="collection_campaigns"
+    )
+    reporting_period = models.ForeignKey(
+        "periods.ReportingPeriod", on_delete=models.PROTECT, related_name="collection_campaigns"
+    )
+    code = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=255)
+    default_due_date = models.DateField(null=True, blank=True)
+    default_instructions = models.TextField(blank=True, default="")
+    status = models.CharField(
+        max_length=20, choices=CollectionCampaignStatus.choices,
+        default=CollectionCampaignStatus.DRAFT,
+    )
+    generated_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_collection_campaigns"
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["company", "reporting_period"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.code} — {self.name}"
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            previous_status = type(self).objects.filter(pk=self.pk).values_list("status", flat=True).first()
+            if (
+                previous_status
+                and previous_status != self.status
+                and not getattr(self, "_allow_campaign_transition", False)
+            ):
+                raise ValidationError(
+                    "Collection-campaign status transitions must use CollectionCampaignService."
+                )
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
+class CampaignTarget(BaseModel):
+    """One explicit datapoint × OrgNode orchestration target.
+
+    ``data_request`` may point at a pre-existing equivalent request.  The
+    intended values are retained for traceability, but generation never edits
+    a linked request; reassignment stays an explicit lifecycle operation.
+    """
+
+    class RequestOutcome(models.TextChoices):
+        CREATED = "CREATED", "Created"
+        EXISTING = "EXISTING", "Existing/reused"
+
+    campaign = models.ForeignKey(
+        CollectionCampaign, on_delete=models.CASCADE, related_name="targets"
+    )
+    datapoint = models.ForeignKey(
+        "datapoints.Datapoint", on_delete=models.PROTECT, related_name="campaign_targets"
+    )
+    org_node = models.ForeignKey(
+        "organizations.OrgNode", on_delete=models.PROTECT, related_name="campaign_targets"
+    )
+    assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="campaign_targets"
+    )
+    due_date = models.DateField(null=True, blank=True)
+    instructions = models.TextField(blank=True, default="")
+    data_request = models.ForeignKey(
+        DataRequest, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="campaign_targets",
+    )
+    request_outcome = models.CharField(
+        max_length=20, choices=RequestOutcome.choices, blank=True, default=""
+    )
+
+    class Meta:
+        ordering = ["datapoint__code", "org_node__path"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["campaign", "datapoint", "org_node"],
+                name="uq_campaign_target_datapoint_org",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["campaign", "org_node"]),
+            models.Index(fields=["data_request"]),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.campaign_id and self.org_node_id and self.org_node.company_id != self.campaign.company_id:
+            errors["org_node"] = "Campaign targets must belong to the campaign company."
+        if self.data_request_id:
+            request = self.data_request
+            if request.datapoint_id != self.datapoint_id:
+                errors["data_request"] = "Linked request must use this target's datapoint."
+            if request.org_node_id != self.org_node_id:
+                errors["data_request"] = "Linked request must use this target's OrgNode."
+            if request.reporting_period_id != self.campaign.reporting_period_id:
+                errors["data_request"] = "Linked request must use the campaign reporting period."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                "data_request_id", "assignee_id", "due_date", "instructions"
+            ).first()
+            if (
+                previous
+                and previous["data_request_id"]
+                and any(
+                    previous[field] != getattr(self, field)
+                    for field in ("assignee_id", "due_date", "instructions")
+                )
+                and not getattr(self, "_allow_target_update", False)
+            ):
+                raise ValidationError(
+                    "Generated campaign targets must be changed through CollectionCampaignService."
+                )
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
+class CollectionCampaignEvent(BaseModel):
+    """Append-only campaign operation history; request events remain separate."""
+
+    class EventType(models.TextChoices):
+        CREATED = "CREATED", "Created"
+        GENERATED = "GENERATED", "Requests generated"
+        REASSIGNED = "REASSIGNED", "Requests reassigned"
+        CLOSED = "CLOSED", "Closed"
+
+    campaign = models.ForeignKey(
+        CollectionCampaign, on_delete=models.CASCADE, related_name="events"
+    )
+    event_type = models.CharField(max_length=20, choices=EventType.choices)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    details = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Collection-campaign history is immutable.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Collection-campaign history is immutable.")
 
 
 class DataRequestEvent(BaseModel):

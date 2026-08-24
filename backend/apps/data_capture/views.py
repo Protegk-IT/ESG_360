@@ -3,6 +3,7 @@
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import FileResponse
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
@@ -18,7 +19,7 @@ from .authorization import (
     permission_scoped_request_queryset,
     readable_request_queryset,
 )
-from .models import AnswerTableRow, DataRequest, EvidenceFile
+from .models import AnswerTableRow, CampaignTarget, CollectionCampaign, DataRequest, EvidenceFile
 from .pagination import DataCapturePagination
 from .serializers import (
     DataRequestCreateSerializer,
@@ -33,7 +34,14 @@ from .serializers import (
     SubmissionSerializer,
     TableRowWriteSerializer,
     TypedValueWriteSerializer,
+    CampaignBulkReassignSerializer,
+    CampaignGenerateSerializer,
+    CampaignTargetSerializer,
+    CollectionCampaignCreateSerializer,
+    CollectionCampaignEventSerializer,
+    CollectionCampaignListSerializer,
 )
+from .services.campaigns import CollectionCampaignService
 from .services.lifecycle import DataCaptureLifecycleService
 from .services.evidence import EvidenceService
 
@@ -161,6 +169,168 @@ class DataRequestReassignAPIView(DataCaptureAPIView):
             **serializer.validated_data,
         )
         return success_response(DataRequestSerializer(updated).data, "Data request reassigned.")
+
+
+class CollectionCampaignAPIView(DataCaptureAPIView):
+    """Campaign transport/authentication; service owns all mutations."""
+
+    campaign_queryset = CollectionCampaign.objects.select_related(
+        "company", "reporting_period", "created_by"
+    )
+
+    def require_manage(self):
+        self.require_permission("data.manage")
+
+    def visible_campaign_queryset(self):
+        """Campaign metadata is visible only through its manager scope.
+
+        An empty draft remains visible to its creator.  Once targets exist, a
+        manager only sees campaigns containing targets in their own qualifying
+        ``data.manage`` scope; detail/progress subsequently scope target rows.
+        """
+
+        self.require_manage()
+        if self.request.user.is_superuser:
+            return self.campaign_queryset
+        allowed_nodes = RBACService.get_allowed_org_nodes(
+            self.request.user, "data.manage", module_code="data"
+        )
+        if allowed_nodes is None:
+            return self.campaign_queryset
+        return self.campaign_queryset.filter(
+            Q(created_by=self.request.user, targets__isnull=True) |
+            Q(targets__org_node_id__in=allowed_nodes)
+        ).distinct()
+
+    def scoped_targets(self, campaign):
+        queryset = CampaignTarget.objects.filter(campaign=campaign).select_related(
+            "datapoint", "org_node", "assignee", "data_request__submission"
+        )
+        if self.request.user.is_superuser:
+            return queryset
+        allowed_nodes = RBACService.get_allowed_org_nodes(
+            self.request.user, "data.manage", module_code="data"
+        )
+        if allowed_nodes is None:
+            return queryset
+        return queryset.filter(org_node_id__in=allowed_nodes)
+
+    def get_campaign(self, campaign_id):
+        return get_object_or_404(self.visible_campaign_queryset(), pk=campaign_id)
+
+    def campaign_payload(self, campaign):
+        payload = CollectionCampaignListSerializer(campaign).data
+        targets = self.scoped_targets(campaign)
+        payload["default_instructions"] = campaign.default_instructions
+        payload["targets"] = CampaignTargetSerializer(targets, many=True).data
+        # Generation/reassignment summaries are campaign-wide aggregates. Do
+        # not disclose them to a manager who only covers a subset of targets.
+        events = campaign.events.select_related("actor") if self.fully_manageable(campaign) else []
+        payload["events"] = CollectionCampaignEventSerializer(events, many=True).data
+        return payload
+
+    def fully_manageable(self, campaign):
+        """Actions affecting all campaign state need coverage of every target."""
+
+        total = campaign.targets.count()
+        return total == self.scoped_targets(campaign).count()
+
+
+class CollectionCampaignListCreateAPIView(CollectionCampaignAPIView):
+    def get(self, request):
+        return self.paginated_success(
+            self.visible_campaign_queryset(), CollectionCampaignListSerializer
+        )
+
+    def post(self, request):
+        self.require_manage()
+        serializer = CollectionCampaignCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        campaign = self.service_call(
+            CollectionCampaignService.create_campaign,
+            actor=request.user,
+            **serializer.validated_data,
+        )
+        return created_response(self.campaign_payload(campaign), "Collection campaign created.")
+
+
+class CollectionCampaignDetailAPIView(CollectionCampaignAPIView):
+    def get(self, request, campaign_id):
+        campaign = self.get_campaign(campaign_id)
+        return success_response(self.campaign_payload(campaign))
+
+
+class CollectionCampaignTargetListAPIView(CollectionCampaignAPIView):
+    def get(self, request, campaign_id):
+        campaign = self.get_campaign(campaign_id)
+        return self.paginated_success(self.scoped_targets(campaign), CampaignTargetSerializer)
+
+
+class CollectionCampaignGenerateAPIView(CollectionCampaignAPIView):
+    def post(self, request, campaign_id):
+        campaign = self.get_campaign(campaign_id)
+        serializer = CampaignGenerateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        # Keep protected-object behavior for a guessed/out-of-scope target.
+        # The service repeats this authorization defensively for non-HTTP use.
+        if any(
+            not has_scoped_permission(request.user, "data.manage", target["org_node"].id)
+            for target in serializer.validated_data["targets"]
+        ):
+            raise NotFound("Organization node not found.")
+        targets, summary = self.service_call(
+            CollectionCampaignService.generate_requests,
+            campaign,
+            actor=request.user,
+            targets=serializer.validated_data["targets"],
+        )
+        return success_response(
+            {"summary": summary, "targets": CampaignTargetSerializer(targets, many=True).data},
+            "Collection campaign generation completed.",
+        )
+
+
+class CollectionCampaignProgressAPIView(CollectionCampaignAPIView):
+    def get(self, request, campaign_id):
+        campaign = self.get_campaign(campaign_id)
+        return success_response(CollectionCampaignService.progress(self.scoped_targets(campaign)))
+
+
+class CollectionCampaignBulkReassignAPIView(CollectionCampaignAPIView):
+    def post(self, request, campaign_id):
+        campaign = self.get_campaign(campaign_id)
+        serializer = CampaignBulkReassignSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        scoped_ids = set(
+            self.scoped_targets(campaign).filter(
+                id__in=serializer.validated_data["target_ids"]
+            ).values_list("id", flat=True)
+        )
+        if scoped_ids != set(serializer.validated_data["target_ids"]):
+            raise NotFound("Collection campaign target not found.")
+        targets = self.service_call(
+            CollectionCampaignService.bulk_reassign,
+            campaign,
+            actor=request.user,
+            target_ids=serializer.validated_data["target_ids"],
+            assignee=serializer.validated_data["assignee"],
+            reason=serializer.validated_data["reason"],
+        )
+        return success_response(
+            CampaignTargetSerializer(targets, many=True).data,
+            "Campaign requests reassigned.",
+        )
+
+
+class CollectionCampaignCloseAPIView(CollectionCampaignAPIView):
+    def post(self, request, campaign_id):
+        campaign = self.get_campaign(campaign_id)
+        if not self.fully_manageable(campaign):
+            raise NotFound("Collection campaign not found.")
+        campaign = self.service_call(
+            CollectionCampaignService.close_campaign, campaign, actor=request.user
+        )
+        return success_response(self.campaign_payload(campaign), "Collection campaign closed.")
 
 
 class SubmissionDetailAPIView(DataCaptureAPIView):

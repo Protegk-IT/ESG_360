@@ -3,6 +3,7 @@
 from rest_framework import serializers
 
 from apps.accounts.models import User
+from apps.companies.models import Company
 from apps.datapoints.models import Datapoint, DatapointOption, DatapointTableColumn, DatapointTableRow, Unit
 from apps.organizations.models import OrgNode
 from apps.periods.models import ReportingPeriod
@@ -14,9 +15,94 @@ from .models import (
     DataRequest,
     DataRequestEvent,
     EvidenceFile,
+    CampaignTarget,
+    CollectionCampaign,
+    CollectionCampaignEvent,
     Submission,
     SubmissionEvent,
 )
+
+
+class CollectionCampaignEventSerializer(serializers.ModelSerializer):
+    actor_username = serializers.CharField(source="actor.username", read_only=True)
+
+    class Meta:
+        model = CollectionCampaignEvent
+        fields = ("id", "event_type", "actor", "actor_username", "details", "created_at")
+        read_only_fields = fields
+
+
+class CampaignTargetSerializer(serializers.ModelSerializer):
+    datapoint_code = serializers.CharField(source="datapoint.code", read_only=True)
+    datapoint_label = serializers.CharField(source="datapoint.label", read_only=True)
+    org_node_name = serializers.CharField(source="org_node.name", read_only=True)
+    assignee_username = serializers.CharField(source="assignee.username", read_only=True)
+    data_request_status = serializers.CharField(source="data_request.status", read_only=True)
+    submission_status = serializers.CharField(source="data_request.submission.status", read_only=True)
+
+    class Meta:
+        model = CampaignTarget
+        fields = (
+            "id", "datapoint", "datapoint_code", "datapoint_label", "org_node",
+            "org_node_name", "assignee", "assignee_username", "due_date", "instructions",
+            "data_request", "data_request_status", "submission_status", "request_outcome",
+            "created_at", "updated_at",
+        )
+        read_only_fields = fields
+
+
+class CollectionCampaignListSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+    reporting_period_name = serializers.CharField(source="reporting_period.name", read_only=True)
+    created_by_username = serializers.CharField(source="created_by.username", read_only=True)
+
+    class Meta:
+        model = CollectionCampaign
+        fields = (
+            "id", "code", "name", "company", "company_name", "reporting_period",
+            "reporting_period_name", "default_due_date", "status", "generated_at", "closed_at",
+            "created_by", "created_by_username", "created_at", "updated_at",
+        )
+        read_only_fields = fields
+
+
+class CollectionCampaignSerializer(CollectionCampaignListSerializer):
+    targets = CampaignTargetSerializer(many=True, read_only=True)
+    events = CollectionCampaignEventSerializer(many=True, read_only=True)
+
+    class Meta(CollectionCampaignListSerializer.Meta):
+        fields = CollectionCampaignListSerializer.Meta.fields + (
+            "default_instructions", "targets", "events",
+        )
+
+
+class CollectionCampaignCreateSerializer(serializers.Serializer):
+    company = serializers.PrimaryKeyRelatedField(queryset=Company.objects.all())
+    reporting_period = serializers.PrimaryKeyRelatedField(queryset=ReportingPeriod.objects.all())
+    code = serializers.CharField(max_length=100)
+    name = serializers.CharField(max_length=255)
+    default_due_date = serializers.DateField(required=False, allow_null=True)
+    default_instructions = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class CampaignTargetInputSerializer(serializers.Serializer):
+    datapoint = serializers.PrimaryKeyRelatedField(queryset=Datapoint.objects.all())
+    org_node = serializers.PrimaryKeyRelatedField(queryset=OrgNode.objects.all())
+    assignee = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(is_active=True))
+    due_date = serializers.DateField(required=False, allow_null=True)
+    instructions = serializers.CharField(required=False, allow_blank=True)
+
+
+class CampaignGenerateSerializer(serializers.Serializer):
+    targets = CampaignTargetInputSerializer(many=True, allow_empty=False)
+
+
+class CampaignBulkReassignSerializer(serializers.Serializer):
+    target_ids = serializers.ListField(
+        child=serializers.UUIDField(), allow_empty=False,
+    )
+    assignee = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(is_active=True))
+    reason = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class DatapointReferenceSerializer(serializers.ModelSerializer):
