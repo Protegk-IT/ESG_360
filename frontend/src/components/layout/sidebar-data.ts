@@ -1,4 +1,5 @@
 import {
+  Database,
   FileBarChart2,
   FileText,
   FolderTree,
@@ -9,7 +10,7 @@ import type { LucideIcon } from "lucide-react";
 export interface SidebarSubItem {
   title: string;
   url: string;
-  permission: string;
+  permission?: string;
   companyAdminOnly?: boolean;
 }
 export interface SidebarItem {
@@ -63,6 +64,27 @@ export const navMain: SidebarItem[] = [
       },
     ],
   },
+{
+    title: "Data Management",
+    icon: Database,
+    items: [
+      {
+        title: "Datapoint Catalog",
+        url: "/datapoints",
+      },
+      {
+        title: "Units Manager",
+        url: "/units/families",
+        permission: "datapoint.manage",
+      },
+      {
+        title: "Category Manager",
+        url: "/datapoints/categories",
+        permission: "datapoint.manage",
+      },
+    ],
+  },
+
   {
     title: "Reports",
     icon: FileBarChart2,
