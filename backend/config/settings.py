@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     'apps.datapoints',
     'apps.data_capture.apps.DataCaptureConfig',
     'apps.frameworks',
+    "apps.reporting",
     "rest_framework",
     "corsheaders",
     "django_filters",
