@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     ReportRunViewSet,
     ReportRunFreezeView,
+    ReportRunResolvedValuesView,
     ReportRunSnapshotView,
 )
 
@@ -53,5 +54,11 @@ urlpatterns = [
         "report-runs/<uuid:run_id>/snapshot/",
         ReportRunSnapshotView.as_view(),
         name="report-run-snapshot",
+    ),
+
+    path(
+        "report-runs/<uuid:run_id>/resolved-values/",
+        ReportRunResolvedValuesView.as_view(),
+        name="report-run-resolved-values",
     ),
 ]

@@ -1,6 +1,15 @@
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Prefetch
 from django.utils import timezone
+
+from apps.data_capture.models import (
+    AnswerTableCell,
+    AnswerTableRow,
+    DataRequest,
+    SubmissionStatus,
+)
+from apps.datapoints.models import Datapoint, DatapointDataType
 
 from .models import (
     ReportRun,
@@ -30,8 +39,7 @@ def freeze_report_run(report_run):
                             |
                             +--> Datapoint
 
-        The live M7 data is copied into immutable M8 snapshot
-        records.
+    The live M7 data is copied into immutable M8 snapshot records.
 
     The complete operation is transactional.
 
@@ -55,10 +63,6 @@ def freeze_report_run(report_run):
     # --------------------------------------------------------------
     # 2. Lock the ReportRun
     # --------------------------------------------------------------
-    #
-    # This prevents two concurrent freeze requests from both
-    # attempting to freeze the same ReportRun.
-    #
 
     with transaction.atomic():
 
@@ -76,9 +80,6 @@ def freeze_report_run(report_run):
         # ----------------------------------------------------------
         # 3. Check again after acquiring the database lock
         # ----------------------------------------------------------
-        #
-        # This second check is important for concurrent requests.
-        #
 
         if report_run.is_frozen:
             raise ValidationError(
@@ -87,7 +88,6 @@ def freeze_report_run(report_run):
 
         framework_version = report_run.framework_version
         framework = framework_version.framework
-
         frozen_at = timezone.now()
 
         # ----------------------------------------------------------
@@ -96,35 +96,18 @@ def freeze_report_run(report_run):
 
         snapshot = FrameworkSnapshot.objects.create(
             report_run=report_run,
-
             source_framework_id=framework.id,
             source_framework_version_id=framework_version.id,
-
             framework_code=framework.code,
             framework_name=framework.name,
-
             version_code=framework_version.version_code,
             version_name=framework_version.version_name,
-
             frozen_at=frozen_at,
         )
 
         # ----------------------------------------------------------
         # 5. Read the live M7 framework nodes
         # ----------------------------------------------------------
-        #
-        # Deterministic ordering is important.
-        #
-        # We order using the structural fields from M7:
-        #
-        #     path
-        #     display_order
-        #     code
-        #     id
-        #
-        # This means the same M7 structure produces the same
-        # snapshot ordering.
-        #
 
         nodes = (
             framework_version.nodes
@@ -141,7 +124,7 @@ def freeze_report_run(report_run):
             )
         )
 
-                # ----------------------------------------------------------
+        # ----------------------------------------------------------
         # 6. Create SnapshotNodes
         # ----------------------------------------------------------
 
@@ -189,16 +172,6 @@ def freeze_report_run(report_run):
                     )
                 )
 
-            snapshot_node.parent = snapshot_parent
-
-            # IMPORTANT:
-            # Parent assignment happens during the controlled
-            # freeze operation.
-            #
-            # We use QuerySet.update() here so we do not expose
-            # a normal model save/update path for immutable
-            # snapshot data.
-
             SnapshotNode.objects.filter(
                 pk=snapshot_node.pk
             ).update(
@@ -208,12 +181,6 @@ def freeze_report_run(report_run):
         # ----------------------------------------------------------
         # 8. Create SnapshotMappings
         # ----------------------------------------------------------
-        #
-        # M7 mappings are copied into M8.
-        #
-        # The historical snapshot stores the datapoint identity,
-        # but does NOT store M5 answers or M6 calculated values.
-        #
 
         for node in nodes:
 
@@ -228,20 +195,15 @@ def freeze_report_run(report_run):
                 ),
             )
 
-            for display_order, mapping in enumerate(
-                mappings
-            ):
+            for display_order, mapping in enumerate(mappings):
 
                 datapoint = mapping.datapoint
 
                 SnapshotMapping.objects.create(
                     snapshot_node=snapshot_node,
-
                     source_mapping_id=mapping.id,
                     source_datapoint_id=datapoint.id,
-
                     canonical_datapoint_code=datapoint.code,
-
                     mapping_type=mapping.mapping_type,
                     aggregation=mapping.aggregation,
                     transform_expression=(
@@ -251,9 +213,7 @@ def freeze_report_run(report_run):
                     confidence=mapping.confidence,
                     mapping_note=mapping.mapping_note,
                     reviewed_at=mapping.reviewed_at,
-
                     display_order=display_order,
-
                     metadata={},
                 )
 
@@ -277,3 +237,276 @@ def freeze_report_run(report_run):
         # ----------------------------------------------------------
 
         return report_run
+
+
+class CapturedValueProvider:
+    """Provide approved M5 values without mutating M5 records."""
+
+    SCALAR_FIELDS = {
+        DatapointDataType.DECIMAL: "decimal_value",
+        DatapointDataType.INTEGER: "integer_value",
+        DatapointDataType.TEXT: "text_value",
+        DatapointDataType.LONG_TEXT: "text_value",
+        DatapointDataType.BOOLEAN: "boolean_value",
+        DatapointDataType.SELECT: "selected_option",
+        DatapointDataType.DATE: "date_value",
+    }
+
+    @staticmethod
+    def _person(user):
+        if user is None:
+            return None
+        return {
+            "id": user.id,
+            "username": user.username,
+            "name": user.get_full_name() or user.username,
+        }
+
+    @staticmethod
+    def _unit(unit):
+        if unit is None:
+            return None
+        return {
+            "id": unit.id,
+            "code": unit.code,
+            "name": unit.name,
+        }
+
+    @classmethod
+    def _typed_value(cls, record, definition):
+        if definition.data_type == DatapointDataType.TABLE:
+            rows = []
+            answer = record.submission.answer
+            for row in answer.table_rows.all():
+                cells = []
+                for cell in row.cells.all():
+                    field_name = cls.SCALAR_FIELDS.get(cell.column.data_type)
+                    value = getattr(cell, field_name, None) if field_name else None
+                    if cell.column.data_type == DatapointDataType.SELECT:
+                        option = cell.selected_option
+                        value = (
+                            {"id": option.id, "code": option.code, "label": option.label}
+                            if option else None
+                        )
+                    cells.append({
+                        "column_id": cell.column_id,
+                        "column_code": cell.column.code,
+                        "column_label": cell.column.label,
+                        "data_type": cell.column.data_type,
+                        "value": value,
+                        "unit": cls._unit(cell.unit),
+                    })
+                rows.append({
+                    "id": row.id,
+                    "definition_row": (
+                        {
+                            "id": row.definition_row_id,
+                            "code": row.definition_row.code,
+                            "label": row.definition_row.label,
+                        }
+                        if row.definition_row else None
+                    ),
+                    "label": row.label,
+                    "display_order": row.display_order,
+                    "cells": cells,
+                })
+            return rows
+
+        field_name = cls.SCALAR_FIELDS.get(definition.data_type)
+        value = getattr(record.submission.answer, field_name, None) if field_name else None
+        if definition.data_type in {DatapointDataType.TEXT, DatapointDataType.LONG_TEXT} and value == "":
+            return None
+        if definition.data_type == DatapointDataType.SELECT:
+            option = record.submission.answer.selected_option
+            return (
+                {"id": option.id, "code": option.code, "label": option.label}
+                if option else None
+            )
+        return value
+
+    @classmethod
+    def _record(cls, record, definition):
+        answer = getattr(record.submission, "answer", None)
+        value = cls._typed_value(record, definition) if answer else None
+        resolved = value is not None and (definition.data_type != DatapointDataType.TABLE or value != [])
+        return {
+            "status": "RESOLVED" if resolved else "UNRESOLVED",
+            "data_type": definition.data_type,
+            "data_request_id": record.id,
+            "submission_id": record.submission.id,
+            "answer_id": answer.id if answer else None,
+            "org_node_id": record.org_node_id,
+            "org_node_name": record.org_node.name if record.org_node else None,
+            "value": value,
+            "unit": cls._unit(answer.unit if answer else None),
+            "provenance": {
+                "source_type": "CAPTURED",
+                "approved_by": cls._person(record.submission.approved_by),
+                "approved_at": record.submission.approved_at,
+                "entered_by": cls._person(answer.entered_by if answer else None),
+            },
+        }
+
+    @classmethod
+    def resolve(cls, mappings, *, reporting_period):
+        codes = {mapping.canonical_datapoint_code for mapping in mappings}
+        definitions = {
+            datapoint.code: datapoint
+            for datapoint in Datapoint.objects.filter(code__in=codes)
+        }
+        table_cells = Prefetch(
+            "cells",
+            queryset=AnswerTableCell.objects.select_related(
+                "column", "unit", "selected_option"
+            ).order_by("column__display_order", "column__code", "id"),
+        )
+        table_rows = Prefetch(
+            "submission__answer__table_rows",
+            queryset=AnswerTableRow.objects.select_related(
+                "definition_row"
+            ).prefetch_related(table_cells).order_by("display_order", "created_at", "id"),
+        )
+        requests = (
+            DataRequest.objects.filter(
+                datapoint__code__in=codes,
+                reporting_period=reporting_period,
+                submission__status=SubmissionStatus.APPROVED,
+            )
+            .select_related(
+                "datapoint", "org_node", "submission", "submission__approved_by",
+                "submission__answer", "submission__answer__unit",
+                "submission__answer__entered_by", "submission__answer__selected_option",
+            )
+            .prefetch_related(table_rows)
+            .order_by("datapoint__code", "org_node__path", "org_node__name", "org_node__id", "id")
+        )
+        values_by_code = {code: [] for code in codes}
+        for record in requests:
+            definition = definitions.get(record.datapoint.code, record.datapoint)
+            values_by_code[record.datapoint.code].append(cls._record(record, definition))
+        return values_by_code, definitions
+
+
+class ReportValueResolver:
+    """Resolve frozen mappings through the approved captured-value provider."""
+
+    @classmethod
+    def build_dataset(cls, report_run):
+        """
+        Build the deterministic reporting dataset for a frozen
+        ReportRun.
+
+        The frozen M8 snapshot determines report ordering.
+
+        Approved M5 submissions provide captured values.
+
+        M6 calculated values are intentionally outside this resolver.
+        """
+
+        if not isinstance(report_run, ReportRun):
+            raise ValidationError(
+                "build_dataset requires a ReportRun instance."
+            )
+
+        # ----------------------------------------------------------
+        # Reporting resolution only applies to frozen reports.
+        # ----------------------------------------------------------
+
+        if not report_run.is_frozen:
+            raise ValidationError(
+                "Report values can only be resolved for "
+                "a frozen report run."
+            )
+
+        # ----------------------------------------------------------
+        # Locate the frozen framework snapshot.
+        # ----------------------------------------------------------
+
+        try:
+            snapshot = FrameworkSnapshot.objects.get(
+                report_run=report_run,
+            )
+        except FrameworkSnapshot.DoesNotExist as exc:
+            raise ValidationError(
+                "A frozen report run must have a framework snapshot."
+            ) from exc
+
+        # ----------------------------------------------------------
+        # IMPORTANT:
+        #
+        # M8 snapshot ordering controls report ordering.
+        #
+        # We do not order the report according to current M7
+        # structures or current M5 structures.
+        #
+        # OrgNode ordering is only used inside one mapping when
+        # several approved organizational values exist.
+        # ----------------------------------------------------------
+
+        mappings = list(
+            SnapshotMapping.objects
+            .filter(
+                snapshot_node__snapshot=snapshot,
+            )
+            .select_related(
+                "snapshot_node",
+            )
+            .order_by(
+                "snapshot_node__path",
+                "snapshot_node__display_order",
+                "snapshot_node__code",
+                "snapshot_node__id",
+                "display_order",
+                "canonical_datapoint_code",
+                "id",
+            )
+        )
+
+        values_by_code, definitions = CapturedValueProvider.resolve(
+            mappings,
+            reporting_period=report_run.reporting_period,
+        )
+        dataset = []
+
+        for mapping in mappings:
+            definition = definitions.get(mapping.canonical_datapoint_code)
+            resolved_values = values_by_code.get(
+                mapping.canonical_datapoint_code,
+                [],
+            )
+            if not resolved_values:
+                resolved_values = [{
+                    "status": "UNRESOLVED",
+                    "data_type": definition.data_type if definition else None,
+                    "data_request_id": None,
+                    "submission_id": None,
+                    "answer_id": None,
+                    "org_node_id": None,
+                    "org_node_name": None,
+                    "value": None,
+                    "unit": None,
+                    "provenance": {"source_type": "CAPTURED"},
+                }]
+
+            for resolved in resolved_values:
+
+                dataset.append(
+                    {
+                        "snapshot_node_id": (
+                            mapping.snapshot_node_id
+                        ),
+                        "snapshot_node_code": (
+                            mapping.snapshot_node.code
+                        ),
+                        "snapshot_mapping_id": mapping.id,
+                        "source_datapoint_id": (
+                            mapping.source_datapoint_id
+                        ),
+                        "canonical_datapoint_code": (
+                            mapping.canonical_datapoint_code
+                        ),
+                        **resolved,
+                    }
+                )
+
+        return dataset
