@@ -69,12 +69,12 @@ export default function DatapointList() {
 
   const [categoryFilter, setCategoryFilter] =
     useState("All");
-  
+
   const [moduleFilter, setModuleFilter] = useState("All");
   const [modules, setModules] = useState<Module[]>([]);
 
 
-  // Load Modules 
+  // Load Modules
 
   useEffect(() => {
   let ignore = false;
@@ -101,7 +101,7 @@ export default function DatapointList() {
   };
 }, []);
 
-  
+
   /* ========================================================
      LOAD DATAPOINTS
   ======================================================== */
@@ -159,7 +159,7 @@ useEffect(() => {
 }, []);
   /* ========================================================
      CATEGORY OPTIONS
-     
+
      These are derived from the API data instead of being
      hard-coded.
   ======================================================== */
@@ -211,8 +211,8 @@ const categoryOptions = useMemo(
       const matchesType =
         typeFilter === "All" ||
         datapoint.data_type === typeFilter;
-      
-       
+
+
       /* ----------------------------------------------------
          CATEGORY
       ---------------------------------------------------- */

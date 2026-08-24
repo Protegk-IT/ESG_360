@@ -457,7 +457,7 @@ export interface DatapointFormData {
 
   is_required: boolean;
 
-  allow_dynamic_rows: boolean; 
+  allow_dynamic_rows: boolean;
 
   validation_metadata: ValidationMetadata;
 
