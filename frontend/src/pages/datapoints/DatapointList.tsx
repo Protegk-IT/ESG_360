@@ -304,8 +304,6 @@ const columns = useMemo(
                   }
                 : undefined
             }
-            searchClassName="sm:w-64"
-          actionButtonSize="sm"
           >
           {/* ==================================================
     CATEGORY FILTER

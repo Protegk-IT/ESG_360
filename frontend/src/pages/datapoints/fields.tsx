@@ -33,6 +33,13 @@ import {
   validateRowCount,
   type CellPrimitive,
 } from "@/pages/datapoints/TableDatapointvalidation";
+import {
+  emptyTableCell,
+  fixedRowDraft,
+  type TableAnswerDraft,
+  type TableCellDraft,
+  type TableRowDraft,
+} from "@/pages/datapoints/tableAnswerAdapter";
 
 /* =========================================================
    FIELD VALUE
@@ -42,7 +49,7 @@ export type FieldValue =
   | string
   | number
   | boolean
-  | Record<string, unknown>[]
+  | TableAnswerDraft
   | null
   | undefined;
 
@@ -75,11 +82,7 @@ interface FieldProps {
    TABLE VALUE
 ========================================================= */
 
-type TableRowValue = Record<string, unknown> & {
-  id?: string;
-  row_code?: string | null;
-  is_dynamic?: boolean;
-};
+type TableRowValue = TableRowDraft;
 
 // Stable reference so a missing/invalid table value never
 // forces downstream useMemo hooks to see a "new" array on
@@ -675,24 +678,39 @@ function generateRowId(): string {
   return `dynamic-${Date.now()}-${dynamicRowCounter}`;
 }
 
-function parseCellValue(column: DatapointTableColumn | undefined, rawValue: unknown): unknown {
-  if (!column) return rawValue;
+function cellPrimitive(cell: TableCellDraft | undefined): CellPrimitive {
+  if (!cell) return null;
+  return (
+    cell.decimal_value ??
+    cell.integer_value ??
+    cell.text_value ??
+    cell.boolean_value ??
+    cell.date_value ??
+    null
+  );
+}
 
+function typedCellValue(
+  column: DatapointTableColumn,
+  rawValue: unknown,
+  current?: TableCellDraft,
+): TableCellDraft {
+  const base = { ...emptyTableCell(column), ...current, column: column.id };
   switch (column.data_type) {
     case "INTEGER":
-      return parseNumeric("INTEGER", String(rawValue ?? ""));
+      return { ...base, integer_value: parseNumeric("INTEGER", String(rawValue ?? "")) as number | null };
     case "DECIMAL":
-      return parseNumeric("DECIMAL", String(rawValue ?? ""));
+      return { ...base, decimal_value: parseNumeric("DECIMAL", String(rawValue ?? "")) as number | null };
     case "BOOLEAN":
-      return rawValue === true;
+      return { ...base, boolean_value: rawValue === true };
     case "DATE":
-      return rawValue === "" || rawValue == null ? null : String(rawValue);
+      return { ...base, date_value: rawValue === "" || rawValue == null ? null : String(rawValue) };
     case "TEXT":
     case "LONG_TEXT":
-      return rawValue === "" || rawValue == null ? null : String(rawValue);
+      return { ...base, text_value: rawValue === "" || rawValue == null ? null : String(rawValue) };
     default:
-      // SELECT / TABLE: no parsing rule defined yet — pass through.
-      return rawValue;
+      // SELECT and nested TABLE values have no supported M4/M5 representation.
+      return base;
   }
 }
 
@@ -767,7 +785,6 @@ function TextCellInput({
 
 const DataCell = memo(function DataCell({
   rowKey,
-  isDynamic,
   column,
   value,
   disabled,
@@ -776,13 +793,12 @@ const DataCell = memo(function DataCell({
   onCommit,
 }: {
   rowKey: string;
-  isDynamic: boolean;
   column: DatapointTableColumn;
   value: unknown;
   disabled?: boolean;
   readOnly?: boolean;
   unitsById?: Record<string, Unit>;
-  onCommit: (rowKey: string, isDynamic: boolean, columnCode: string, rawValue: unknown) => void;
+  onCommit: (rowKey: string, columnId: string, rawValue: unknown) => void;
 }) {
   const isInteractive = !disabled && !readOnly;
 
@@ -807,7 +823,7 @@ const DataCell = memo(function DataCell({
               readOnly={readOnly}
               hasError={Boolean(cellError)}
               cell
-              onCommit={(rawValue) => onCommit(rowKey, isDynamic, column.code, rawValue)}
+              onCommit={(rawValue) => onCommit(rowKey, column.id, rawValue)}
             />
             {unitCode && (
               <span className="shrink-0 text-sm text-[#6B7280]">{unitCode}</span>
@@ -827,7 +843,7 @@ const DataCell = memo(function DataCell({
             aria-readonly={readOnly || undefined}
             onCheckedChange={(next) => {
               if (!isInteractive) return;
-              onCommit(rowKey, isDynamic, column.code, next === true);
+              onCommit(rowKey, column.id, next === true);
             }}
           />
         </div>
@@ -843,7 +859,7 @@ const DataCell = memo(function DataCell({
             readOnly={readOnly}
             onChange={(event) => {
               if (!isInteractive) return;
-              onCommit(rowKey, isDynamic, column.code, event.target.value);
+              onCommit(rowKey, column.id, event.target.value);
             }}
             className={getFieldClassName({ hasError: Boolean(cellError), readOnly, cell: true })}
           />
@@ -859,7 +875,7 @@ const DataCell = memo(function DataCell({
             value={value}
             disabled={disabled}
             readOnly={readOnly}
-            onCommit={(rawValue) => onCommit(rowKey, isDynamic, column.code, rawValue)}
+          onCommit={(rawValue) => onCommit(rowKey, column.id, rawValue)}
           />
           {cellError && <p className="mt-1 text-xs text-[#B3403B]">{cellError}</p>}
         </div>
@@ -872,7 +888,7 @@ const DataCell = memo(function DataCell({
             value={value}
             disabled={disabled}
             readOnly={readOnly}
-            onCommit={(rawValue) => onCommit(rowKey, isDynamic, column.code, rawValue)}
+          onCommit={(rawValue) => onCommit(rowKey, column.id, rawValue)}
           />
           {cellError && <p className="mt-1 text-xs text-[#B3403B]">{cellError}</p>}
         </div>
@@ -920,6 +936,7 @@ const TableRowItem = memo(function TableRowItem({
   readOnly,
   unitsById,
   onCommit,
+  onLabelChange,
   onRemove,
   showActionsColumn,
 }: {
@@ -931,21 +948,32 @@ const TableRowItem = memo(function TableRowItem({
   disabled?: boolean;
   readOnly?: boolean;
   unitsById?: Record<string, Unit>;
-  onCommit: (rowKey: string, isDynamic: boolean, columnCode: string, rawValue: unknown) => void;
+  onCommit: (rowKey: string, columnId: string, rawValue: unknown) => void;
+  onLabelChange?: (label: string) => void;
   onRemove?: () => void;
   showActionsColumn: boolean;
 }) {
   return (
     <TableRow>
-      <UiTableCell className="font-semibold text-[#22243A]">{rowLabel}</UiTableCell>
+      <UiTableCell className="font-semibold text-[#22243A]">
+        {isDynamic && onLabelChange ? (
+          <Input
+            value={rowLabel}
+            onChange={(event) => onLabelChange(event.target.value)}
+            aria-label="Dynamic row label"
+            className="min-w-[160px]"
+          />
+        ) : (
+          rowLabel
+        )}
+      </UiTableCell>
 
       {columns.map((column) => (
         <UiTableCell key={column.id}>
           <DataCell
             rowKey={rowKey}
-            isDynamic={isDynamic}
             column={column}
-            value={rowValue?.[column.code]}
+            value={cellPrimitive(rowValue?.cells.find((cell) => cell.column === column.id))}
             disabled={disabled}
             readOnly={readOnly}
             unitsById={unitsById}
@@ -998,24 +1026,24 @@ export function TableField({
     [value]
   );
 
-  const valueByRowCode = useMemo(() => {
+  const valueByDefinitionRow = useMemo(() => {
     const map = new Map<string, TableRowValue>();
     for (const row of tableValue) {
-      if (!row.is_dynamic && typeof row.row_code === "string") {
-        map.set(row.row_code, row);
+      if (row.definition_row) {
+        map.set(row.definition_row, row);
       }
     }
     return map;
   }, [tableValue]);
 
   const dynamicRows = useMemo(
-    () => tableValue.filter((row) => row.is_dynamic === true),
+    () => tableValue.filter((row) => row.definition_row === null),
     [tableValue]
   );
 
-  const columnByCode = useMemo(() => {
+  const columnById = useMemo(() => {
     const map = new Map<string, DatapointTableColumn>();
-    for (const column of columns) map.set(column.code, column);
+    for (const column of columns) map.set(column.id, column);
     return map;
   }, [columns]);
 
@@ -1029,41 +1057,46 @@ export function TableField({
 
   const commitCell = (
     rowKey: string,
-    isDynamic: boolean,
-    columnCode: string,
+    columnId: string,
     rawValue: unknown
   ) => {
-    const parsed = parseCellValue(columnByCode.get(columnCode), rawValue);
-
-    const existingIndex = tableValue.findIndex((row) =>
-      isDynamic ? row.id === rowKey : !row.is_dynamic && row.row_code === rowKey
-    );
-
-    if (existingIndex === -1) {
-      const newRow: TableRowValue = isDynamic
-        ? { id: rowKey, row_code: null, is_dynamic: true, [columnCode]: parsed }
-        : { id: `fixed:${rowKey}`, row_code: rowKey, is_dynamic: false, [columnCode]: parsed };
-      onChange?.([...tableValue, newRow]);
-      return;
-    }
-
-    const nextRows = tableValue.map((row, index) =>
-      index === existingIndex ? { ...row, [columnCode]: parsed } : row
-    );
+    const column = columnById.get(columnId);
+    if (!column) return;
+    const existingRows = tableValue.some((row) => row.id === rowKey)
+      ? tableValue
+      : (() => {
+          const definition = rows.find((row) => row.id === rowKey);
+          return definition ? [...tableValue, fixedRowDraft(definition)] : tableValue;
+        })();
+    const nextRows = existingRows.map((row) => {
+      if (row.id !== rowKey) return row;
+      const existing = row.cells.find((cell) => cell.column === columnId);
+      const nextCell = typedCellValue(column, rawValue, existing);
+      return {
+        ...row,
+        cells: [...row.cells.filter((cell) => cell.column !== columnId), nextCell],
+      };
+    });
     onChange?.(nextRows);
   };
 
   const addDynamicRow = () => {
     const newRow: TableRowValue = {
       id: generateRowId(),
-      row_code: null,
-      is_dynamic: true,
+      definition_row: null,
+      label: `Row ${dynamicRows.length + 1}`,
+      display_order: Math.max(-1, ...tableValue.map((row) => row.display_order)) + 1,
+      cells: [],
     };
     onChange?.([...tableValue, newRow]);
   };
 
   const removeDynamicRow = (id: string) => {
     onChange?.(tableValue.filter((row) => row.id !== id));
+  };
+
+  const updateDynamicLabel = (id: string, label: string) => {
+    onChange?.(tableValue.map((row) => (row.id === id ? { ...row, label } : row)));
   };
 
   const showActionsColumn = allowDynamicRows;
@@ -1108,10 +1141,10 @@ export function TableField({
                 <TableRowItem
                   key={row.id}
                   rowLabel={row.label}
-                  rowKey={row.code}
+                  rowKey={(valueByDefinitionRow.get(row.id) ?? fixedRowDraft(row)).id}
                   isDynamic={false}
                   columns={columns}
-                  rowValue={valueByRowCode.get(row.code)}
+                  rowValue={valueByDefinitionRow.get(row.id) ?? fixedRowDraft(row)}
                   disabled={disabled}
                   readOnly={readOnly}
                   unitsById={unitsById}
@@ -1123,7 +1156,7 @@ export function TableField({
               {dynamicRows.map((rowValue, index) => (
                 <TableRowItem
                   key={String(rowValue.id)}
-                  rowLabel={`Row ${index + 1}`}
+                  rowLabel={rowValue.label || `Row ${index + 1}`}
                   rowKey={String(rowValue.id)}
                   isDynamic
                   columns={columns}
@@ -1132,6 +1165,7 @@ export function TableField({
                   readOnly={readOnly}
                   unitsById={unitsById}
                   onCommit={commitCell}
+                  onLabelChange={canEdit ? (label) => updateDynamicLabel(String(rowValue.id), label) : undefined}
                   onRemove={canEdit ? () => removeDynamicRow(String(rowValue.id)) : undefined}
                   showActionsColumn={showActionsColumn}
                 />

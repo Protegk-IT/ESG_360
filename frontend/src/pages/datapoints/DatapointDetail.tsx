@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
 import type {
+  Datapoint,
   DatapointDetail,
   DatapointTableColumn,
   DatapointTableRow,
@@ -73,7 +74,7 @@ function relationLabel(
 ========================================================== */
 
 interface DatapointTableDefinitionResponse {
-  datapoint: DatapointDetail;
+  datapoint: Datapoint;
   columns: DatapointTableColumn[];
   rows: DatapointTableRow[];
 }

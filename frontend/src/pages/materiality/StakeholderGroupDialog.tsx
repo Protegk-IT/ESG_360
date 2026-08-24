@@ -113,27 +113,32 @@ export default function StakeholderGroupDialog({
   ======================================================== */
 
   useEffect(() => {
-  if (!open) {
-    return;
-  }
 
-  const timer = setTimeout(() => {
+    if (!open) {
+      return;
+    }
+
     if (group) {
+
       setForm({
         name: group.name,
         description: group.description ?? "",
         weight: String(group.weight),
         is_internal: group.is_internal,
       });
+
     } else {
-      setForm(DEFAULT_FORM);
+
+      setForm(
+        DEFAULT_FORM
+      );
+
     }
 
     setError(null);
-  }, 0);
 
-  return () => clearTimeout(timer);
-}, [open, group]);
+  }, [open, group]);
+
 
   /* ========================================================
      CURRENT GROUP WEIGHT

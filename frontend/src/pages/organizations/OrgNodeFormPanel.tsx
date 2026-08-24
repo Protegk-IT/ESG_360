@@ -95,12 +95,8 @@ export default function OrgNodeFormPanel({
   /* ==========================================================
       POPULATE FORM ON OPEN
   ========================================================== */
-/* ==========================================================
-    POPULATE FORM ON OPEN
-========================================================== */
 
-useEffect(() => {
-  const populate = () => {
+  useEffect(() => {
     if (!open) return;
 
     if (mode === "edit" && editingNode) {
@@ -130,39 +126,26 @@ useEffect(() => {
       setForm(buildDefaultPayload(parentNode, companyId));
     }
     setShowAdvanced(false);
-  };
+  }, [open, mode, editingNode, parentNode, companyId]);
 
-  populate();
-}, [open, mode, editingNode, parentNode, companyId]);
-
-useEffect(() => {
-  const load = () => {
-    if (!open) return;
-    CompanyApi.getProfile()
-      .then((res) => setCompanyId(res.data?.id ?? ""))
-      .catch(() => toast.error("Unable to load company."));
-  };
-
-  load();
+  useEffect(() => {
+  if (!open) return;
+  CompanyApi.getProfile()
+    .then((res) => setCompanyId(res.data?.id ?? ""))
+    .catch(() => toast.error("Unable to load company."));
 }, [open]);
+  /* ==========================================================
+      LOCATION CASCADE
+  ========================================================== */
 
-/* ==========================================================
-    LOCATION CASCADE
-========================================================== */
-
-useEffect(() => {
-  const load = () => {
+  useEffect(() => {
     if (!open) return;
     CompanyApi.getCountries()
       .then((res) => setCountries(res.data))
       .catch(() => toast.error("Unable to load countries."));
-  };
+  }, [open]);
 
-  load();
-}, [open]);
-
-useEffect(() => {
-  const load = () => {
+  useEffect(() => {
     if (!form.country) {
       setStates([]);
       return;
@@ -170,13 +153,9 @@ useEffect(() => {
     CompanyApi.getStates(form.country)
       .then((res) => setStates(res.data))
       .catch(() => toast.error("Unable to load states."));
-  };
+  }, [form.country]);
 
-  load();
-}, [form.country]);
-
-useEffect(() => {
-  const load = () => {
+  useEffect(() => {
     if (!form.state) {
       setCities([]);
       return;
@@ -184,10 +163,8 @@ useEffect(() => {
     CompanyApi.getCities(form.state)
       .then((res) => setCities(res.data))
       .catch(() => toast.error("Unable to load cities."));
-  };
+  }, [form.state]);
 
-  load();
-}, [form.state]);
   const isFacility = form.node_type === "FACILITY";
 
   const update = <K extends keyof OrgNodePayload>(key: K, value: OrgNodePayload[K]) =>

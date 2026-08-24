@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useState,
 } from "react";
 
@@ -84,38 +85,29 @@ export default function StakeholderDialog({
   /* ========================================================
      INITIALIZE FORM
   ======================================================== */
-/* ========================================================
-   INITIALIZE FORM
-   (reset happens during render, not in an effect, so it
-   never triggers the "setState in effect" cascading-render
-   warning — see https://react.dev/learn/you-might-not-need-an-effect)
-======================================================== */
 
-const [prevInitKey, setPrevInitKey] = useState({
-  open,
-  groupId,
-  stakeholder,
-});
+  useEffect(() => {
 
-if (
-  open !== prevInitKey.open ||
-  groupId !== prevInitKey.groupId ||
-  stakeholder !== prevInitKey.stakeholder
-) {
-  setPrevInitKey({ open, groupId, stakeholder });
+    if (!open) {
+      return;
+    }
 
-  if (open) {
     setError("");
 
     if (stakeholder) {
+
       setForm({
         group: stakeholder.group,
         name: stakeholder.name,
         email: stakeholder.email,
-        organisation: stakeholder.organisation || "",
-        designation: stakeholder.designation || "",
+        organisation:
+          stakeholder.organisation || "",
+        designation:
+          stakeholder.designation || "",
       });
+
     } else {
+
       setForm({
         group: groupId,
         name: "",
@@ -123,9 +115,14 @@ if (
         organisation: "",
         designation: "",
       });
+
     }
-  }
-}
+
+  }, [
+    open,
+    groupId,
+    stakeholder,
+  ]);
 
 
   /* ========================================================

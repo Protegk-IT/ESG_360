@@ -595,13 +595,11 @@ export default function AssessmentList() {
       setLoading(false);
     }
   }, []);
-useEffect(() => {
-  const load = async () => {
-    await loadAssessments();
-  };
 
-  void load();
-}, [loadAssessments]);
+  useEffect(() => {
+    void loadAssessments();
+  }, [loadAssessments]);
+
   /* ========================================================
      CONTINUE ASSESSMENT
   ======================================================== */

@@ -50,7 +50,7 @@ import {
 import { Loader2, Pencil, Trash2, ChevronLeft } from "lucide-react";
 
 import DatapointApi from "@/api/datapoints/DatapointApi";
-import type { Datapoint, DatapointOption } from "@/types/datapoint";
+import type { DatapointDetail, DatapointOption } from "@/types/datapoint";
 
 /* ============================================================
    ZOD SCHEMA
@@ -158,7 +158,7 @@ export default function DatapointOptionsManager() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const [datapoint, setDatapoint] = useState<Datapoint | null>(null);
+  const [datapoint, setDatapoint] = useState<DatapointDetail | null>(null);
   const [options, setOptions] = useState<DatapointOption[]>([]);
   const [loading, setLoading] = useState(true);
 

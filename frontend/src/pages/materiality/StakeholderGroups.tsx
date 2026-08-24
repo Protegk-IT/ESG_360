@@ -195,19 +195,12 @@ export default function StakeholderGroups() {
   // INITIAL LOAD
   // ==========================================================
 
-  // ==========================================================
-// INITIAL LOAD
-// ==========================================================
+  useEffect(() => {
 
-useEffect(() => {
+    loadGroups();
 
-  const load = async () => {
-    await loadGroups();
-  };
+  }, [loadGroups]);
 
-  void load();
-
-}, [loadGroups]);
 
   // ==========================================================
   // TOTAL WEIGHT
@@ -1219,17 +1212,17 @@ useEffect(() => {
         ===================================================== */}
 
         <ConfirmDialog
-  open={deleteDialogOpen}
-  title="Delete Stakeholder Group"
-  description={selectedGroup
-      ? `Are you sure you want to delete "${selectedGroup.name}"? All stakeholders belonging to this group will also be removed.`
-      : "Are you sure you want to delete this stakeholder group?"}
-  confirmText="Delete Group"
-  cancelText="Cancel"
-  onConfirm={handleDelete}
-  loading={deleting}
-  onCancel={() => setDeleteDialogOpen(false)}
-/>
+                  open={deleteDialogOpen}
+                  title="Delete Stakeholder Group"
+                  description={selectedGroup
+                      ? `Are you sure you want to delete "${selectedGroup.name}"? All stakeholders belonging to this group will also be removed.`
+                      : "Are you sure you want to delete this stakeholder group?"}
+                  confirmText="Delete Group"
+                  cancelText="Cancel"
+                  onConfirm={handleDelete}
+                  loading={deleting} onCancel={function (): void {
+                      throw new Error("Function not implemented.");
+                  } }        />
 
       </div>
 

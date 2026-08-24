@@ -138,38 +138,30 @@ export default function OrganizationForm() {
   /* ==========================================================
       LOAD MASTER DATA
   ========================================================== */
-const loadSiblingNodes = useCallback(async (companyId: string) => {
-  try {
-    const response = await OrganizationApi.getAll();
-    setSiblingNodes(response.data.filter((node) => node.company === companyId));
-  } catch {
-    toast.error("Unable to load organization nodes.");
-  }
-}, []);
 
-const loadCompany = useCallback(async () => {
-  try {
-    const response = await CompanyApi.getProfile();
-    const ownCompany = response.data ?? null;
-    setCompany(ownCompany);
+  const loadCompany = async () => {
+    try {
+      const response = await CompanyApi.getProfile();
+      const ownCompany = response.data ?? null;
+      setCompany(ownCompany);
 
-    if (ownCompany) {
-      setFormData((prev) => ({ ...prev, company: ownCompany.id }));
-      void loadSiblingNodes(ownCompany.id);
+      if (ownCompany) {
+        setFormData((prev) => ({ ...prev, company: ownCompany.id }));
+        void loadSiblingNodes(ownCompany.id);
+      }
+    } catch {
+      toast.error("Unable to load company.");
     }
-  } catch {
-    toast.error("Unable to load company.");
-  }
-}, [loadSiblingNodes]);
+  };
 
-const loadCountries = useCallback(async () => {
-  try {
-    const response = await CompanyApi.getCountries();
-    setCountries(response.data);
-  } catch {
-    toast.error("Unable to load countries.");
-  }
-}, []);
+  const loadCountries = async () => {
+    try {
+      const response = await CompanyApi.getCountries();
+      setCountries(response.data);
+    } catch {
+      toast.error("Unable to load countries.");
+    }
+  };
 
   const loadStates = async (countryId: string) => {
     if (!countryId) {
@@ -202,6 +194,14 @@ const loadCountries = useCallback(async () => {
 
   // Nodes belonging to the company — used to populate the Parent
   // dropdown and to check the one-root-LEGAL_ENTITY rule.
+  const loadSiblingNodes = async (companyId: string) => {
+    try {
+      const response = await OrganizationApi.getAll();
+      setSiblingNodes(response.data.filter((node) => node.company === companyId));
+    } catch {
+      toast.error("Unable to load organization nodes.");
+    }
+  };
 
   
 const loadOrgNode = useCallback(async (nodeId: string) => {
@@ -243,43 +243,25 @@ const loadOrgNode = useCallback(async (nodeId: string) => {
 }, []);
 
   useEffect(() => {
-  const load = async () => {
-    await loadCompany();
-    await loadCountries();
-  };
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadCompany();
+    void loadCountries();
+  }, []);
 
-  void load();
-}, [loadCompany, loadCountries]);
+  useEffect(() => {
+    if (!id) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadOrgNode(id);
+  }, [id,loadOrgNode]);
 
-useEffect(() => {
-  if (!id) return;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (formData.country) void loadStates(formData.country);
+  }, [formData.country]);
 
-  const load = async () => {
-    await loadOrgNode(id);
-  };
-
-  void load();
-}, [id, loadOrgNode]);
-
-useEffect(() => {
-  const load = async () => {
-    if (formData.country) {
-      await loadStates(formData.country);
-    }
-  };
-
-  void load();
-}, [formData.country]);
-
-useEffect(() => {
-  const load = async () => {
-    if (formData.state) {
-      await loadCities(formData.state);
-    }
-  };
-
-  void load();
-}, [formData.state]);
+  useEffect(() => {
+    if (formData.state) void loadCities(formData.state);
+  }, [formData.state]);
 
   /* ==========================================================
       BUSINESS RULES (mirrors OrgNode.clean())

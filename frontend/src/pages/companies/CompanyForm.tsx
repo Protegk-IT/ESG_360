@@ -308,31 +308,22 @@ export default function CompanyForm() {
     /* ==========================================================
       SAME AS REGISTERED ADDRESS
   ========================================================== */
-useEffect(() => {
-  if (!sameAsRegistered) {
-    return;
-  }
 
-  let cancelled = false;
+  useEffect(() => {
 
-  queueMicrotask(() => {
-    if (cancelled) {
+    if (!sameAsRegistered)
       return;
-    }
 
     updateField(
       "corporate_address",
       formData.registered_address
     );
-  });
 
-  return () => {
-    cancelled = true;
-  };
-}, [
-  sameAsRegistered,
-  formData.registered_address,
-]);
+  }, [
+    sameAsRegistered,
+    formData.registered_address,
+  ]);
+
   /* ==========================================================
       SUBMIT
   ========================================================== */

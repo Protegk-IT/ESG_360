@@ -63,7 +63,7 @@ import { Loader2, Plus, Pencil, Trash2, ChevronLeft } from "lucide-react";
 import DatapointApi from "@/api/datapoints/DatapointApi";
 import { ValidationMetadataFields } from "@/pages/datapoints/ValidationMetadataFields";
 import type {
-  Datapoint,
+  DatapointDetail,
   DatapointTableColumn,
   DatapointTableColumnFormData,
   DatapointTableRow,
@@ -166,7 +166,7 @@ export default function DatapointTableDefinitionManager() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const [datapoint, setDatapoint] = useState<Datapoint | null>(null);
+  const [datapoint, setDatapoint] = useState<DatapointDetail | null>(null);
   const [columns, setColumns] = useState<DatapointTableColumn[]>([]);
   const [rows, setRows] = useState<DatapointTableRow[]>([]);
   const [unitFamilies, setUnitFamilies] = useState<UnitFamily[]>([]);

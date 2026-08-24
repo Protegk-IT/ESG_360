@@ -17,6 +17,7 @@ codes.
 | `role` | `.view`, `.create`, `.edit`, `.delete` |
 | `permission` | `.view` |
 | `dashboard`, `activity_log` | `.view` |
+| `datapoint` | `.manage` (catalog administration; authenticated users may browse catalog reads) |
 | `data` | `.enter`, `.submit`, `.approve`, `.manage` |
 
 `/api/accounts/permissions/` is read-only; `permission.create`,

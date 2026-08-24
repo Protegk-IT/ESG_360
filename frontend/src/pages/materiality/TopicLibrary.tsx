@@ -192,13 +192,12 @@ export default function TopicLibrary() {
      INITIAL LOAD
   ======================================================== */
 
-useEffect(() => {
-  const load = () => {
-    loadLibrary();
-  };
+  useEffect(() => {
 
-  load();
-}, [loadLibrary]);
+    loadLibrary();
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   /* ========================================================
@@ -457,8 +456,9 @@ useEffect(() => {
   /* ========================================================
      AUTO-EXPAND ON SEARCH
   ======================================================== */
-useEffect(() => {
-  const autoExpand = () => {
+
+  useEffect(() => {
+
     const keyword = search.trim();
 
     if (!keyword) {
@@ -471,11 +471,14 @@ useEffect(() => {
 
     setExpandedCategories(
       new Set(
-        filteredCategories.map((category) => category.id),
-      ),
+        filteredCategories.map(
+          (category) => category.id
+        )
+      )
     );
 
     setExpandedTopics((previous) => {
+
       const next = new Set(previous);
 
       topics.forEach((topic) => {
@@ -485,13 +488,12 @@ useEffect(() => {
       });
 
       return next;
+
     });
-  };
 
-  autoExpand();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, statusFilter]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [search, statusFilter]);
 
   /* ========================================================
      TOGGLE CATEGORY

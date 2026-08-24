@@ -54,32 +54,13 @@ export function validateValue(
     case "TEXT":
     case "LONG_TEXT": {
       const str = String(value);
-      if (typeof rules.min_length === "number" && str.length < rules.min_length) {
-        return `Must be at least ${rules.min_length} characters.`;
-      }
       if (typeof rules.max_length === "number" && str.length > rules.max_length) {
         return `Must be at most ${rules.max_length} characters.`;
-      }
-      if (typeof rules.pattern === "string" && rules.pattern !== "") {
-        try {
-          const re = new RegExp(rules.pattern);
-          if (!re.test(str)) return "Does not match the required format.";
-        } catch {
-          // Malformed regex stored on the column — a config problem, not
-          // something to block the user's answer on. Skip silently.
-        }
       }
       return null;
     }
 
     case "DATE": {
-      const str = String(value);
-      if (typeof rules.min_date === "string" && str < rules.min_date) {
-        return `Must be on or after ${rules.min_date}.`;
-      }
-      if (typeof rules.max_date === "string" && str > rules.max_date) {
-        return `Must be on or before ${rules.max_date}.`;
-      }
       return null;
     }
 

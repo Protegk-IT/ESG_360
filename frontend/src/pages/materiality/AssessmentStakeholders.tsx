@@ -145,17 +145,9 @@ export default function AssessmentStakeholders() {
      INITIAL LOAD
   ======================================================== */
 
-/* ========================================================
-   INITIAL LOAD
-======================================================== */
-
-useEffect(() => {
-  const load = async () => {
-    await loadData();
-  };
-
-  void load();
-}, [loadData]);
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   /* ========================================================
      TOTAL WEIGHT

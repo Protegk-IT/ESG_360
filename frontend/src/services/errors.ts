@@ -1,64 +1,35 @@
-function extractMessages(value: unknown): string[] {
-  if (typeof value === "string") return [value];
-  if (Array.isArray(value)) return value.flatMap(extractMessages);
-  if (typeof value === "object" && value !== null) {
-    return Object.values(value).flatMap(extractMessages);
+import axios from "axios";
+
+function firstMessage(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const message = firstMessage(item);
+      if (message) return message;
+    }
   }
-  return [];
+  if (value && typeof value === "object") {
+    for (const item of Object.values(value)) {
+      const message = firstMessage(item);
+      if (message) return message;
+    }
+  }
+  return null;
 }
 
-export function getApiErrorMessage(
-  error: unknown,
-  fallback = "Something went wrong. Please try again.",
-): string {
-  // Axios error
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "response" in error
-  ) {
-    const response = (
-      error as {
-        response?: {
-          data?: {
-            message?: string;
-            detail?: string;
-            errors?: Record<string, unknown>;
-          };
-        };
-      }
-    ).response;
+/**
+ * Read the backend's common `{ message, errors }` envelope while remaining
+ * compatible with existing DRF `{ detail }` and field-error responses.
+ */
+export function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (!axios.isAxiosError(error)) return fallback;
 
-    const data = response?.data;
+  const data = error.response?.data;
+  if (typeof data === "string") return data;
+  if (!data || typeof data !== "object") return error.message || fallback;
 
-    // Prefer backend's main message
-    if (data?.message) {
-      return data.message;
-    }
+  if (typeof data.message === "string") return data.message;
+  if (typeof data.detail === "string") return data.detail;
 
-    // DRF's standard top-level error shape — permission denials,
-    // auth failures, throttling, and generic APIException all
-    // return { "detail": "..." } rather than "message".
-    if (data?.detail) {
-      return data.detail;
-    }
-
-    // Field-level errors, including nested serializer errors
-    // (e.g. { field: { subfield: ["error"] } }), not just flat
-    // { field: ["error"] } / { field: "error" }.
-    if (data?.errors) {
-      const messages = extractMessages(data.errors);
-
-      if (messages.length > 0) {
-        return messages.join(" ");
-      }
-    }
-  }
-
-  // Normal Error object
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return fallback;
+  return firstMessage(data.errors ?? data) ?? fallback;
 }

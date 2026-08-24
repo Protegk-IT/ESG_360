@@ -349,21 +349,12 @@ export interface Datapoint {
        GET /datapoints/:id/table-definition/
 ========================================================== */
 
-export interface DatapointDetail extends Datapoint {
-  /*
-   * Optional category information if available.
-   */
-  category_details?: DatapointCategory;
-
-  /*
-   * Optional unit family information if available.
-   */
-  unit_family_details?: UnitFamily;
-
-  /*
-   * Optional default unit information if available.
-   */
-  default_unit_details?: Unit;
+export interface DatapointDetail
+  extends Omit<Datapoint, "category" | "unit_family" | "default_unit"> {
+  /** Detail endpoint hydrates these three foreign keys. */
+  category: DatapointCategory;
+  unit_family: UnitFamily | null;
+  default_unit: Unit | null;
 
   /*
    * SELECT datapoint

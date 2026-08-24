@@ -284,17 +284,15 @@ export default function MaterialityResults() {
     [assessmentId]
   );
 
-/* ============================================================
-   INITIAL LOAD
-============================================================ */
 
-useEffect(() => {
-  const load = async () => {
-    await loadResults();
-  };
+  /* ============================================================
+     INITIAL LOAD
+  ============================================================ */
 
-  void load();
-}, [loadResults]);
+  useEffect(() => {
+    void loadResults();
+  }, [loadResults]);
+
 
   /* ============================================================
      TOPIC RESULTS
