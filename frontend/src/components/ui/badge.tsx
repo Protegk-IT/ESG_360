@@ -17,11 +17,14 @@ const badgeVariants = cva(
 
   border
 
-  px-3
+  min-h-6
+
+  px-2.5
   py-1
 
-  text-xs
-  font-medium
+  text-[0.6875rem]
+  font-semibold
+  tracking-[0.01em]
 
   leading-none
 
@@ -42,51 +45,81 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default: `
-          border-[#D9DEE8]
+          border-[#CBD5E1]
           bg-white
-          text-[#374151]
+          text-[#334155]
         `,
 
         secondary: `
-          border-[#E5E7EB]
-          bg-[#F8FAFC]
-          text-[#475569]
+          border-[#DDD6FE]
+          bg-[#F5F3FF]
+          text-[#5B21B6]
         `,
 
         success: `
-          border-[#BBF7D0]
-          bg-[#ECFDF5]
-          text-[#15803D]
+          border-[#BBE8D4]
+          bg-[#EAF8F0]
+          text-[#167A54]
         `,
 
         warning: `
-          border-[#FDE68A]
-          bg-[#FFFBEB]
-          text-[#B45309]
+          border-[#F2D8A7]
+          bg-[#FDF3E3]
+          text-[#8A5C12]
         `,
 
         info: `
-          border-[#BFDBFE]
-          bg-[#EFF6FF]
-          text-[#2563EB]
+          border-[#C7D2FE]
+          bg-[#EEF0FF]
+          text-[#4A3FD6]
         `,
 
         system: `
           border-[#DDD6FE]
-          bg-[#F5F3FF]
-          text-[#6D28D9]
+          bg-[#ECE9FB]
+          text-[#4A3FD6]
         `,
 
         inactive: `
-          border-[#E5E7EB]
-          bg-[#F9FAFB]
-          text-[#6B7280]
+          border-[#D7DAE1]
+          bg-[#F0F1F6]
+          text-[#5E6472]
         `,
 
         destructive: `
-          border-[#FECACA]
-          bg-[#FEF2F2]
-          text-[#DC2626]
+          border-[#E8D3D2]
+          bg-[#FBE9E8]
+          text-[#B3453F]
+        `,
+
+        draft: `
+          border-[#D7DAE1]
+          bg-[#F0F1F6]
+          text-[#5E6472]
+        `,
+
+        active: `
+          border-[#BBE8D4]
+          bg-[#EAF8F0]
+          text-[#167A54]
+        `,
+
+        approved: `
+          border-[#BBE8D4]
+          bg-[#EAF8F0]
+          text-[#167A54]
+        `,
+
+        rejected: `
+          border-[#E8D3D2]
+          bg-[#FBE9E8]
+          text-[#B3453F]
+        `,
+
+        locked: `
+          border-[#D7DAE1]
+          bg-[#F0F1F6]
+          text-[#5E6472]
         `,
 
         outline: `

@@ -315,3 +315,109 @@ the resubmission. The immutable submission history retains every transition.
 This is a backend-only proof. Frontend capture screens, import handlers,
 calculations, framework/report value resolution, and notifications remain
 separate follow-up work.
+
+## Collection campaigns (M5 orchestration)
+
+`CollectionCampaign` is a manager-facing orchestration record for one
+Company and ReportingPeriod. It stores a stable code/name, default due date and
+instructions, creator, and a small `DRAFT → ACTIVE → CLOSED` operational
+state. It does **not** own capture values, review status, or a second
+lifecycle.
+
+Each explicit `CampaignTarget` records exactly one
+`Datapoint × OrgNode × intended assignee` mapping and links to the resulting
+normal `DataRequest`. The target retains the resolved due date/instructions and
+whether its request was `CREATED` or was an `EXISTING` equivalent request. A
+target is unique per campaign/datapoint/OrgNode; `DataRequest` retains its
+platform-wide uniqueness of datapoint/OrgNode/ReportingPeriod.
+
+### Generation contract
+
+`CollectionCampaignService.generate_requests(campaign, actor, targets)` takes
+an explicit list of target objects, not hidden module/category expansion. Each
+target supplies canonical M4 datapoint, OrgNode, assignee, and optional due
+date/instructions. Before writing anything it validates the complete set:
+
+- campaign period is `OPEN` and campaign is not closed;
+- target OrgNodes are active and belong to the campaign Company;
+- datapoints are active and their M4 `collection_level` matches the target:
+  `ORG_NODE`/`ANY` permit any active node, `FACILITY` requires a facility, and
+  `COMPANY` requires the Company root legal-entity node;
+- the assignee is active and has one M5-capture assignment granting both
+  `data.enter` and `data.submit` over the target node;
+- the calling manager has `data.manage` over **each** target node through the
+  same qualifying assignment/scope semantics as normal M5 request operations.
+
+The prevalidation and request/link writes run in one transaction. Thus a bad
+target leaves no partially generated campaign. New requests are created by the
+existing `DataCaptureLifecycleService.create_request`, which derives the
+canonical module code and creates the normal draft submission/events.
+
+Generation is replay-safe. Repeating an identical target set returns linked
+targets as `replayed` and creates no duplicate requests. If the unique M5
+request already exists outside the campaign, the service links it as
+`EXISTING`; it never changes that request's assignee, due date, instructions or
+lifecycle. A different value for an existing campaign target is rejected:
+use controlled reassignment instead of treating generation as an implicit
+update.
+
+### Progress and reassignment
+
+Campaign progress is a single aggregate query over linked M5 request and
+submission state. It reports target/link totals, `OPEN`/`COMPLETED`/`CANCELLED`
+request counts, each submission status, requests without a submission, and
+open requests past their due date. Campaigns do not persist duplicated progress
+or submission fields.
+
+`bulk_reassign` only accepts selected generated targets that are all open,
+draft requests. It prevalidates manager scope and new-assignee eligibility for
+every target, then calls the existing M5 reassignment service for every request
+inside one transaction. This preserves immutable `DataRequestEvent` history;
+it cannot silently move a submitted/approved request or leave half a batch
+reassigned. A locked/closed ReportingPeriod blocks both generation and bulk
+reassignment. Closing a campaign prevents later generation/reassignment but
+does not alter the linked M5 workflow records.
+
+Campaign events are append-only and record campaign creation, generation
+summary, bulk reassignment summary, and closure. They complement rather than
+replace the normal per-request and per-submission event streams.
+
+### Campaign API
+
+All endpoints are session-authenticated and use the normal CSRF/Core envelopes.
+They require canonical `data.manage`; no new permission is introduced.
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET /campaigns/` | Paginated manager-scoped campaign list. |
+| `POST /campaigns/` | Create campaign metadata for a Company/open period. |
+| `GET /campaigns/{id}/` | Campaign metadata, only targets in the manager's own scope, and campaign events. |
+| `GET /campaigns/{id}/targets/` | Paginated scoped target/request links. |
+| `POST /campaigns/{id}/generate/` | Atomically submit explicit targets and create/link normal M5 requests. |
+| `GET /campaigns/{id}/progress/` | Aggregate scoped progress. |
+| `POST /campaigns/{id}/bulk-reassign/` | Transactional reassignment for explicit target UUIDs. |
+| `POST /campaigns/{id}/close/` | Close a fully manageable campaign. |
+
+Example generation request:
+
+```json
+POST /api/data-capture/campaigns/{campaignId}/generate/
+{
+  "targets": [
+    {
+      "datapoint": "a1b2…",
+      "org_node": "c3d4…",
+      "assignee": 17,
+      "due_date": "2027-06-15",
+      "instructions": "Use the signed facility utility invoice."
+    }
+  ]
+}
+```
+
+Campaign reads expose only the target rows that the manager's own
+`data.manage` assignments cover. A user cannot combine an assignment at Site A
+with another role at Site B to generate, inspect, or reassign Site B targets.
+The campaign API is backend-only in this issue; campaign UI, reminders,
+notifications, spreadsheets/imports, calculations, and reporting remain
+separate work.

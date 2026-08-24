@@ -2,6 +2,7 @@ import { Search, Download, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 interface DataTableToolbarProps {
   search: string;
@@ -15,6 +16,11 @@ interface DataTableToolbarProps {
   exportLabel?: string;
   onExport?: () => void;
   className?: string;
+  searchClassName?: string;
+  filtersClassName?: string;
+  actionButtonSize?: "default" | "sm" | "lg" | "icon";
+  addButtonClassName?: string;
+  exportButtonClassName?: string;
 }
 
 export function DataTableToolbar({
@@ -28,10 +34,18 @@ export function DataTableToolbar({
 
   exportLabel = "Export",
   onExport,
+  className,
+  searchClassName,
+  filtersClassName,
+  actionButtonSize = "default",
+  addButtonClassName,
+  exportButtonClassName,
 }: DataTableToolbarProps) {
   return (
     <div
-      className="
+      data-slot="data-table-toolbar"
+      className={cn(
+        `
         mb-6
         flex
         w-full
@@ -42,7 +56,9 @@ export function DataTableToolbar({
         sm:items-center
         sm:justify-between
         sm:gap-6
-      "
+        `,
+        className
+      )}
     >
       {/* =====================================================
           LEFT SECTION
@@ -64,13 +80,16 @@ export function DataTableToolbar({
         {/* Search */}
 
         <div
-          className="
+          className={cn(
+            `
             relative
             w-full
             shrink-0
 
             sm:w-80
-          "
+            `,
+            searchClassName
+          )}
         >
           <Search
             className="
@@ -95,7 +114,8 @@ export function DataTableToolbar({
         {/* Filters */}
 
         <div
-          className="
+          className={cn(
+            `
             flex
             items-center
             gap-3
@@ -104,7 +124,9 @@ export function DataTableToolbar({
             pb-1
 
             sm:pb-0
-          "
+            `,
+            filtersClassName
+          )}
         >
           {children}
         </div>
@@ -127,8 +149,9 @@ export function DataTableToolbar({
         {onExport && (
           <Button
             variant="outline"
+            size={actionButtonSize}
             onClick={onExport}
-            className="flex-1 sm:flex-none"
+            className={cn("flex-1 sm:flex-none", exportButtonClassName)}
           >
             <Download className="mr-2 h-4 w-4" />
             {exportLabel}
@@ -136,7 +159,11 @@ export function DataTableToolbar({
         )}
 
         {onAdd && (
-          <Button onClick={onAdd} className="flex-1 sm:flex-none">
+          <Button
+            size={actionButtonSize}
+            onClick={onAdd}
+            className={cn("flex-1 sm:flex-none", addButtonClassName)}
+          >
             <Plus className="mr-2 h-4 w-4" />
             {addLabel ?? "Add"}
           </Button>
