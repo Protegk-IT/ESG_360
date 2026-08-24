@@ -285,6 +285,34 @@ class DatapointSeedTests(TestCase):
             ).exists()
         )
 
+    def test_seed_upgrades_legacy_energy_kwh_base_unit(self):
+        """The expanded registry moves ENERGY's canonical base to joules."""
+        call_command("seed_modules", verbosity=0)
+        energy = UnitFamily.objects.create(code="ENERGY", name="Energy")
+        Unit.objects.create(
+            family=energy,
+            code="KWH",
+            name="Kilowatt-hour",
+            factor_to_base=Decimal("1"),
+            is_base_unit=True,
+        )
+
+        call_command("seed_datapoints", verbosity=0)
+
+        energy = UnitFamily.objects.get(code="ENERGY")
+        joule = Unit.objects.get(code="J")
+        kwh = Unit.objects.get(code="KWH")
+
+        self.assertEqual(joule.family, energy)
+        self.assertTrue(joule.is_base_unit)
+        self.assertEqual(joule.factor_to_base, Decimal("1"))
+        self.assertFalse(kwh.is_base_unit)
+        self.assertEqual(kwh.factor_to_base, Decimal("3600000"))
+        self.assertEqual(
+            Unit.objects.filter(family=energy, is_base_unit=True).count(),
+            1,
+        )
+
 
 class DatapointAPITests(TestCase):
     def setUp(self):

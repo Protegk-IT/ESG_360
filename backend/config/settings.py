@@ -61,10 +61,14 @@ INSTALLED_APPS = [
     'apps.periods',
     "apps.materiality",
     'apps.datapoints',
+    'apps.data_capture.apps.DataCaptureConfig',
+    'apps.frameworks',
+    "apps.reporting",
     "rest_framework",
     "corsheaders",
     "django_filters",
     'apps.modules',
+    'apps.calculations',
     "apps.imports.apps.ImportsConfig",
 ]
 

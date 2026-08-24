@@ -4,7 +4,7 @@ import AccessDenied from "@/components/AccessDenied";
 import { useAuth } from "@/context/AuthContext";
 
 interface ProtectedRouteProps {
-  permission: string;
+  permission?: string;
   superuserOnly?: boolean;
   children: ReactNode;
 }
@@ -28,7 +28,7 @@ export default function ProtectedRoute({
   if (superuserOnly) {
     return <AccessDenied />;
   }
-  if (permissions.includes(permission)) {
+    if (!permission || permissions.includes(permission)) {
     return <>{children}</>;
   }
 

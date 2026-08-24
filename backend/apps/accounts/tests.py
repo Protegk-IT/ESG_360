@@ -170,6 +170,7 @@ class AuthenticationAndAdministrationTests(TestCase):
             "user.view", "user.create", "user.edit", "user.delete",
             "role.view", "role.create", "role.edit", "role.delete",
             "permission.view", "dashboard.view", "activity_log.view",
+            "data.enter", "data.submit", "data.approve", "data.manage",
         }
         for module in (
             "company", "country", "state", "city", "department",

@@ -58,6 +58,8 @@ PERMISSIONS = [
 
     ("data.enter", "Enter data", "data", "EDIT"),
 
+    ("data.manage", "Manage data requests", "data", "MANAGE"),
+
     ("evidence.upload", "Upload evidence", "evidence", "CREATE"),
 
     ("data.submit", "Submit for review", "data", "APPROVE"),
@@ -159,6 +161,7 @@ ROLE_PERMISSIONS = {
         "user.manage",
         "reporting_period.manage",
         "datapoint.manage",
+        "data.manage",
         "emission_factor.manage",
         "framework_mapping.manage",
         "evidence.upload",
@@ -186,6 +189,7 @@ ROLE_PERMISSIONS = {
         "datapoint.manage",
         "emission_factor.manage",
         "framework_mapping.manage",
+        "data.manage",
         "evidence.upload",
         "data.approve",
         "materiality.run",
