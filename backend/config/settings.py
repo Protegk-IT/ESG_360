@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "django_filters",
     'apps.modules',
+    'apps.calculations',
     "apps.imports.apps.ImportsConfig",
 ]
 

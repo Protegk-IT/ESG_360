@@ -47,7 +47,7 @@ class Unit(BaseModel):
     )
 
     factor_to_base = models.DecimalField(
-        max_digits=20,
+        max_digits=30,
         decimal_places=10,
         help_text="Multiplication factor used to convert this unit to the family base unit.",
     )
