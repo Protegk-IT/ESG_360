@@ -16,9 +16,9 @@ export function AppSidebar() {
   const roleLabel = user?.is_superuser
     ? "Platform administrator"
     : user?.roles?.join(", ") || "User";
-  const canAccess = (permission?: string) =>
+    const canAccess = (permission?: string) =>
     Boolean(
-      user?.is_superuser || (permission && permissions.includes(permission)),
+      user?.is_superuser || !permission || permissions.includes(permission),
     );
   const canSeeMaterialityLibrary = Boolean(
     user?.is_superuser || user?.roles?.includes("Company Admin"),

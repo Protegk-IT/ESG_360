@@ -23,6 +23,7 @@ import type {
   DatapointDetail,
   DatapointTableColumn,
   DatapointTableRow,
+  Unit,
 } from "@/types/datapoint";
 
 import DatapointApi from "@/api/datapoints/DatapointApi";
@@ -30,6 +31,7 @@ import DatapointApi from "@/api/datapoints/DatapointApi";
 import { DynamicFieldRenderer } from "./DynamicFieldRenderer";
 import type { FieldValue } from "./fields";
 import { toast } from "sonner";
+import { useAuth } from "@/context/AuthContext";
 
 /* ==========================================================
    RELATION VALUE HELPER
@@ -82,6 +84,10 @@ interface DatapointTableDefinitionResponse {
 
 export default function DatapointDetailPage() {
   const navigate = useNavigate();
+  const { user, permissions } = useAuth();
+  const canManage = Boolean(
+    user?.is_superuser || permissions.includes("datapoint.manage")
+  );
 
   const { id } = useParams<{ id: string }>();
 
@@ -90,6 +96,7 @@ export default function DatapointDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tableLoading, setTableLoading] = useState(false);
+  const [unitsById, setUnitsById] = useState<Record<string, Unit>>({});
 
   /* ========================================================
      LOAD DATAPOINT
@@ -216,7 +223,7 @@ export default function DatapointDetailPage() {
       }
     };
 
-    void loadDefinition();
+        void loadDefinition();
 
     return () => {
       cancelled = true;
@@ -225,6 +232,69 @@ export default function DatapointDetailPage() {
     // not on every setDatapoint() call inside this same effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datapoint?.id, datapoint?.data_type]);
+
+  /* ========================================================
+     LOAD UNITS FOR DISPLAY
+
+     Resolves default_unit IDs (on the datapoint itself, and on
+     any TABLE column) into real Unit objects so DynamicFieldRenderer
+     can show a unit code next to numeric fields/cells. Uses the
+     same DatapointApi.getUnitsByFamily already used elsewhere
+     (e.g. DPtabledefinitionmanager) — no new endpoint.
+  ======================================================== */
+
+  useEffect(() => {
+    if (!datapoint) {
+      return;
+    }
+
+    const familyIds = new Set<string>();
+
+    const topLevelFamily =
+      typeof datapoint.unit_family === "string"
+        ? datapoint.unit_family
+        : datapoint.unit_family?.id;
+    if (topLevelFamily) familyIds.add(topLevelFamily);
+
+    for (const column of datapoint.table_columns ?? []) {
+      if (column.unit_family) familyIds.add(column.unit_family);
+    }
+
+    if (familyIds.size === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadUnits = async () => {
+      try {
+        const responses = await Promise.all(
+          Array.from(familyIds).map((familyId) =>
+            DatapointApi.getUnitsByFamily(familyId)
+          )
+        );
+
+        if (cancelled) return;
+
+        const nextUnitsById: Record<string, Unit> = {};
+        for (const response of responses) {
+          for (const unit of response.data) {
+            nextUnitsById[unit.id] = unit;
+          }
+        }
+
+        setUnitsById(nextUnitsById);
+      } catch (err) {
+        console.error("Failed to load units for display:", err);
+      }
+    };
+
+    void loadUnits();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [datapoint,datapoint?.id, datapoint?.unit_family, datapoint?.table_columns]);
 
   /* ========================================================
      LOADING
@@ -316,14 +386,16 @@ export default function DatapointDetailPage() {
             Back to Catalog
           </Button>
 
-          <Button
-            type="button"
-            className="gap-2"
-            onClick={() => navigate(`/datapoints/${datapoint.id}/edit`)}
-          >
-            <Pencil className="h-4 w-4" />
-            Edit Datapoint
-          </Button>
+                    {canManage && (
+            <Button
+              type="button"
+              className="gap-2"
+              onClick={() => navigate(`/datapoints/${datapoint.id}/edit`)}
+            >
+              <Pencil className="h-4 w-4" />
+              Edit Datapoint
+            </Button>
+          )}
         </div>
 
         {/* ==================================================
@@ -373,7 +445,7 @@ export default function DatapointDetailPage() {
                 Field Preview
               </h3>
 
-              {tableLoading ? (
+                            {tableLoading ? (
                 <p className="text-sm text-muted-foreground">
                   Loading table definition...
                 </p>
@@ -382,6 +454,7 @@ export default function DatapointDetailPage() {
                   datapoint={datapoint}
                   value={value}
                   onChange={setValue}
+                  unitsById={unitsById}
                 />
               )}
             </section>

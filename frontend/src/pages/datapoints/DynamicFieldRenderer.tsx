@@ -1,4 +1,4 @@
-import type { DatapointDataType, DatapointDetail } from "@/types/datapoint";
+import type { DatapointDataType, DatapointDetail, Unit } from "@/types/datapoint";
 
 import {
   DecimalField,
@@ -61,6 +61,10 @@ export interface DynamicFieldRendererProps {
   readOnly?: boolean;
   required?: boolean;
   error?: string | null;
+  /** Resolved Unit objects keyed by Unit ID, for numeric fields/cells
+   *  that have a unit family. Optional — omitted callers see no unit
+   *  suffix, same as before this change. */
+  unitsById?: Record<string, Unit>;
 }
 
 /* ==========================================================
@@ -83,6 +87,7 @@ export function DynamicFieldRenderer({
   readOnly = false,
   required,
   error = null,
+  unitsById,
 }: DynamicFieldRendererProps) {
   // Only fills in a default when the value was never set at
   // all. An explicit null/"" from the caller is respected.
@@ -102,12 +107,13 @@ export function DynamicFieldRenderer({
        DECIMAL
     ====================================================== */
 
-    case "DECIMAL":
+     case "DECIMAL":
       return (
         <DecimalField
           {...sharedProps}
           value={typeof resolvedValue === "number" ? resolvedValue : null}
           onChange={(newValue) => onChange(newValue)}
+          unitsById={unitsById}
         />
       );
 
@@ -115,12 +121,13 @@ export function DynamicFieldRenderer({
        INTEGER
     ====================================================== */
 
-    case "INTEGER":
+     case "INTEGER":
       return (
         <IntegerField
           {...sharedProps}
           value={typeof resolvedValue === "number" ? resolvedValue : null}
           onChange={(newValue) => onChange(newValue)}
+          unitsById={unitsById}
         />
       );
 
@@ -198,12 +205,13 @@ export function DynamicFieldRenderer({
        datapoint.table_rows (DatapointTableColumn / Row).
     ====================================================== */
 
-    case "TABLE":
+      case "TABLE":
       return (
         <TableField
           {...sharedProps}
           value={Array.isArray(resolvedValue) ? resolvedValue : []}
           onChange={(newValue) => onChange(newValue)}
+          unitsById={unitsById}
         />
       );
 

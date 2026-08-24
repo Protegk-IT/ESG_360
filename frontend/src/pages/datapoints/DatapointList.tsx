@@ -30,6 +30,7 @@ import type {
 import DatapointApi from "@/api/datapoints/DatapointApi";
 import { getDatapointColumns } from "./datapoint-columns";
 import ModuleApi from "@/api/modules/ModuleApi";
+import { useAuth } from "@/context/AuthContext";
 
 /* ==========================================================
    DATAPOINT LIST
@@ -37,6 +38,10 @@ import ModuleApi from "@/api/modules/ModuleApi";
 
 export default function DatapointList() {
   const navigate = useNavigate();
+  const { user, permissions } = useAuth();
+  const canManage = Boolean(
+    user?.is_superuser || permissions.includes("datapoint.manage")
+  );
 
   /* ========================================================
      STATE
@@ -261,10 +266,11 @@ const columns = useMemo(
 
       getCategoryName: (categoryId) =>
         categoryNameMap.get(categoryId) ?? "-",
-    }),
-  [navigate, categoryNameMap]
-);
 
+      canManage,
+    }),
+  [navigate, categoryNameMap, canManage]
+);
   /* ========================================================
      RENDER
   ======================================================== */
@@ -287,13 +293,17 @@ const columns = useMemo(
             : "No datapoints found."
         }
         toolbar={
-          <DataTableToolbar
+                    <DataTableToolbar
             search={search}
             onSearchChange={setSearch}
-            addLabel="Add Datapoint"
-            onAdd={() => {
-              navigate("/datapoints/create");
-            }}
+            addLabel={canManage ? "Add Datapoint" : undefined}
+            onAdd={
+              canManage
+                ? () => {
+                    navigate("/datapoints/create");
+                  }
+                : undefined
+            }
             searchClassName="sm:w-64"
           actionButtonSize="sm"
           >

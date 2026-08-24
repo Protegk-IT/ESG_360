@@ -1,3 +1,12 @@
+function extractMessages(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(extractMessages);
+  if (typeof value === "object" && value !== null) {
+    return Object.values(value).flatMap(extractMessages);
+  }
+  return [];
+}
+
 export function getApiErrorMessage(
   error: unknown,
   fallback = "Something went wrong. Please try again.",
@@ -13,7 +22,8 @@ export function getApiErrorMessage(
         response?: {
           data?: {
             message?: string;
-            errors?: Record<string, string[] | string>;
+            detail?: string;
+            errors?: Record<string, unknown>;
           };
         };
       }
@@ -26,13 +36,18 @@ export function getApiErrorMessage(
       return data.message;
     }
 
-    // Otherwise use field-level errors
+    // DRF's standard top-level error shape — permission denials,
+    // auth failures, throttling, and generic APIException all
+    // return { "detail": "..." } rather than "message".
+    if (data?.detail) {
+      return data.detail;
+    }
+
+    // Field-level errors, including nested serializer errors
+    // (e.g. { field: { subfield: ["error"] } }), not just flat
+    // { field: ["error"] } / { field: "error" }.
     if (data?.errors) {
-      const messages = Object.values(data.errors)
-        .flatMap((value) =>
-          Array.isArray(value) ? value : [value],
-        )
-        .filter(Boolean);
+      const messages = extractMessages(data.errors);
 
       if (messages.length > 0) {
         return messages.join(" ");

@@ -38,6 +38,7 @@ import { Loader2, ListChecks, Table2 } from "lucide-react";
 import DatapointApi from "@/api/datapoints/DatapointApi";
 import ModuleApi from "@/api/modules/ModuleApi";
 import { ValidationMetadataFields } from "@/pages/datapoints/ValidationMetadataFields";
+import { getApiErrorMessage } from "@/services/errors";
 
 import type {
   DatapointFormData,
@@ -119,7 +120,7 @@ const datapointSchema = z.object({
   category: z.string().min(1, "Category is required."),
   module: z.string().min(1, "Module is required."),
   label: z.string().trim().min(1, "Label is required."),
-  description: z.string().trim().min(1, "Description is required."),
+  description: z.string().trim(),
 
   data_type: z.enum(DATA_TYPE_VALUES),
 
@@ -478,9 +479,14 @@ export default function DatapointEdit() {
 
       toast.success("Datapoint updated successfully.");
       navigate("/datapoints");
-    } catch (error) {
+        } catch (error) {
       console.error("Failed to update datapoint:", error);
-      toast.error("Failed to update datapoint. Please check the form and try again.");
+      toast.error(
+        getApiErrorMessage(
+          error,
+          "Failed to update datapoint. Please check the form and try again."
+        )
+      );
     } finally {
       setSubmitting(false);
     }
@@ -664,15 +670,12 @@ export default function DatapointEdit() {
                     DESCRIPTION
                 ================================================== */}
 
-                <FormField
+                                <FormField
                   control={control}
                   name="description"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>
-                        Description
-                        <RequiredMark />
-                      </FormLabel>
+                      <FormLabel>Description</FormLabel>
                       <FormControl>
                         <Textarea
                           rows={4}

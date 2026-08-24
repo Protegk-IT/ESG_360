@@ -7,10 +7,13 @@ export type CellPrimitive = string | number | boolean | null;
    ----------------------------------------------------------
    Single source of truth for what a column/datapoint's
    validation_metadata means, keyed by data_type. Used by:
-     - TableAnswerRenderer (per-cell validation while answering)
+     - DataCell / TableField in fields.tsx (per-cell validation
+       and dynamic row-count validation in the active TABLE
+       renderer)
      - anywhere else that needs to check a value against rules
    without re-deriving the same switch statement.
 ========================================================== */
+
 
 export function validateValue(
   dataType: DatapointDataType,

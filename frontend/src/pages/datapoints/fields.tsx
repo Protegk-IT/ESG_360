@@ -1,5 +1,4 @@
 
-
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,7 +25,14 @@ import {
 import type {
   DatapointDetail,
   DatapointTableColumn,
+  Unit,
 } from "@/types/datapoint";
+
+import {
+  validateValue,
+  validateRowCount,
+  type CellPrimitive,
+} from "@/pages/datapoints/TableDatapointvalidation";
 
 /* =========================================================
    FIELD VALUE
@@ -60,6 +66,9 @@ interface FieldProps {
   readOnly?: boolean;
   required?: boolean;
   error?: string | null;
+  /** Resolved Unit objects keyed by Unit ID. Optional — omitted
+   *  callers see no unit suffix, same as before this change. */
+  unitsById?: Record<string, Unit>;
 }
 
 /* =========================================================
@@ -81,6 +90,39 @@ const EMPTY_TABLE_VALUE: TableRowValue[] = [];
 // since Radix items can't have an empty-string value. Mapped
 // back to null the moment it leaves this component.
 const SELECT_CLEAR_VALUE = "__clear__";
+
+/* =========================================================
+   UNIT LOOKUP
+   ---------------------------------------------------------
+   default_unit on a Datapoint/DatapointTableColumn is stored
+   as a unit ID (string). Callers that already have the full
+   Unit list (e.g. a detail/edit page that already fetches
+   units for the relevant unit family) can pass it here as
+   `unitsById` to show a real unit code next to numeric
+   fields/cells. Omitted by a caller → nothing renders, same
+   as before this change.
+========================================================= */
+
+function resolveUnitCode(
+  unitId: string | null | undefined,
+  unitsById?: Record<string, Unit>
+): string | null {
+  if (!unitId || !unitsById) return null;
+  return unitsById[unitId]?.code ?? null;
+}
+
+/* Narrows a FieldValue (or unknown table-cell value) down to
+   the CellPrimitive shape validateValue expects. */
+function toCellPrimitive(value: unknown): CellPrimitive {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  return null;
+}
 
 /* =========================================================
    SHARED STYLE HELPERS
@@ -255,17 +297,39 @@ export function DecimalField({
   readOnly,
   required,
   error,
+  unitsById,
 }: FieldProps) {
+  const isRequired = required ?? datapoint.is_required;
+  const resolvedError =
+    error ??
+    validateValue(
+      "DECIMAL",
+      datapoint.validation_metadata,
+      toCellPrimitive(value),
+      isRequired
+    );
+  const unitCode = resolveUnitCode(
+    typeof datapoint.default_unit === "string"
+      ? datapoint.default_unit
+      : datapoint.default_unit?.id ?? null,
+    unitsById
+  );
+
   return (
-    <FieldWrapper datapoint={datapoint} required={required} error={error}>
-      <NumericInput
-        kind="DECIMAL"
-        value={value}
-        disabled={disabled}
-        readOnly={readOnly}
-        hasError={Boolean(error)}
-        onCommit={(rawValue) => onChange?.(parseNumeric("DECIMAL", rawValue))}
-      />
+    <FieldWrapper datapoint={datapoint} required={required} error={resolvedError}>
+      <div className="flex items-center gap-2">
+        <NumericInput
+          kind="DECIMAL"
+          value={value}
+          disabled={disabled}
+          readOnly={readOnly}
+          hasError={Boolean(resolvedError)}
+          onCommit={(rawValue) => onChange?.(parseNumeric("DECIMAL", rawValue))}
+        />
+        {unitCode && (
+          <span className="shrink-0 text-sm text-[#6B7280]">{unitCode}</span>
+        )}
+      </div>
     </FieldWrapper>
   );
 }
@@ -282,17 +346,39 @@ export function IntegerField({
   readOnly,
   required,
   error,
+  unitsById,
 }: FieldProps) {
+  const isRequired = required ?? datapoint.is_required;
+  const resolvedError =
+    error ??
+    validateValue(
+      "INTEGER",
+      datapoint.validation_metadata,
+      toCellPrimitive(value),
+      isRequired
+    );
+   const unitCode = resolveUnitCode(
+    typeof datapoint.default_unit === "string"
+      ? datapoint.default_unit
+      : datapoint.default_unit?.id ?? null,
+    unitsById
+  );
+
   return (
-    <FieldWrapper datapoint={datapoint} required={required} error={error}>
-      <NumericInput
-        kind="INTEGER"
-        value={value}
-        disabled={disabled}
-        readOnly={readOnly}
-        hasError={Boolean(error)}
-        onCommit={(rawValue) => onChange?.(parseNumeric("INTEGER", rawValue))}
-      />
+    <FieldWrapper datapoint={datapoint} required={required} error={resolvedError}>
+      <div className="flex items-center gap-2">
+        <NumericInput
+          kind="INTEGER"
+          value={value}
+          disabled={disabled}
+          readOnly={readOnly}
+          hasError={Boolean(resolvedError)}
+          onCommit={(rawValue) => onChange?.(parseNumeric("INTEGER", rawValue))}
+        />
+        {unitCode && (
+          <span className="shrink-0 text-sm text-[#6B7280]">{unitCode}</span>
+        )}
+      </div>
     </FieldWrapper>
   );
 }
@@ -310,16 +396,26 @@ export function TextField({
   required,
   error,
 }: FieldProps) {
+  const isRequired = required ?? datapoint.is_required;
+  const resolvedError =
+    error ??
+    validateValue(
+      "TEXT",
+      datapoint.validation_metadata,
+      toCellPrimitive(value),
+      isRequired
+    );
+
   return (
-    <FieldWrapper datapoint={datapoint} required={required} error={error}>
+    <FieldWrapper datapoint={datapoint} required={required} error={resolvedError}>
       <Input
         type="text"
         value={typeof value === "string" ? value : ""}
         disabled={disabled}
         readOnly={readOnly}
-        aria-invalid={Boolean(error) || undefined}
+        aria-invalid={Boolean(resolvedError) || undefined}
         onChange={(event) => onChange?.(event.target.value)}
-        className={getFieldClassName({ hasError: Boolean(error), readOnly })}
+        className={getFieldClassName({ hasError: Boolean(resolvedError), readOnly })}
       />
     </FieldWrapper>
   );
@@ -338,18 +434,28 @@ export function LongTextField({
   required,
   error,
 }: FieldProps) {
+  const isRequired = required ?? datapoint.is_required;
+  const resolvedError =
+    error ??
+    validateValue(
+      "LONG_TEXT",
+      datapoint.validation_metadata,
+      toCellPrimitive(value),
+      isRequired
+    );
+
   return (
-    <FieldWrapper datapoint={datapoint} required={required} error={error}>
+    <FieldWrapper datapoint={datapoint} required={required} error={resolvedError}>
       <Textarea
         rows={5}
         value={typeof value === "string" ? value : ""}
         disabled={disabled}
         readOnly={readOnly}
-        aria-invalid={Boolean(error) || undefined}
+        aria-invalid={Boolean(resolvedError) || undefined}
         onChange={(event) => onChange?.(event.target.value)}
         className={cn(
           "min-h-[120px] resize-y text-[#22243A]",
-          error ? errorBorderClasses : normalBorderClasses,
+          resolvedError ? errorBorderClasses : normalBorderClasses,
           readOnly && readOnlyClasses
         )}
       />
@@ -439,8 +545,18 @@ export function SelectField({
 
   const selectValue = typeof value === "string" && value !== "" ? value : SELECT_CLEAR_VALUE;
 
+  const isRequired = required ?? datapoint.is_required;
+  const resolvedError =
+    error ??
+    validateValue(
+      "SELECT",
+      datapoint.validation_metadata,
+      toCellPrimitive(value),
+      isRequired
+    );
+
   return (
-    <FieldWrapper datapoint={datapoint} required={required} error={error}>
+    <FieldWrapper datapoint={datapoint} required={required} error={resolvedError}>
       <Select
         value={selectValue}
         disabled={disabled || readOnly}
@@ -449,8 +565,8 @@ export function SelectField({
         }}
       >
         <SelectTrigger
-          aria-invalid={Boolean(error) || undefined}
-          className={cn("w-full", getFieldClassName({ hasError: Boolean(error), readOnly }))}
+          aria-invalid={Boolean(resolvedError) || undefined}
+          className={cn("w-full", getFieldClassName({ hasError: Boolean(resolvedError), readOnly }))}
         >
           <SelectValue placeholder="Select an option" />
         </SelectTrigger>
@@ -482,19 +598,29 @@ export function DateField({
   required,
   error,
 }: FieldProps) {
+  const isRequired = required ?? datapoint.is_required;
+  const resolvedError =
+    error ??
+    validateValue(
+      "DATE",
+      datapoint.validation_metadata,
+      toCellPrimitive(value),
+      isRequired
+    );
+
   return (
-    <FieldWrapper datapoint={datapoint} required={required} error={error}>
+    <FieldWrapper datapoint={datapoint} required={required} error={resolvedError}>
       <Input
         type="date"
         value={typeof value === "string" ? value : ""}
         disabled={disabled}
         readOnly={readOnly}
-        aria-invalid={Boolean(error) || undefined}
+        aria-invalid={Boolean(resolvedError) || undefined}
         onChange={(event) => {
           if (readOnly) return;
           onChange?.(event.target.value === "" ? null : event.target.value);
         }}
-        className={getFieldClassName({ hasError: Boolean(error), readOnly })}
+        className={getFieldClassName({ hasError: Boolean(resolvedError), readOnly })}
       />
     </FieldWrapper>
   );
@@ -646,6 +772,7 @@ const DataCell = memo(function DataCell({
   value,
   disabled,
   readOnly,
+  unitsById,
   onCommit,
 }: {
   rowKey: string;
@@ -654,24 +781,42 @@ const DataCell = memo(function DataCell({
   value: unknown;
   disabled?: boolean;
   readOnly?: boolean;
+  unitsById?: Record<string, Unit>;
   onCommit: (rowKey: string, isDynamic: boolean, columnCode: string, rawValue: unknown) => void;
 }) {
   const isInteractive = !disabled && !readOnly;
 
+  const cellError = validateValue(
+    column.data_type,
+    column.validation_metadata ?? {},
+    toCellPrimitive(value),
+    column.is_required
+  );
+
   switch (column.data_type) {
     case "INTEGER":
-    case "DECIMAL":
+    case "DECIMAL": {
+      const unitCode = resolveUnitCode(column.default_unit, unitsById);
       return (
-        <NumericInput
-          kind={column.data_type}
-          value={value}
-          disabled={disabled}
-          readOnly={readOnly}
-          hasError={false}
-          cell
-          onCommit={(rawValue) => onCommit(rowKey, isDynamic, column.code, rawValue)}
-        />
+        <div>
+          <div className="flex items-center gap-2">
+            <NumericInput
+              kind={column.data_type}
+              value={value}
+              disabled={disabled}
+              readOnly={readOnly}
+              hasError={Boolean(cellError)}
+              cell
+              onCommit={(rawValue) => onCommit(rowKey, isDynamic, column.code, rawValue)}
+            />
+            {unitCode && (
+              <span className="shrink-0 text-sm text-[#6B7280]">{unitCode}</span>
+            )}
+          </div>
+          {cellError && <p className="mt-1 text-xs text-[#B3403B]">{cellError}</p>}
+        </div>
       );
+    }
 
     case "BOOLEAN":
       return (
@@ -688,40 +833,49 @@ const DataCell = memo(function DataCell({
         </div>
       );
 
-    case "DATE":
+        case "DATE":
       return (
-        <Input
-          type="date"
-          value={typeof value === "string" ? value : ""}
-          disabled={disabled}
-          readOnly={readOnly}
-          onChange={(event) => {
-            if (!isInteractive) return;
-            onCommit(rowKey, isDynamic, column.code, event.target.value);
-          }}
-          className={getFieldClassName({ hasError: false, readOnly, cell: true })}
-        />
+        <div>
+          <Input
+            type="date"
+            value={typeof value === "string" ? value : ""}
+            disabled={disabled}
+            readOnly={readOnly}
+            onChange={(event) => {
+              if (!isInteractive) return;
+              onCommit(rowKey, isDynamic, column.code, event.target.value);
+            }}
+            className={getFieldClassName({ hasError: Boolean(cellError), readOnly, cell: true })}
+          />
+          {cellError && <p className="mt-1 text-xs text-[#B3403B]">{cellError}</p>}
+        </div>
       );
 
     case "LONG_TEXT":
       return (
-        <TextCellInput
-          multiline
-          value={value}
-          disabled={disabled}
-          readOnly={readOnly}
-          onCommit={(rawValue) => onCommit(rowKey, isDynamic, column.code, rawValue)}
-        />
+        <div>
+          <TextCellInput
+            multiline
+            value={value}
+            disabled={disabled}
+            readOnly={readOnly}
+            onCommit={(rawValue) => onCommit(rowKey, isDynamic, column.code, rawValue)}
+          />
+          {cellError && <p className="mt-1 text-xs text-[#B3403B]">{cellError}</p>}
+        </div>
       );
 
     case "TEXT":
       return (
-        <TextCellInput
-          value={value}
-          disabled={disabled}
-          readOnly={readOnly}
-          onCommit={(rawValue) => onCommit(rowKey, isDynamic, column.code, rawValue)}
-        />
+        <div>
+          <TextCellInput
+            value={value}
+            disabled={disabled}
+            readOnly={readOnly}
+            onCommit={(rawValue) => onCommit(rowKey, isDynamic, column.code, rawValue)}
+          />
+          {cellError && <p className="mt-1 text-xs text-[#B3403B]">{cellError}</p>}
+        </div>
       );
 
     case "SELECT":
@@ -764,6 +918,7 @@ const TableRowItem = memo(function TableRowItem({
   rowValue,
   disabled,
   readOnly,
+  unitsById,
   onCommit,
   onRemove,
   showActionsColumn,
@@ -775,6 +930,7 @@ const TableRowItem = memo(function TableRowItem({
   rowValue: TableRowValue | undefined;
   disabled?: boolean;
   readOnly?: boolean;
+  unitsById?: Record<string, Unit>;
   onCommit: (rowKey: string, isDynamic: boolean, columnCode: string, rawValue: unknown) => void;
   onRemove?: () => void;
   showActionsColumn: boolean;
@@ -792,6 +948,7 @@ const TableRowItem = memo(function TableRowItem({
             value={rowValue?.[column.code]}
             disabled={disabled}
             readOnly={readOnly}
+            unitsById={unitsById}
             onCommit={onCommit}
           />
         </UiTableCell>
@@ -824,6 +981,7 @@ export function TableField({
   readOnly,
   required,
   error,
+  unitsById,
 }: FieldProps) {
   const columns = useMemo(
     () => [...(datapoint.table_columns ?? [])].sort((a, b) => a.display_order - b.display_order),
@@ -863,6 +1021,11 @@ export function TableField({
 
   const allowDynamicRows = Boolean(datapoint.allow_dynamic_rows);
   const canEdit = !disabled && !readOnly;
+
+  const rowCountError = allowDynamicRows
+    ? validateRowCount(tableValue.length, datapoint.validation_metadata)
+    : null;
+  const resolvedError = error ?? rowCountError;
 
   const commitCell = (
     rowKey: string,
@@ -907,11 +1070,11 @@ export function TableField({
   const totalColSpan = Math.max(columns.length + 1 + (showActionsColumn ? 1 : 0), 1);
 
   return (
-    <FieldWrapper datapoint={datapoint} required={required} error={error}>
+    <FieldWrapper datapoint={datapoint} required={required} error={resolvedError}>
       <div
         className={cn(
           "overflow-hidden rounded-lg border-[1.5px]",
-          error ? "border-[#B3403B]" : "border-[#8891A3]"
+          resolvedError ? "border-[#B3403B]" : "border-[#8891A3]"
         )}
       >
         <div className="overflow-x-auto">
@@ -951,6 +1114,7 @@ export function TableField({
                   rowValue={valueByRowCode.get(row.code)}
                   disabled={disabled}
                   readOnly={readOnly}
+                  unitsById={unitsById}
                   onCommit={commitCell}
                   showActionsColumn={showActionsColumn}
                 />
@@ -966,6 +1130,7 @@ export function TableField({
                   rowValue={rowValue}
                   disabled={disabled}
                   readOnly={readOnly}
+                  unitsById={unitsById}
                   onCommit={commitCell}
                   onRemove={canEdit ? () => removeDynamicRow(String(rowValue.id)) : undefined}
                   showActionsColumn={showActionsColumn}

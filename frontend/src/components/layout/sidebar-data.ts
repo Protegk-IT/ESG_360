@@ -10,7 +10,7 @@ import type { LucideIcon } from "lucide-react";
 export interface SidebarSubItem {
   title: string;
   url: string;
-  permission: string;
+  permission?: string;
   companyAdminOnly?: boolean;
 }
 export interface SidebarItem {
@@ -71,7 +71,6 @@ export const navMain: SidebarItem[] = [
       {
         title: "Datapoint Catalog",
         url: "/datapoints",
-        permission: "datapoint.manage",
       },
       {
         title: "Units Manager",

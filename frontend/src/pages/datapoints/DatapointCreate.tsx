@@ -37,6 +37,7 @@ import { Loader2 } from "lucide-react";
 
 import DatapointApi from "@/api/datapoints/DatapointApi";
 import { ValidationMetadataFields } from "@/pages/datapoints/ValidationMetadataFields";
+import { getApiErrorMessage } from "@/services/errors";
 
 import type {
   DatapointFormData,
@@ -118,7 +119,7 @@ const datapointSchema = z.object({
   category: z.string().min(1, "Category is required."),
   module: z.string().min(1, "Module is required."),
   label: z.string().trim().min(1, "Label is required."),
-  description: z.string().trim().min(1, "Description is required."),
+  description: z.string().trim(),
 
   data_type: z.enum(DATA_TYPE_VALUES),
 
@@ -186,39 +187,6 @@ function RequiredMark() {
   );
 }
 
-// Error Msg handler
-function getApiErrorMessage(error: unknown): string {
-  if (typeof error === "object" && error !== null && "response" in error) {
-    const response = (
-      error as {
-        response?: {
-          data?: {
-            message?: string;
-            errors?: Record<string, string[]>;
-          };
-        };
-      }
-    ).response;
-
-    const data = response?.data;
-
-    // Prefer backend's main message
-    if (data?.message) {
-      return data.message;
-    }
-
-    // Fallback to field-level validation errors
-    if (data?.errors) {
-      const firstError = Object.values(data.errors).flat().find(Boolean);
-
-      if (firstError) {
-        return firstError;
-      }
-    }
-  }
-
-  return "Failed to create datapoint. Please try again.";
-}
 
 /* ============================================================
    COMPONENT
@@ -428,9 +396,11 @@ export default function DatapointCreate() {
       } else {
         navigate("/datapoints");
       }
-    } catch (error) {
+       } catch (error) {
       console.error("Failed to create datapoint:", error);
-      toast.error(getApiErrorMessage(error));
+      toast.error(
+        getApiErrorMessage(error, "Failed to create datapoint. Please try again.")
+      );
     } finally {
       setSubmitting(false);
     }
@@ -588,15 +558,12 @@ export default function DatapointCreate() {
                     DESCRIPTION
                 ================================================== */}
 
-                <FormField
+                  <FormField
                   control={control}
                   name="description"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>
-                        Description
-                        <RequiredMark />
-                      </FormLabel>
+                      <FormLabel>Description</FormLabel>
                       <FormControl>
                         <Textarea
                           rows={4}

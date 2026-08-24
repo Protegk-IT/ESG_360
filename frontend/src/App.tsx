@@ -44,12 +44,13 @@ const MaterialityMatrixPage = lazy(
 import DatapointList from "./pages/datapoints/DatapointList";
 import DatapointDetail from "./pages/datapoints/DatapointDetail";
 import DatapointCreate from "./pages/datapoints/DatapointCreate";
-import DatapointOptionsManager from "./pages/datapoints/Datapointoptionsmanager ";
+
 import DatapointTableDefinitionManager from "./pages/datapoints/DPtabledefinitionmanager";
 import UnitFamilyManager from "./pages/datapoints/Unitfamilymanager";
 import UnitManager from "./pages/datapoints/Unitmanager";
 import DatapointEdit from "./pages/datapoints/Datapointedit";
 import CategoryManager from "./pages/datapoints/Categorymanager";
+import DatapointOptionsManager from "./pages/datapoints/DatapointOptionsManager";
 
 export default function App() {
   return (
@@ -247,7 +248,7 @@ export default function App() {
 <Route
   path="/datapoints"
   element={
-    <ProtectedRoute permission="datapoint.manage">
+    <ProtectedRoute>
       <DatapointList />
     </ProtectedRoute>
   }
@@ -274,7 +275,7 @@ export default function App() {
 <Route
   path="/datapoints/:id"
   element={
-    <ProtectedRoute permission="datapoint.manage">
+    <ProtectedRoute>
       <DatapointDetail />
     </ProtectedRoute>
   }

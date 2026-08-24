@@ -522,7 +522,6 @@ export default function CategoryManager() {
       getApiErrorMessage(
         error,
         "Failed to save category. Please check the form and try again.",
-       
       );
     } finally {
       setSubmitting(false);

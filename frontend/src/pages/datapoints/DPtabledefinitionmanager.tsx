@@ -87,7 +87,6 @@ const COLUMN_DATA_TYPE_OPTIONS = [
   { value: "TEXT", label: "Text" },
   { value: "LONG_TEXT", label: "Long Text" },
   { value: "BOOLEAN", label: "Boolean" },
-  { value: "SELECT", label: "Select" },
   { value: "DATE", label: "Date" },
 ] as const satisfies readonly { value: string; label: string }[];
 

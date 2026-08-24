@@ -22,12 +22,14 @@ interface DatapointColumnsProps {
   onView: (id: string) => void;
   onEdit: (id: string) => void;
   getCategoryName: (categoryId: string) => string;
+  canManage: boolean;
 }
 
 export const getDatapointColumns = ({
   onView,
   onEdit,
   getCategoryName,
+  canManage,
 }: DatapointColumnsProps): ColumnDef<Datapoint>[] => [
   /* ==========================================================
      DATAPOINT
@@ -179,7 +181,7 @@ export const getDatapointColumns = ({
             </DropdownMenuTrigger>
 
             <DropdownMenuContent align="end">
-              <DropdownMenuItem
+                            <DropdownMenuItem
                 onClick={() =>
                   onView(datapoint.id)
                 }
@@ -188,14 +190,16 @@ export const getDatapointColumns = ({
                 View
               </DropdownMenuItem>
 
-              <DropdownMenuItem
-                onClick={() =>
-                  onEdit(datapoint.id)
-                }
-              >
-                <Pencil className="mr-2 h-4 w-4" />
-                Edit
-              </DropdownMenuItem>
+              {canManage && (
+                <DropdownMenuItem
+                  onClick={() =>
+                    onEdit(datapoint.id)
+                  }
+                >
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
