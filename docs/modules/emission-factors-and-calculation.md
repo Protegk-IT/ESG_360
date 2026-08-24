@@ -248,6 +248,12 @@ M6 consumes the canonical M4 Unit registry.
 
 The factor does not define or duplicate units.
 
+The expanded M4 seed is safe to run against earlier installations that
+used `KWH` as ENERGY's base unit: it first demotes the legacy base, then
+creates/updates `J` as the sole canonical ENERGY base and recalculates
+`KWH.factor_to_base` as `3600000`. The operation is transactional and
+idempotent.
+
 ```text
 EmissionFactor.input_unit
         │

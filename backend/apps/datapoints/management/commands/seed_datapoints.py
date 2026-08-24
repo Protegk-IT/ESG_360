@@ -555,6 +555,22 @@ class Command(BaseCommand):
         # CREATE / UPDATE UNITS
         # ---------------------------------------------------------
 
+        # A family has a database-enforced single-base-unit invariant.
+        # Earlier M4 installations used KWH as the ENERGY base unit;
+        # the expanded registry correctly uses J instead.  Demote any
+        # previous base before creating/updating the canonical base so an
+        # in-place seed upgrade never violates that constraint.
+        canonical_base_codes = {
+            unit_data["family"]: unit_data["code"]
+            for unit_data in units
+            if unit_data["is_base_unit"]
+        }
+        for family_code, base_code in canonical_base_codes.items():
+            Unit.objects.filter(
+                family=families[family_code],
+                is_base_unit=True,
+            ).exclude(code=base_code).update(is_base_unit=False)
+
         for unit_data in units:
             family = families[unit_data["family"]]
 
