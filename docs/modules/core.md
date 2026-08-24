@@ -64,11 +64,46 @@ roles that should see platform-wide audit history.
 
 ## Notifications
 
-Create notifications through the supported helper:
+`Notification` is the shared in-app notification model owned by `apps.core`. A
+notification belongs to exactly one recipient and is intentionally independent
+of the business model that caused it. Business modules should use the shared
+creation service rather than creating notification rows directly.
+
+### Model fields
+
+The notification model contains:
+
+* `recipient` — the user who owns the notification. This is the only user
+  relationship on the notification.
+* `notification_type` — a stable application-defined event/type identifier,
+  such as `SUBMISSION_APPROVED`.
+* `title` — the short notification heading shown to the recipient.
+* `message` — the notification body.
+* `priority` — `LOW`, `NORMAL`, or `HIGH`.
+* `is_read` — whether the recipient has marked the notification as read.
+* `read_at` — the timestamp at which the notification was marked as read,
+  when available.
+* `related_model` — optional model/class name identifying the business object
+  associated with the notification.
+* `related_object_id` — optional primary-key value of the related object,
+  stored as a string.
+* `action_url` — optional application URL that the recipient can follow to
+  inspect or act on the related object.
+* `email_sent` — a compatibility field reserved for future email delivery.
+  Creating an in-app notification does not send email and the notification
+  creation service must not mark this field as sent.
+
+The related-object fields deliberately use model name and object ID values
+instead of a Django `ForeignKey`. This keeps the core notification model
+decoupled from business applications and allows future modules to reference
+their own domain objects without introducing hard dependencies into
+`apps.core`.
+
+### Notification creation service
+
+Create notifications through the supported `notify()` service:
 
 ```python
-from apps.core.services.notification_service import notify
-
 notify(
     recipient=user,
     notification_type="SUBMISSION_APPROVED",
@@ -80,29 +115,199 @@ notify(
 )
 ```
 
-The helper stores the related object's class name and primary key as strings;
-it does not send email. `email_sent` is available for a future delivery
-workflow and must only be set by that workflow after successful delivery.
+The service contract is:
 
-## Errors and API responses
+* `recipient` is required and identifies the single notification owner.
+* `notification_type` is a stable event identifier supplied by the calling
+  module.
+* `title` and `message` contain the user-facing notification content.
+* `related_object` is optional. When supplied, its model/class name and primary
+  key are stored as strings.
+* `action_url` is optional and is stored as supplied by the caller.
+* `priority` defaults to the normal priority when no higher or lower priority
+  is required.
+* The service creates an in-app notification only; it does not send email,
+  publish a cross-user work item, or create a business-specific relationship.
 
-DRF exceptions produced by platform API views use this common shape:
+Future modules should call this service rather than importing or depending on
+the notification model's persistence details.
 
-```json
-{
-  "success": false,
-  "message": "Notification not found.",
-  "errors": {"detail": "Notification not found."}
-}
+For example, a future approvals module can notify a user without adding a
+foreign key from `Notification` to `Submission`:
+
+```python
+from apps.core.notifications.services import notify
+
+notify(
+    recipient=submission.owner,
+    notification_type="SUBMISSION_APPROVED",
+    title="Submission approved",
+    message=f"{submission.name} was approved.",
+    related_object=submission,
+    action_url=f"/submissions/{submission.id}",
+    priority="NORMAL",
+)
 ```
 
-`message` is the first useful leaf error and `errors` preserves the complete
-DRF validation structure. Existing success endpoints retain their established
-response shapes; `success_response`, `created_response`, and
-`no_content_response` are opt-in helpers for new endpoints. The first two use
-the success envelope; the last is a true bodyless HTTP 204 response. Use
-`success_response` with HTTP 200 when a client needs a deletion confirmation
-message. Do not wrap a response twice.
+Another module can use exactly the same service with a completely different
+domain model:
 
-The detailed public endpoint contract is in
+```python
+notify(
+    recipient=assessment.owner,
+    notification_type="ASSESSMENT_COMPLETED",
+    title="Assessment completed",
+    message="Your materiality assessment is ready for review.",
+    related_object=assessment,
+    action_url=f"/materiality/assessments/{assessment.id}",
+    priority="HIGH",
+)
+```
+
+Neither module requires a notification-specific foreign key to its own model.
+
+### Read/unread lifecycle
+
+Notifications are created as unread.
+
+The recipient can:
+
+1. retrieve their unread notifications;
+2. retrieve their notification history;
+3. mark an individual notification as read; and
+4. use the notification's read state when rendering notification badges or
+   inboxes.
+
+Marking a notification as read is an idempotent operation. A notification
+already marked as read remains read.
+
+The read state belongs to the notification itself because each notification has
+exactly one recipient. There is no shared read state between users.
+
+The API does not provide a mechanism for one user to mark another user's
+notification as read.
+
+### Recipient privacy rules
+
+Notifications are recipient-private.
+
+All notification retrieval and mutation operations must be scoped to the
+authenticated user. A user must not be able to:
+
+* list another user's notifications;
+* retrieve another user's notification by ID;
+* mark another user's notification as read; or
+* infer another user's notification contents through an API endpoint.
+
+The recipient restriction is an application-level access rule and is not
+replaced by the fact that a caller may otherwise have administrative or
+business permissions over the related object.
+
+Platform-wide audit permissions do not grant access to another user's private
+notifications.
+
+### API endpoints
+
+The notification API exposes recipient-scoped operations for:
+
+* listing the authenticated user's notifications;
+* retrieving an individual notification belonging to that user; and
+* marking one of the authenticated user's notifications as read.
+
+The endpoint implementation must enforce recipient ownership in the queryset
+and/or object lookup rather than retrieving an unrestricted notification and
+checking ownership only after retrieval.
+
+The detailed HTTP request/response contract is maintained in
 [Core API contract](../contracts/core-api.md).
+
+Typical usage is conceptually:
+
+```text
+GET   /api/notifications/
+GET   /api/notifications/<notification-id>/
+PATCH  /api/notifications/<notification-id>/read/
+GET   /api/notifications/unread-count/
+PATCH /api/notifications/read-all/
+```
+
+The exact route names and response envelopes are defined by the implemented
+Core API contract and should be kept consistent with that document.
+
+### Related objects and action URLs
+
+Notifications may optionally point back to the business object that caused the
+event.
+
+The relationship is represented by:
+
+```text
+related_model
+related_object_id
+```
+
+rather than a Django foreign key.
+
+For example:
+
+```text
+related_model = "Submission"
+related_object_id = "8d4..."
+action_url = "/submissions/8d4..."
+```
+
+This provides a generic reference without making `apps.core` depend on
+`Submission` or any other business-specific model.
+
+`action_url` is also optional. A notification does not have to provide a
+navigation target when the event is informational or when the target is not
+appropriate for the recipient.
+
+The notification system does not attempt to resolve the related object into a
+business-specific Python model at creation time. Calling modules remain
+responsible for supplying a valid reference and an appropriate action URL.
+
+### `email_sent` compatibility status
+
+`email_sent` remains available for compatibility with the planned notification
+delivery workflow.
+
+Its presence does **not** mean that the current notification service sends
+email.
+
+The current behavior is:
+
+* `notify()` creates an in-app notification only.
+* `notify()` must not send email.
+* `notify()` must not set `email_sent=True`.
+* A future email-delivery workflow may set `email_sent=True` only after
+  successful email delivery.
+* Existing consumers that inspect `email_sent` remain compatible with the
+  field being present.
+
+Email delivery, retry handling, provider integration, templates, delivery
+events, and delivery failure tracking are outside the current notification
+foundation.
+
+### Intentionally deferred
+
+The following capabilities are intentionally not part of the current
+notification foundation:
+
+* email notification delivery;
+* push notifications;
+* SMS notifications;
+* notification preferences and per-user channel configuration;
+* digest or scheduled notifications;
+* notification templates and localization;
+* delivery retry and dead-letter handling;
+* delivery-provider integrations;
+* cross-user notification/work-queue semantics;
+* notification grouping or deduplication;
+* bulk notification campaigns;
+* advanced notification retention policies;
+* real-time WebSocket/SSE notification delivery; and
+* business-specific foreign keys from `Notification` to domain models.
+
+These features can be added later without changing the fundamental recipient
+privacy model or the generic related-object reference pattern.

@@ -2,7 +2,7 @@ from django.test import RequestFactory, TestCase
 from rest_framework.exceptions import ErrorDetail
 from rest_framework.test import APIClient
 from unittest.mock import patch
-
+import uuid
 from apps.accounts.models import TestModel, User
 from apps.core.exceptions import get_error_message
 from apps.core.middleware import CurrentRequestMiddleware
@@ -10,7 +10,14 @@ from apps.core.models import ActivityLog, Notification
 from apps.core.response import no_content_response
 from apps.core.services.notification_service import notify
 from apps.core.thread_local import get_current_request, set_current_request
+from django.utils import timezone
+from django.core.exceptions import ValidationError
+from apps.core.serializers import NotificationSerializer
 
+from django.contrib.admin import AdminSite
+from django.contrib.auth import get_user_model
+
+from apps.core.admin import NotificationAdmin
 
 class ActivityLogMixinTests(TestCase):
     def setUp(self):
@@ -131,6 +138,7 @@ class NotificationAPITests(TestCase):
             title="Owned read",
             message="Already read.",
             is_read=True,
+            read_at=timezone.now(),
         )
         self.other_notification = Notification.objects.create(
             recipient=self.other_user,
@@ -140,6 +148,97 @@ class NotificationAPITests(TestCase):
         )
         self.client = APIClient()
         self.client.force_login(self.owner)
+
+    def test_new_notification_is_unread_without_read_timestamp(self):
+        notification = Notification.objects.create(
+            recipient=self.owner,
+            notification_type="INFO",
+            title="Unread notification",
+            message="This notification is unread.",
+        )
+
+        self.assertFalse(notification.is_read)
+        self.assertIsNone(notification.read_at)
+
+    def test_mark_as_read_sets_read_state_and_timestamp(self):
+        notification = Notification.objects.create(
+            recipient=self.owner,
+            notification_type="INFO",
+            title="Read me",
+            message="This notification should become read.",
+        )
+
+        before = timezone.now()
+        notification.mark_as_read()
+        after = timezone.now()
+
+        notification.refresh_from_db()
+
+        self.assertTrue(notification.is_read)
+        self.assertIsNotNone(notification.read_at)
+        self.assertGreaterEqual(notification.read_at, before)
+        self.assertLessEqual(notification.read_at, after)
+
+    def test_mark_as_read_is_idempotent(self):
+        notification = Notification.objects.create(
+            recipient=self.owner,
+            notification_type="INFO",
+            title="Read me",
+            message="Read timestamp must remain stable.",
+        )
+
+        notification.mark_as_read()
+        notification.refresh_from_db()
+
+        first_read_at = notification.read_at
+
+        notification.mark_as_read()
+        notification.refresh_from_db()
+
+        self.assertTrue(notification.is_read)
+        self.assertEqual(notification.read_at, first_read_at)
+
+    def test_mark_as_unread_clears_read_timestamp(self):
+        notification = Notification.objects.create(
+            recipient=self.owner,
+            notification_type="INFO",
+            title="Unread again",
+            message="This notification will become unread.",
+            is_read=True,
+            read_at=timezone.now(),
+        )
+
+        notification.mark_as_unread()
+        notification.refresh_from_db()
+
+        self.assertFalse(notification.is_read)
+        self.assertIsNone(notification.read_at)
+
+    def test_read_notification_requires_read_timestamp(self):
+        notification = Notification(
+            recipient=self.owner,
+            notification_type="INFO",
+            title="Invalid read notification",
+            message="This state should fail validation.",
+            is_read=True,
+            read_at=None,
+        )
+
+        with self.assertRaises(ValidationError):
+            notification.full_clean()
+
+    def test_unread_notification_cannot_have_read_timestamp(self):
+        notification = Notification(
+            recipient=self.owner,
+            notification_type="INFO",
+            title="Invalid unread notification",
+            message="This state should fail validation.",
+            is_read=False,
+            read_at=timezone.now(),
+        )
+
+        with self.assertRaises(ValidationError):
+            notification.full_clean()
 
     def test_list_and_mutations_are_limited_to_the_authenticated_recipient(self):
         list_response = self.client.get("/api/notifications/")
@@ -200,7 +299,404 @@ class NotificationAPITests(TestCase):
         self.assertEqual(notification.action_url, f"/records/{related_object.id}")
         self.assertEqual(notification.priority, "HIGH")
 
+    def test_notify_creates_unread_notification(self):
+        notification = notify(
+            recipient=self.owner,
+            notification_type="INFO",
+            title="Service notification",
+            message="Created through the notification service.",
+        )
 
+        self.assertEqual(notification.recipient, self.owner)
+        self.assertEqual(notification.notification_type, "INFO")
+        self.assertEqual(notification.title, "Service notification")
+        self.assertEqual(
+            notification.message,
+            "Created through the notification service.",
+        )
+        self.assertFalse(notification.is_read)
+        self.assertIsNone(notification.read_at)
+        self.assertFalse(notification.email_sent)
+
+    def test_notify_requires_recipient(self):
+        with self.assertRaises(ValidationError):
+            notify(
+                recipient=None,
+                notification_type="INFO",
+                title="Test",
+                message="Test message",
+            )
+
+    def test_notify_requires_notification_type(self):
+        with self.assertRaises(ValidationError):
+            notify(
+                recipient=self.owner,
+                notification_type="",
+                title="Test",
+                message="Test message",
+            )
+
+    def test_notify_requires_title(self):
+        with self.assertRaises(ValidationError):
+            notify(
+                recipient=self.owner,
+                notification_type="INFO",
+                title="",
+                message="Test message",
+            )
+
+    def test_notify_requires_message(self):
+        with self.assertRaises(ValidationError):
+            notify(
+                recipient=self.owner,
+                notification_type="INFO",
+                title="Test",
+                message="",
+            )
+
+    def test_notify_rejects_invalid_priority(self):
+        with self.assertRaises(ValidationError):
+            notify(
+                recipient=self.owner,
+                notification_type="INFO",
+                title="Test",
+                message="Test message",
+                priority="URGENT",
+            )
+
+    def test_notify_accepts_explicit_related_metadata(self):
+        notification = notify(
+            recipient=self.owner,
+            notification_type="IMPORT_COMPLETED",
+            title="Import completed",
+            message="The import batch completed successfully.",
+            related_model="ImportBatch",
+            related_object_id="batch-123",
+            action_url="/imports/batch-123/",
+            priority=Notification.PRIORITY_HIGH,
+        )
+
+        self.assertEqual(notification.related_model, "ImportBatch")
+        self.assertEqual(notification.related_object_id, "batch-123")
+        self.assertEqual(notification.action_url, "/imports/batch-123/")
+        self.assertEqual(
+            notification.priority,
+            Notification.PRIORITY_HIGH,
+        )
+
+    def test_notify_rejects_mixed_related_object_arguments(self):
+        related_object = TestModel.objects.create(
+            name="Related object"
+        )
+
+        with self.assertRaises(ValidationError):
+            notify(
+                recipient=self.owner,
+                notification_type="INFO",
+                title="Test",
+                message="Test message",
+                related_object=related_object,
+                related_model="OtherModel",
+                related_object_id="123",
+            )
+    def test_notification_serializer_exposes_notification_fields_as_read_only(self):
+        serializer = NotificationSerializer(instance=self.owned_unread)
+
+        expected_fields = {
+            "id",
+            "recipient",
+            "notification_type",
+            "title",
+            "message",
+            "related_model",
+            "related_object_id",
+            "action_url",
+            "priority",
+            "is_read",
+            "read_at",
+            "email_sent",
+            "created_at",
+            "updated_at",
+        }
+
+        self.assertEqual(set(serializer.fields.keys()), expected_fields)
+
+        for field_name in expected_fields:
+            self.assertTrue(
+                serializer.fields[field_name].read_only,
+                f"{field_name} should be read-only",
+            )
+
+    def test_user_can_retrieve_own_notification_detail(self):
+        response = self.client.get(
+            f"/api/notifications/{self.owned_unread.id}/"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data["id"],
+            str(self.owned_unread.id),
+        )
+        self.assertEqual(
+            response.data["title"],
+            "Owned unread",
+        )
+    def test_user_cannot_retrieve_another_users_notification_detail(self):
+        response = self.client.get(
+            f"/api/notifications/{self.other_notification.id}/"
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_notification_list_supports_unread_filter(self):
+        response = self.client.get(
+            "/api/notifications/?is_read=false"
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.assertEqual(
+            {item["id"] for item in response.data},
+            {str(self.owned_unread.id)},
+        )
+
+    def test_notification_list_supports_read_filter(self):
+        response = self.client.get(
+            "/api/notifications/?is_read=true"
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.assertEqual(
+            {item["id"] for item in response.data},
+            {str(self.owned_read.id)},
+        )
+
+    def test_notification_list_supports_priority_filter(self):
+        high_notification = Notification.objects.create(
+            recipient=self.owner,
+            notification_type="ALERT",
+            title="High priority",
+            message="High priority notification.",
+            priority=Notification.PRIORITY_HIGH,
+        )
+
+        response = self.client.get(
+            "/api/notifications/?priority=HIGH"
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.assertEqual(
+            {item["id"] for item in response.data},
+            {str(high_notification.id)},
+        )
+
+    def test_notification_list_supports_notification_type_filter(self):
+        matching = Notification.objects.create(
+            recipient=self.owner,
+            notification_type="REPORT_READY",
+            title="Report ready",
+            message="Your report is ready.",
+        )
+
+        response = self.client.get(
+            "/api/notifications/?notification_type=REPORT_READY"
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.assertEqual(
+            {item["id"] for item in response.data},
+            {str(matching.id)},
+        )
+
+    def test_invalid_is_read_filter_returns_empty_result(self):
+        response = self.client.get(
+            "/api/notifications/?is_read=invalid"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [])
+
+    def test_unauthenticated_user_cannot_access_notifications(self):
+        self.client.logout()
+
+        response = self.client.get("/api/notifications/")
+
+        self.assertIn(response.status_code, (401, 403))
+
+    def test_unauthenticated_user_cannot_access_notification_detail(self):
+        self.client.logout()
+
+        response = self.client.get(
+            f"/api/notifications/{self.owned_unread.id}/"
+        )
+
+        self.assertIn(response.status_code, (401, 403))
+
+    def test_user_cannot_mark_another_users_notification_as_read(self):
+        response = self.client.patch(
+            f"/api/notifications/{self.other_notification.id}/read/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+        self.other_notification.refresh_from_db()
+
+        self.assertFalse(self.other_notification.is_read)
+        self.assertIsNone(self.other_notification.read_at)
+
+    def test_filtered_notification_list_excludes_another_users_notifications(self):
+        response = self.client.get(
+            "/api/notifications/?notification_type=INFO"
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        returned_ids = {
+            item["id"]
+            for item in response.data
+        }
+
+        self.assertNotIn(
+            str(self.other_notification.id),
+            returned_ids,
+        )
+    def test_unknown_notification_uuid_returns_not_found(self):
+        response = self.client.get(
+            f"/api/notifications/{uuid.uuid4()}/"
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_unknown_notification_uuid_cannot_be_marked_read(self):
+        response = self.client.patch(
+            f"/api/notifications/{uuid.uuid4()}/read/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_read_all_only_marks_current_users_notifications(self):
+        response = self.client.patch(
+            "/api/notifications/read-all/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.owned_unread.refresh_from_db()
+        self.other_notification.refresh_from_db()
+
+        self.assertTrue(self.owned_unread.is_read)
+        self.assertIsNotNone(self.owned_unread.read_at)
+
+        self.assertFalse(self.other_notification.is_read)
+        self.assertIsNone(self.other_notification.read_at)
+
+    def test_mark_as_read_sets_read_at(self):
+        self.assertFalse(self.owned_unread.is_read)
+        self.assertIsNone(self.owned_unread.read_at)
+
+        response = self.client.patch(
+            f"/api/notifications/{self.owned_unread.id}/read/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.owned_unread.refresh_from_db()
+
+        self.assertTrue(self.owned_unread.is_read)
+        self.assertIsNotNone(self.owned_unread.read_at)
+
+    def test_mark_as_read_is_idempotent(self):
+        response = self.client.patch(
+            f"/api/notifications/{self.owned_unread.id}/read/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.owned_unread.refresh_from_db()
+        first_read_at = self.owned_unread.read_at
+
+        response = self.client.patch(
+            f"/api/notifications/{self.owned_unread.id}/read/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.owned_unread.refresh_from_db()
+
+        self.assertTrue(self.owned_unread.is_read)
+        self.assertEqual(self.owned_unread.read_at, first_read_at)
+
+    def test_unread_count_only_counts_current_users_notifications(self):
+        response = self.client.get(
+            "/api/notifications/unread-count/"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 1)
+
+class NotificationAdminTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+
+        self.superuser = User.objects.create_superuser(
+            username="notification-admin",
+            email="admin@example.com",
+            password="testpass123",
+        )
+
+        self.recipient = User.objects.create_user(
+            username="notification-recipient",
+            email="recipient@example.com",
+            password="testpass123",
+        )
+
+        self.notification = Notification.objects.create(
+            recipient=self.recipient,
+            notification_type="INFO",
+            title="Test notification",
+            message="Test notification message",
+        )
+
+        self.site = AdminSite()
+        self.model_admin = NotificationAdmin(
+            Notification,
+            self.site,
+        )
+
+    def test_admin_cannot_add_notifications(self):
+        self.assertFalse(
+            self.model_admin.has_add_permission(self.superuser)
+        )
+
+    def test_admin_cannot_change_notifications(self):
+        self.assertFalse(
+            self.model_admin.has_change_permission(
+                self.superuser,
+                self.notification,
+            )
+        )
+
+    def test_admin_cannot_delete_notifications(self):
+        self.assertFalse(
+            self.model_admin.has_delete_permission(
+                self.superuser,
+                self.notification,
+            )
+        )
 class ErrorContractTests(TestCase):
     def test_error_message_extraction_preserves_detail_and_validation_messages(self):
         self.assertEqual(

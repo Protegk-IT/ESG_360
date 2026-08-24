@@ -1,6 +1,9 @@
 import uuid
-from django.db import models
+
 from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.utils import timezone
 
 class BaseModel(models.Model):
     id = models.UUIDField(
@@ -75,11 +78,14 @@ class ActivityLog(BaseModel):
         ]
 
 class Notification(BaseModel):
+    PRIORITY_LOW = "LOW"
+    PRIORITY_NORMAL = "NORMAL"
+    PRIORITY_HIGH = "HIGH"
 
     PRIORITY_CHOICES = (
-        ("LOW", "Low"),
-        ("NORMAL", "Normal"),
-        ("HIGH", "High"),
+        (PRIORITY_LOW, "Low"),
+        (PRIORITY_NORMAL, "Normal"),
+        (PRIORITY_HIGH, "High"),
     )
 
     recipient = models.ForeignKey(
@@ -119,7 +125,7 @@ class Notification(BaseModel):
     priority = models.CharField(
         max_length=10,
         choices=PRIORITY_CHOICES,
-        default="NORMAL",
+        default=PRIORITY_NORMAL,
     )
 
     is_read = models.BooleanField(
@@ -136,8 +142,83 @@ class Notification(BaseModel):
     )
 
     class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(is_read=False, read_at__isnull=True)
+                    | models.Q(is_read=True, read_at__isnull=False)
+                ),
+                name="notification_read_state_consistent",
+            ),
+        ]
         db_table = "notification"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["recipient", "is_read"]),
+            models.Index(fields=["recipient", "created_at"]),
+            models.Index(fields=["recipient", "priority"]),
+            models.Index(fields=["recipient", "notification_type"]),
+        ]
+
+    def mark_as_read(self):
+        """
+        Mark this notification as read.
+
+        The operation is idempotent: calling it repeatedly does not
+        replace the original read timestamp.
+        """
+        if self.is_read and self.read_at is not None:
+            return self
+
+        self.is_read = True
+        self.read_at = self.read_at or timezone.now()
+
+        self.save(
+            update_fields=[
+                "is_read",
+                "read_at",
+                "updated_at",
+            ]
+        )
+
+        return self
+
+    def mark_as_unread(self):
+        """
+        Mark this notification as unread and clear its read timestamp.
+        """
+        if not self.is_read and self.read_at is None:
+            return self
+
+        self.is_read = False
+        self.read_at = None
+
+        self.save(
+            update_fields=[
+                "is_read",
+                "read_at",
+                "updated_at",
+            ]
+        )
+
+        return self
+
+    def clean(self):
+        super().clean()
+
+        if self.is_read and self.read_at is None:
+            raise ValidationError(
+                {
+                    "read_at": "A read notification must have a read timestamp."
+                }
+            )
+
+        if not self.is_read and self.read_at is not None:
+            raise ValidationError(
+                {
+                    "read_at": "An unread notification cannot have a read timestamp."
+                }
+            )
 
     def __str__(self):
         return self.title
