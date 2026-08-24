@@ -27,9 +27,8 @@ function toNumberOrUndefined(raw: string): number | undefined {
      DECIMAL            -> min / max / decimal_places
      INTEGER             -> min / max (no decimal_places —
                             meaningless for whole numbers)
-     TEXT, LONG_TEXT     -> min_length / max_length / pattern
-     DATE                -> min_date / max_date
-     TABLE               -> min_rows / max_rows
+     TEXT, LONG_TEXT     -> max_length
+     TABLE               -> min_rows
      BOOLEAN, SELECT      -> no rules (explicit "none" message,
                             not a silent blank)
 ========================================================== */
@@ -152,39 +151,14 @@ export function ValidationMetadataFields({
           Validation Rules
         </p>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Minimum length</Label>
-            <Input
-              type="number"
-              min={0}
-              value={typeof value.min_length === "number" ? value.min_length : ""}
-              placeholder="No minimum"
-              onChange={(e) => set("min_length", toNumberOrUndefined(e.target.value))}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Maximum length</Label>
-            <Input
-              type="number"
-              min={0}
-              value={typeof value.max_length === "number" ? value.max_length : ""}
-              placeholder="No maximum"
-              onChange={(e) => set("max_length", toNumberOrUndefined(e.target.value))}
-            />
-          </div>
-        </div>
-
         <div className="space-y-1.5">
-          <Label className="text-sm font-medium">Pattern (regex, optional)</Label>
+          <Label className="text-sm font-medium">Maximum length</Label>
           <Input
-            type="text"
-            value={typeof value.pattern === "string" ? value.pattern : ""}
-            placeholder="e.g. ^[A-Z]{3}-\d+$"
-            onChange={(e) =>
-              set("pattern", e.target.value === "" ? undefined : e.target.value)
-            }
+            type="number"
+            min={0}
+            value={typeof value.max_length === "number" ? value.max_length : ""}
+            placeholder="No maximum"
+            onChange={(e) => set("max_length", toNumberOrUndefined(e.target.value))}
           />
         </div>
       </div>
@@ -193,43 +167,24 @@ export function ValidationMetadataFields({
 
   if (dataType === "DATE") {
     return (
-      <div className="space-y-4 rounded-lg border-[1.5px] border-[#8891A3] p-4">
-        <p className="text-xs font-bold uppercase tracking-[0.06em] text-[#6B7280]">
-          Validation Rules
-        </p>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Earliest allowed date</Label>
-            <Input
-              type="date"
-              value={typeof value.min_date === "string" ? value.min_date : ""}
-              onChange={(e) =>
-                set("min_date", e.target.value === "" ? undefined : e.target.value)
-              }
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Latest allowed date</Label>
-            <Input
-              type="date"
-              value={typeof value.max_date === "string" ? value.max_date : ""}
-              onChange={(e) =>
-                set("max_date", e.target.value === "" ? undefined : e.target.value)
-              }
-            />
-          </div>
-        </div>
-      </div>
+      <p className="text-sm text-[#6B7280]">
+        No additional validation rules apply to this data type.
+      </p>
     );
   }
 
   if (dataType === "TABLE") {
     return (
-     <p className="text-sm text-[#6B7280]">
-        No additional validation rules apply to this data type.
-      </p>
+      <div className="space-y-1.5 rounded-lg border-[1.5px] border-[#8891A3] p-4">
+        <Label className="text-sm font-medium">Minimum rows</Label>
+        <Input
+          type="number"
+          min={0}
+          value={typeof value.min_rows === "number" ? value.min_rows : ""}
+          placeholder="No minimum"
+          onChange={(e) => set("min_rows", toNumberOrUndefined(e.target.value))}
+        />
+      </div>
     );
   }
 
