@@ -39,30 +39,14 @@ export default function ConfirmDialog({
         if (!value) onCancel();
       }}
     >
-      <AlertDialogContent
-        className="
-          max-w-md
-
-          overflow-hidden
-
-          rounded-xl
-
-          border
-          border-[#D9DEE8]
-
-          bg-white
-
-          p-0
-
-          shadow-2xl
-        "
-      >
+      <AlertDialogContent>
         {/* Header */}
 
         <AlertDialogHeader
           className="
             px-6
-            py-6
+            pb-3
+            pt-6
             text-left
           "
         >
@@ -79,16 +63,16 @@ export default function ConfirmDialog({
                 rounded-xl
 
                 border
-                border-red-100
+                border-[#E8D3D2]
 
-                bg-red-50
+                bg-[#F6ECEB]
               "
             >
               <AlertTriangle
                 className="
                   h-6
                   w-6
-                  text-red-600
+                  text-[#B3453F]
                 "
               />
             </div>
@@ -129,13 +113,6 @@ export default function ConfirmDialog({
             border-[#ECEEF5]
 
             bg-[#FAFAFC]
-
-            px-6
-            py-4
-
-            sm:flex-row
-            sm:justify-end
-            sm:gap-3
           "
         >
           <AlertDialogCancel
@@ -147,14 +124,15 @@ export default function ConfirmDialog({
           </AlertDialogCancel>
 
           <AlertDialogAction
+            variant="destructive"
             disabled={loading}
             onClick={onConfirm}
             className="
               min-w-[110px]
 
-              bg-[#DC2626]
+              bg-[#B3453F]
 
-              hover:bg-[#B91C1C]
+              hover:bg-[#9C3B36]
             "
           >
             {loading
