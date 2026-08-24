@@ -34,6 +34,7 @@ urlpatterns = [
     path("api/datapoints/", include("apps.datapoints.urls")),
     path("api/frameworks/", include("apps.frameworks.urls")),
     path("api/data-capture/", include("apps.data_capture.urls")),
+    path("api/reporting/", include("apps.reporting.urls")),
 ]
 
 if settings.DEBUG:
