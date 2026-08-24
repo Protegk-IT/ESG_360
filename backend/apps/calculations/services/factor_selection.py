@@ -29,6 +29,7 @@ class FactorSelectionService:
         queryset = EmissionFactor.objects.filter(
             activity_key=activity_key,
             is_active=True,
+            source__is_active=True
         )
 
         # -------------------------------------------------
@@ -37,10 +38,17 @@ class FactorSelectionService:
 
         if calculation_date is not None:
             queryset = queryset.filter(
+                #factor effective
                 Q(effective_from__isnull=True)
                 |Q(effective_from__lte=calculation_date),
                 Q(effective_to__isnull=True)
                 |Q(effective_to__gte=calculation_date),
+
+                #source effective range
+                Q(source__effective_from__isnull=True)
+                | Q(source__effective_from__lte=calculation_date),
+                Q(source__effective_to__isnull=True)
+                | Q(source__effective_to__gte=calculation_date),
             )
 
         # -------------------------------------------------

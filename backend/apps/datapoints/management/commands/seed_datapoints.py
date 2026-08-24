@@ -43,12 +43,37 @@ class Command(BaseCommand):
     # ---------------------------------------------------------
 
     def seed_units(self):
+        """
+        Seed the canonical M4 unit registry.
+
+        factor_to_base means:
+
+            quantity_in_base_unit =
+                quantity * factor_to_base
+
+        Example:
+            1 KWH = 3,600,000 J
+            therefore KWH.factor_to_base = 3600000
+
+        M6 consumes these units directly for deterministic
+        factor calculation. No duplicate units should be created
+        in M6.
+        """
 
         unit_families = {
-            "ENERGY": "Energy",
-            "VOLUME": "Volume",
+            "LENGTH": "Length",
             "MASS": "Mass",
+            "VOLUME": "Volume",
+            "ENERGY": "Energy",
+            "AREA": "Area",
+            "SPEED": "Speed",
+            "TIME": "Time",
+            "COOLING": "Cooling",
         }
+
+        # ---------------------------------------------------------
+        # UNIT FAMILIES
+        # ---------------------------------------------------------
 
         families = {}
 
@@ -59,37 +84,103 @@ class Command(BaseCommand):
                     "name": name,
                 },
             )
+
             families[code] = family
 
+        # ---------------------------------------------------------
+        # UNIT CONVERSION DATA
+        # ---------------------------------------------------------
+        #
+        # factor_to_base converts the unit INTO the family
+        # base unit.
+        #
+        # Example:
+        #
+        # ENERGY base = J
+        #
+        # 1 KWH = 3,600,000 J
+        # factor_to_base = 3600000
+        #
+        # 1 MWH = 3,600,000,000 J
+        # factor_to_base = 3600000000
+        #
+        # ---------------------------------------------------------
+
         units = [
+            # =====================================================
+            # LENGTH
+            # Base: metre
+            # =====================================================
+
             {
-                "family": "ENERGY",
-                "code": "KWH",
-                "name": "Kilowatt-hour",
+                "family": "LENGTH",
+                "code": "M",
+                "name": "Meter",
                 "factor_to_base": Decimal("1"),
                 "is_base_unit": True,
             },
             {
-                "family": "ENERGY",
-                "code": "MWH",
-                "name": "Megawatt-hour",
+                "family": "LENGTH",
+                "code": "KM",
+                "name": "Kilometer",
                 "factor_to_base": Decimal("1000"),
                 "is_base_unit": False,
             },
             {
-                "family": "VOLUME",
-                "code": "L",
-                "name": "Litre",
-                "factor_to_base": Decimal("1"),
-                "is_base_unit": True,
-            },
-            {
-                "family": "VOLUME",
-                "code": "M3",
-                "name": "Cubic metre",
-                "factor_to_base": Decimal("1000"),
+                "family": "LENGTH",
+                "code": "CM",
+                "name": "Centimeter",
+                "factor_to_base": Decimal("0.01"),
                 "is_base_unit": False,
             },
+            {
+                "family": "LENGTH",
+                "code": "MM",
+                "name": "Millimeter",
+                "factor_to_base": Decimal("0.001"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "LENGTH",
+                "code": "MI",
+                "name": "Mile",
+                "factor_to_base": Decimal("1609.344"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "LENGTH",
+                "code": "YD",
+                "name": "Yard",
+                "factor_to_base": Decimal("0.9144"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "LENGTH",
+                "code": "FT",
+                "name": "Foot",
+                "factor_to_base": Decimal("0.3048"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "LENGTH",
+                "code": "IN",
+                "name": "Inch",
+                "factor_to_base": Decimal("0.0254"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "LENGTH",
+                "code": "NMI",
+                "name": "Nautical Mile",
+                "factor_to_base": Decimal("1852"),
+                "is_base_unit": False,
+            },
+
+            # =====================================================
+            # MASS
+            # Base: kilogram
+            # =====================================================
+
             {
                 "family": "MASS",
                 "code": "KG",
@@ -99,25 +190,391 @@ class Command(BaseCommand):
             },
             {
                 "family": "MASS",
+                "code": "G",
+                "name": "Gram",
+                "factor_to_base": Decimal("0.001"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "MASS",
+                "code": "MG",
+                "name": "Milligram",
+                "factor_to_base": Decimal("0.000001"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "MASS",
                 "code": "TONNE",
                 "name": "Tonne",
                 "factor_to_base": Decimal("1000"),
                 "is_base_unit": False,
             },
+            {
+                "family": "MASS",
+                "code": "LB",
+                "name": "Pound",
+                "factor_to_base": Decimal("0.45359237"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "MASS",
+                "code": "OZ",
+                "name": "Ounce",
+                "factor_to_base": Decimal("0.0283495231"),
+                "is_base_unit": False,
+            },
+
+            # =====================================================
+            # VOLUME
+            # Base: litre
+            # =====================================================
+
+            {
+                "family": "VOLUME",
+                "code": "L",
+                "name": "Liter",
+                "factor_to_base": Decimal("1"),
+                "is_base_unit": True,
+            },
+            {
+                "family": "VOLUME",
+                "code": "ML",
+                "name": "Milliliter",
+                "factor_to_base": Decimal("0.001"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "VOLUME",
+                "code": "M3",
+                "name": "Cubic Meter",
+                "factor_to_base": Decimal("1000"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "VOLUME",
+                "code": "GAL_US",
+                "name": "Gallon (US)",
+                "factor_to_base": Decimal("3.785411784"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "VOLUME",
+                "code": "QT_US",
+                "name": "Quart (US)",
+                "factor_to_base": Decimal("0.946352946"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "VOLUME",
+                "code": "PT_US",
+                "name": "Pint (US)",
+                "factor_to_base": Decimal("0.473176473"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "VOLUME",
+                "code": "CUP_US",
+                "name": "Cup (US)",
+                "factor_to_base": Decimal("0.2365882365"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "VOLUME",
+                "code": "FT3",
+                "name": "Cubic Foot",
+                "factor_to_base": Decimal("28.316846592"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "VOLUME",
+                "code": "GAL_UK",
+                "name": "Gallon (UK)",
+                "factor_to_base": Decimal("4.54609"),
+                "is_base_unit": False,
+            },
+
+            # =====================================================
+            # ENERGY
+            # Base: joule
+            # =====================================================
+
+            {
+                "family": "ENERGY",
+                "code": "J",
+                "name": "Joule",
+                "factor_to_base": Decimal("1"),
+                "is_base_unit": True,
+            },
+            {
+                "family": "ENERGY",
+                "code": "KJ",
+                "name": "Kilojoule",
+                "factor_to_base": Decimal("1000"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "ENERGY",
+                "code": "WH",
+                "name": "Watt-hour",
+                "factor_to_base": Decimal("3600"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "ENERGY",
+                "code": "KWH",
+                "name": "Kilowatt-hour",
+                "factor_to_base": Decimal("3600000"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "ENERGY",
+                "code": "MWH",
+                "name": "Megawatt-hour",
+                "factor_to_base": Decimal("3600000000"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "ENERGY",
+                "code": "GWH",
+                "name": "Gigawatt-hour",
+                "factor_to_base": Decimal("3600000000000"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "ENERGY",
+                "code": "CAL",
+                "name": "Calorie",
+                "factor_to_base": Decimal("4.184"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "ENERGY",
+                "code": "KCAL",
+                "name": "Kilocalorie",
+                "factor_to_base": Decimal("4184"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "ENERGY",
+                "code": "GJ",
+                "name": "Gigajoule",
+                "factor_to_base": Decimal("1000000000"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "ENERGY",
+                "code": "BTU",
+                "name": "British Thermal Unit",
+                "factor_to_base": Decimal("1055.05585262"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "ENERGY",
+                "code": "THERM",
+                "name": "Therm",
+                "factor_to_base": Decimal("105505585.262"),
+                "is_base_unit": False,
+            },
+
+            # =====================================================
+            # AREA
+            # Base: square metre
+            # =====================================================
+
+            {
+                "family": "AREA",
+                "code": "M2",
+                "name": "Square Meter",
+                "factor_to_base": Decimal("1"),
+                "is_base_unit": True,
+            },
+            {
+                "family": "AREA",
+                "code": "KM2",
+                "name": "Square Kilometer",
+                "factor_to_base": Decimal("1000000"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "AREA",
+                "code": "MI2",
+                "name": "Square Mile",
+                "factor_to_base": Decimal("2589988.110336"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "AREA",
+                "code": "YD2",
+                "name": "Square Yard",
+                "factor_to_base": Decimal("0.83612736"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "AREA",
+                "code": "FT2",
+                "name": "Square Foot",
+                "factor_to_base": Decimal("0.09290304"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "AREA",
+                "code": "IN2",
+                "name": "Square Inch",
+                "factor_to_base": Decimal("0.00064516"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "AREA",
+                "code": "ACRE",
+                "name": "Acre",
+                "factor_to_base": Decimal("4046.8564224"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "AREA",
+                "code": "HECTARE",
+                "name": "Hectare",
+                "factor_to_base": Decimal("10000"),
+                "is_base_unit": False,
+            },
+
+            # =====================================================
+            # SPEED
+            # Base: metre/second
+            # =====================================================
+
+            {
+                "family": "SPEED",
+                "code": "MPS",
+                "name": "Meter per Second",
+                "factor_to_base": Decimal("1"),
+                "is_base_unit": True,
+            },
+            {
+                "family": "SPEED",
+                "code": "KMPH",
+                "name": "Kilometer per Hour",
+                "factor_to_base": Decimal("0.2777777778"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "SPEED",
+                "code": "MPH",
+                "name": "Mile per Hour",
+                "factor_to_base": Decimal("0.44704"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "SPEED",
+                "code": "KNOT",
+                "name": "Knot",
+                "factor_to_base": Decimal("0.5144444444"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "SPEED",
+                "code": "FTPS",
+                "name": "Foot per Second",
+                "factor_to_base": Decimal("0.3048"),
+                "is_base_unit": False,
+            },
+
+            # =====================================================
+            # TIME
+            # Base: second
+            # =====================================================
+
+            {
+                "family": "TIME",
+                "code": "S",
+                "name": "Second",
+                "factor_to_base": Decimal("1"),
+                "is_base_unit": True,
+            },
+            {
+                "family": "TIME",
+                "code": "MIN",
+                "name": "Minute",
+                "factor_to_base": Decimal("60"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "TIME",
+                "code": "H",
+                "name": "Hour",
+                "factor_to_base": Decimal("3600"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "TIME",
+                "code": "DAY",
+                "name": "Day",
+                "factor_to_base": Decimal("86400"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "TIME",
+                "code": "WEEK",
+                "name": "Week",
+                "factor_to_base": Decimal("604800"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "TIME",
+                "code": "MS",
+                "name": "Millisecond",
+                "factor_to_base": Decimal("0.001"),
+                "is_base_unit": False,
+            },
+            {
+                "family": "TIME",
+                "code": "US",
+                "name": "Microsecond",
+                "factor_to_base": Decimal("0.000001"),
+                "is_base_unit": False,
+            },
+
+            # =====================================================
+            # COOLING
+            #
+            # Kept as a separate family because it is a domain
+            # quantity and is not linearly interchangeable with
+            # energy without additional domain rules.
+            # =====================================================
+
+            {
+                "family": "COOLING",
+                "code": "TRH",
+                "name": "Ton of Refrigeration Hour",
+                "factor_to_base": Decimal("1"),
+                "is_base_unit": True,
+            },
         ]
 
-        for data in units:
-            family = families[data.pop("family")]
+        # ---------------------------------------------------------
+        # CREATE / UPDATE UNITS
+        # ---------------------------------------------------------
+
+        for unit_data in units:
+            family = families[unit_data["family"]]
 
             Unit.objects.update_or_create(
-                code=data["code"],
+                code=unit_data["code"],
                 defaults={
                     "family": family,
-                    **data,
+                    "name": unit_data["name"],
+                    "factor_to_base": unit_data["factor_to_base"],
+                    "is_base_unit": unit_data["is_base_unit"],
+                    "is_active": True,
                 },
             )
 
-        self.stdout.write("  Units seeded.")
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Seeded {len(families)} unit families "
+                f"and {len(units)} units."
+            )
+        )
 
     # ---------------------------------------------------------
     # DATAPOINT CATALOG

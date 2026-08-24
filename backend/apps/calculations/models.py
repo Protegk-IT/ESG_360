@@ -230,9 +230,37 @@ class CalculationRule(BaseModel):
     """
     Declarative calculation rule used by the M6 calculation service.
 
-    The rule stores configuration/metadata only. It must never contain
-    executable Python code or arbitrary expressions.
+    M6 defines the structure of rule metadata, but does not define
+    a fixed list of calculation operations at this stage.
+
+    Example:
+
+    {
+        "operation": "multiply",
+        "input": "activity_quantity",
+        "factor": "emission_factor"
+    }
+
+    The metadata is configuration only. It must not contain
+    executable code, arbitrary expressions, or unsafe instructions.
     """
+
+    # Fields that define the supported M6 metadata shape.
+    RULE_METADATA_FIELDS = {
+        "operation",
+        "input",
+        "factor",
+    }
+
+    # Fields that would indicate executable or expression-based
+    # configuration and are therefore not allowed.
+    FORBIDDEN_METADATA_FIELDS = {
+        "expression",
+        "formula",
+        "python",
+        "eval",
+        "code",
+    }
 
     code = models.CharField(
         max_length=150,
@@ -262,8 +290,9 @@ class CalculationRule(BaseModel):
         default=dict,
         blank=True,
         help_text=(
-            "Declarative calculation configuration. "
-            "Must contain metadata only and must not execute arbitrary code."
+            "Declarative calculation-rule metadata. "
+            "Must contain operation, input and factor as strings. "
+            "Must not contain executable code or arbitrary expressions."
         ),
     )
 
@@ -277,11 +306,87 @@ class CalculationRule(BaseModel):
     def clean(self):
         super().clean()
 
-        if not isinstance(self.rule_metadata, dict):
+        metadata = self.rule_metadata
+
+        # -----------------------------------------------
+        # 1. Metadata must be a JSON object
+        # -----------------------------------------------
+
+        if not isinstance(metadata, dict):
             raise ValidationError(
                 {
                     "rule_metadata": (
                         "Rule metadata must be a JSON object."
+                    )
+                }
+            )
+
+        # -----------------------------------------------
+        # 2. Required fields
+        # -----------------------------------------------
+
+        missing_fields = (
+            self.RULE_METADATA_FIELDS - metadata.keys()
+        )
+
+        if missing_fields:
+            raise ValidationError(
+                {
+                    "rule_metadata": (
+                        "Missing required rule metadata fields: "
+                        + ", ".join(sorted(missing_fields))
+                    )
+                }
+            )
+
+        # -----------------------------------------------
+        # 3. Field types
+        # -----------------------------------------------
+
+        for field in self.RULE_METADATA_FIELDS:
+            if not isinstance(metadata[field], str):
+                raise ValidationError(
+                    {
+                        "rule_metadata": (
+                            f"The '{field}' field must be a string."
+                        )
+                    }
+                )
+
+        # -----------------------------------------------
+        # 4. Reject executable/expression configuration
+        # -----------------------------------------------
+
+        forbidden_fields = (
+            self.FORBIDDEN_METADATA_FIELDS
+            & metadata.keys()
+        )
+
+        if forbidden_fields:
+            raise ValidationError(
+                {
+                    "rule_metadata": (
+                        "Executable or expression-style "
+                        "configuration is not supported: "
+                        + ", ".join(sorted(forbidden_fields))
+                    )
+                }
+            )
+
+        # -----------------------------------------------
+        # 5. Reject undefined extra fields
+        # -----------------------------------------------
+
+        extra_fields = (
+            metadata.keys() - self.RULE_METADATA_FIELDS
+        )
+
+        if extra_fields:
+            raise ValidationError(
+                {
+                    "rule_metadata": (
+                        "Unsupported rule metadata fields: "
+                        + ", ".join(sorted(extra_fields))
                     )
                 }
             )

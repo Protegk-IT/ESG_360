@@ -87,7 +87,6 @@ class Command(BaseCommand):
                 "operation": "multiply",
                 "input": "activity_quantity",
                 "factor": "emission_factor",
-                "result": "calculated_emission",
             },
             "is_active": True,
         },

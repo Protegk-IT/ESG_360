@@ -1,8 +1,9 @@
+from django.core.exceptions import ValidationError
 from django_filters.rest_framework import DjangoFilterBackend
 
 from rest_framework import filters
+from rest_framework import serializers
 from rest_framework import status
-from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -60,9 +61,6 @@ class EmissionFactorBaseViewSet(RBACModelViewSet):
 class EmissionFactorSourceViewSet(EmissionFactorBaseViewSet):
     """
     API for emission-factor sources / factor sets.
-
-    Sources represent the provenance and version context
-    for a group of emission factors.
     """
 
     queryset = EmissionFactorSource.objects.all()
@@ -157,8 +155,6 @@ class CalculationRuleViewSet(EmissionFactorBaseViewSet):
     API for declarative calculation rules.
 
     Calculation rules contain metadata/configuration only.
-    They must not contain executable Python code or arbitrary
-    expressions.
     """
 
     queryset = CalculationRule.objects.select_related(
@@ -216,7 +212,19 @@ class CalculationPreviewAPIView(APIView):
             raise_exception=True,
         )
 
-        result = serializer.calculate()
+        try:
+            result = serializer.calculate()
+        except ValidationError as exc:
+            if hasattr(exc, "message_dict"):
+                raise serializers.ValidationError(
+                    exc.message_dict
+                )
+
+            raise serializers.ValidationError(
+                {
+                    "calculation": exc.messages,
+                }
+            )
 
         return Response(
             {

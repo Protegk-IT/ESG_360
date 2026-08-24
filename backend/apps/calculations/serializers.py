@@ -69,22 +69,6 @@ class EmissionFactorSerializer(serializers.ModelSerializer):
 
         return value
 
-    def validate(self, attrs):
-        input_unit = attrs.get("input_unit")
-        output_unit = attrs.get("output_unit")
-
-        if input_unit and output_unit:
-            if input_unit.family_id == output_unit.family_id:
-                raise serializers.ValidationError(
-                    {
-                        "output_unit": (
-                            "Input and output units must belong to "
-                            "different unit families for an emission factor."
-                        )
-                    }
-                )
-
-        return attrs
 
 
 class CalculationRuleSerializer(serializers.ModelSerializer):
@@ -123,11 +107,21 @@ class CalculationPreviewSerializer(serializers.Serializer):
     )
 
     quantity_unit = serializers.PrimaryKeyRelatedField(
-        queryset=Unit.objects.all(),
+        queryset=Unit.objects.filter(is_active=True),
     )
 
     factor = serializers.PrimaryKeyRelatedField(
-        queryset=EmissionFactor.objects.filter(is_active=True),
+        queryset=EmissionFactor.objects.filter(
+            is_active=True,
+        ),
+    )
+
+    calculation_date = serializers.DateField()
+
+    geography = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
     )
 
     def validate_quantity(self, value):
@@ -159,4 +153,6 @@ class CalculationPreviewSerializer(serializers.Serializer):
             quantity=self.validated_data["quantity"],
             quantity_unit=self.validated_data["quantity_unit"],
             factor=self.validated_data["factor"],
+            calculation_date=self.validated_data["calculation_date"],
+            geography=self.validated_data.get("geography") or None,
         )
