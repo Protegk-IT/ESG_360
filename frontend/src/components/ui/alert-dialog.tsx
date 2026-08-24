@@ -77,24 +77,26 @@ function AlertDialogContent({
   top-1/2
   z-50
 
-  w-full
+  w-[calc(100%-2rem)]
   max-w-md
 
   -translate-x-1/2
   -translate-y-1/2
 
-  rounded-2xl
+  rounded-xl
 
   border
   border-[#E5E7EB]
 
   bg-white
 
-  shadow-xl
+  shadow-2xl
 
   p-0
 
   overflow-hidden
+
+  group/alert-dialog-content
 
   outline-none
 
@@ -131,11 +133,15 @@ function AlertDialogHeader({
   gap-2
 
   px-6
+  pb-2
   pt-6
 
-  text-center
+  text-left
 
-  sm:text-left
+  group-has-[[data-slot=alert-dialog-media]]/alert-dialog-content:grid
+  group-has-[[data-slot=alert-dialog-media]]/alert-dialog-content:grid-cols-[auto_1fr]
+  group-has-[[data-slot=alert-dialog-media]]/alert-dialog-content:items-start
+  group-has-[[data-slot=alert-dialog-media]]/alert-dialog-content:gap-x-4
   `,
   className
 )}
@@ -155,19 +161,18 @@ function AlertDialogFooter({
   `
   flex
 
-  justify-end
+  flex-col-reverse
 
   gap-3
-
-  border-t
-
-  border-[#F1F5F9]
 
   bg-white
 
   px-6
+  pb-6
+  pt-4
 
-  py-5
+  sm:flex-row
+  sm:justify-end
   `,
   className
 )}
@@ -201,11 +206,11 @@ function AlertDialogTitle({
       data-slot="alert-dialog-title"
       className={cn(
   `
-  text-xl
+  text-lg
 
   font-semibold
 
-  text-[#111827]
+  text-[#0A0A0A]
   `,
   className
 )}
@@ -227,7 +232,7 @@ function AlertDialogDescription({
 
   leading-6
 
-  text-[#6B7280]
+  text-[#737373]
   `,
   className
 )}
