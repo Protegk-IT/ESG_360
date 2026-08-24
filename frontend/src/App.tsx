@@ -44,7 +44,6 @@ const MaterialityMatrixPage = lazy(
 import DatapointList from "./pages/datapoints/DatapointList";
 import DatapointDetail from "./pages/datapoints/DatapointDetail";
 import DatapointCreate from "./pages/datapoints/DatapointCreate";
-
 import DatapointTableDefinitionManager from "./pages/datapoints/DPtabledefinitionmanager";
 import UnitFamilyManager from "./pages/datapoints/Unitfamilymanager";
 import UnitManager from "./pages/datapoints/Unitmanager";

@@ -14,7 +14,6 @@ export type CellPrimitive = string | number | boolean | null;
    without re-deriving the same switch statement.
 ========================================================== */
 
-
 export function validateValue(
   dataType: DatapointDataType,
   rules: ValidationMetadata,
