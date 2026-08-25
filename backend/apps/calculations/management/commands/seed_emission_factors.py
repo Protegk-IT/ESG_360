@@ -7,7 +7,7 @@ from apps.calculations.models import (
     EmissionFactor,
     EmissionFactorSource,
 )
-from apps.datapoints.models import Unit
+from apps.datapoints.models import Datapoint, Unit
 
 
 class Command(BaseCommand):
@@ -83,10 +83,12 @@ class Command(BaseCommand):
                 "Representative declarative rule describing "
                 "the standard M6 activity-factor calculation."
             ),
+            "datapoint_code": "ENERGY_TOTAL_CONSUMPTION",
             "rule_metadata": {
                 "operation": "multiply",
                 "input": "activity_quantity",
                 "factor": "emission_factor",
+                "activity_key":"electricity_consumption",
             },
             "is_active": True,
         },
@@ -210,11 +212,22 @@ class Command(BaseCommand):
 
     def _seed_calculation_rules(self):
         for rule_data in self.CALCULATION_RULES:
+            try:
+                datapoint = Datapoint.objects.get(
+                    code=rule_data["datapoint_code"],
+                    is_active=True,
+                )
+            except Datapoint.DoesNotExist as exc:
+                raise CommandError(
+                    f"Required datapoint '{rule_data['datapoint_code']}' "
+                    "does not exist or is inactive."
+                ) from exc
             rule, created = CalculationRule.objects.update_or_create(
                 code=rule_data["code"],
                 defaults={
                     "name": rule_data["name"],
                     "description": rule_data["description"],
+                    "datapoint":datapoint,
                     "rule_metadata": rule_data["rule_metadata"],
                     "is_active": rule_data["is_active"],
                 },

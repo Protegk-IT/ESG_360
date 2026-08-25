@@ -4,6 +4,7 @@ from django.db import models
 
 from decimal import Decimal
 from apps.datapoints.models import Unit
+from django.conf import settings
 
 
 
@@ -250,6 +251,7 @@ class CalculationRule(BaseModel):
         "operation",
         "input",
         "factor",
+        "activity_key",
     }
 
     # Fields that would indicate executable or expression-based
@@ -397,3 +399,286 @@ class CalculationRule(BaseModel):
 
     def __str__(self):
         return f"{self.code} - {self.name}"
+
+
+class CalculationResultStatus(models.TextChoices):
+    CURRENT = "CURRENT", "Current"
+    SUPERSEDED = "SUPERSEDED", "Superseded"
+
+
+class CalculationResult(BaseModel):
+    """
+    Persisted M6 calculation result and immutable calculation provenance.
+
+    This model stores a snapshot of the inputs and factor information used
+    for a calculation so that historical results remain auditable even if
+    the live M6 factor or rule is changed later.
+    """
+
+    # ------------------------------------------------------------------
+    # SOURCE M5 CONTEXT
+    # ------------------------------------------------------------------
+
+    answer = models.ForeignKey(
+        "data_capture.Answer",
+        on_delete=models.PROTECT,
+        related_name="calculation_results",
+        help_text="Approved M5 Answer used as the calculation input.",
+    )
+
+    submission = models.ForeignKey(
+        "data_capture.Submission",
+        on_delete=models.PROTECT,
+        related_name="calculation_results",
+        help_text="M5 Submission containing the source Answer.",
+    )
+
+    data_request = models.ForeignKey(
+        "data_capture.DataRequest",
+        on_delete=models.PROTECT,
+        related_name="calculation_results",
+        help_text="M5 DataRequest associated with the calculation.",
+    )
+
+    # ------------------------------------------------------------------
+    # CANONICAL M4 / ORGANIZATION CONTEXT
+    # ------------------------------------------------------------------
+
+    datapoint = models.ForeignKey(
+        "datapoints.Datapoint",
+        on_delete=models.PROTECT,
+        related_name="calculation_results",
+    )
+
+    org_node = models.ForeignKey(
+        "organizations.OrgNode",
+        on_delete=models.PROTECT,
+        related_name="calculation_results",
+    )
+
+    reporting_period = models.ForeignKey(
+        "periods.ReportingPeriod",
+        on_delete=models.PROTECT,
+        related_name="calculation_results",
+    )
+
+    # ------------------------------------------------------------------
+    # CALCULATION RULE
+    # ------------------------------------------------------------------
+
+    calculation_rule = models.ForeignKey(
+        CalculationRule,
+        on_delete=models.PROTECT,
+        related_name="calculation_results",
+    )
+
+    # ------------------------------------------------------------------
+    # SELECTED FACTOR
+    # ------------------------------------------------------------------
+
+    emission_factor = models.ForeignKey(
+        EmissionFactor,
+        on_delete=models.PROTECT,
+        related_name="calculation_results",
+    )
+
+    # ------------------------------------------------------------------
+    # INPUT SNAPSHOT
+    # ------------------------------------------------------------------
+
+    input_quantity = models.DecimalField(
+        max_digits=30,
+        decimal_places=15,
+        help_text="Original numeric quantity captured in the approved Answer.",
+    )
+
+    input_unit = models.ForeignKey(
+        Unit,
+        on_delete=models.PROTECT,
+        related_name="calculation_result_inputs",
+    )
+
+    normalized_quantity = models.DecimalField(
+        max_digits=30,
+        decimal_places=15,
+        help_text="Input quantity normalized to the factor input unit.",
+    )
+
+    # ------------------------------------------------------------------
+    # FACTOR / SOURCE SNAPSHOT
+    # ------------------------------------------------------------------
+
+    factor_value = models.DecimalField(
+        max_digits=30,
+        decimal_places=15,
+        help_text="Exact factor value used by this calculation.",
+    )
+
+    factor_source_code = models.CharField(
+        max_length=100,
+        help_text="Snapshot of the factor source code.",
+    )
+
+    factor_source_name = models.CharField(
+        max_length=255,
+        help_text="Snapshot of the factor source name.",
+    )
+
+    factor_source_version = models.CharField(
+        max_length=100,
+        help_text="Snapshot of the factor source version.",
+    )
+
+    factor_source_reference = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Snapshot of the factor source reference.",
+    )
+
+    factor_code = models.CharField(
+        max_length=150,
+        help_text="Snapshot of the selected emission factor code.",
+    )
+
+    # ------------------------------------------------------------------
+    # CALCULATION CONTEXT SNAPSHOT
+    # ------------------------------------------------------------------
+
+    activity_key = models.CharField(
+        max_length=150,
+        help_text="Activity key used during factor selection.",
+    )
+
+    geography = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Geography used during factor selection.",
+    )
+
+    calculation_date = models.DateField(
+        help_text="Date used for factor applicability.",
+    )
+
+    # ------------------------------------------------------------------
+    # RESULT
+    # ------------------------------------------------------------------
+
+    calculated_value = models.DecimalField(
+        max_digits=30,
+        decimal_places=15,
+        help_text="Calculated Decimal-safe result.",
+    )
+
+    output_unit = models.ForeignKey(
+        Unit,
+        on_delete=models.PROTECT,
+        related_name="calculation_result_outputs",
+    )
+
+    # ------------------------------------------------------------------
+    # VERSION / LIFECYCLE
+    # ------------------------------------------------------------------
+
+    status = models.CharField(
+        max_length=20,
+        choices=CalculationResultStatus.choices,
+        default=CalculationResultStatus.CURRENT,
+    )
+
+    calculation_version = models.PositiveIntegerField(
+        default=1,
+        help_text="Version of the calculation for the same approved Answer.",
+    )
+
+    calculated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="calculation_results",
+    )
+
+    calculated_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        ordering = ["-calculated_at"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "answer",
+                    "calculation_version",
+                ],
+                name="unique_answer_calculation_version",
+            ),
+        ]
+
+        indexes = [
+            models.Index(
+                fields=["answer", "status"],
+            ),
+            models.Index(
+                fields=["submission", "status"],
+            ),
+            models.Index(
+                fields=["datapoint", "org_node", "reporting_period"],
+            ),
+            models.Index(
+                fields=["calculation_rule"],
+            ),
+            models.Index(
+                fields=["emission_factor"],
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+
+        if self.input_quantity < Decimal("0"):
+            raise ValidationError(
+                {
+                    "input_quantity": (
+                        "Input quantity cannot be negative."
+                    )
+                }
+            )
+
+        if self.normalized_quantity < Decimal("0"):
+            raise ValidationError(
+                {
+                    "normalized_quantity": (
+                        "Normalized quantity cannot be negative."
+                    )
+                }
+            )
+
+        if self.calculated_value < Decimal("0"):
+            raise ValidationError(
+                {
+                    "calculated_value": (
+                        "Calculated value cannot be negative."
+                    )
+                }
+            )
+
+        if self.calculation_version < 1:
+            raise ValidationError(
+                {
+                    "calculation_version": (
+                        "Calculation version must be at least 1."
+                    )
+                }
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return (
+            f"{self.answer_id} - "
+            f"v{self.calculation_version} - "
+            f"{self.calculated_value}"
+        )

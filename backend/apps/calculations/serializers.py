@@ -3,6 +3,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.calculations.models import (
+    CalculationResult,
     CalculationRule,
     EmissionFactor,
     EmissionFactorSource,
@@ -99,6 +100,49 @@ class CalculationRuleSerializer(serializers.ModelSerializer):
 
         return value
 
+
+class CalculationResultSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CalculationResult
+        fields = [
+            "id",
+            "answer",
+            "submission",
+            "data_request",
+            "datapoint",
+            "org_node",
+            "reporting_period",
+            "calculation_rule",
+            "emission_factor",
+            "input_quantity",
+            "input_unit",
+            "normalized_quantity",
+            "factor_value",
+            "factor_code",
+            "factor_source_code",
+            "factor_source_name",
+            "factor_source_version",
+            "factor_source_reference",
+            "activity_key",
+            "geography",
+            "calculation_date",
+            "calculated_value",
+            "output_unit",
+            "status",
+            "calculation_version",
+            "calculated_by",
+            "calculated_at",
+        ]
+        read_only_fields = fields
+
+class ApprovedAnswerCalculationRequestSerializer(serializers.Serializer):
+    answer = serializers.UUIDField()
+    calculation_date = serializers.DateField()
+    geography = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+    )
 
 class CalculationPreviewSerializer(serializers.Serializer):
     quantity = serializers.DecimalField(

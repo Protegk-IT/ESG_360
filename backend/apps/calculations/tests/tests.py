@@ -19,7 +19,8 @@ from apps.calculations.models import (
     EmissionFactor,
     EmissionFactorSource,
 )
-from apps.datapoints.models import Unit, UnitFamily
+from apps.datapoints.models import CollectionFrequency, CollectionLevel, Datapoint, DatapointCategory, DatapointDataType, Unit, UnitFamily
+from apps.modules.models import ESGPillar, Module
 
 
 class EmissionFactorSourceTests(TestCase):
@@ -261,6 +262,7 @@ class CalculationRuleTests(TestCase):
                 "operation": "multiply",
                 "input": "activity_quantity",
                 "factor": "emission_factor",
+                "activity_key":"electricity_consumption"
             },
         )
 
@@ -289,6 +291,7 @@ class CalculationRuleTests(TestCase):
                 "operation": "multiply",
                 "input": "activity_quantity",
                 "factor": "emission_factor",
+                "activity_key":"electricity_consumption"
             },
         )
 
@@ -307,6 +310,7 @@ class CalculationRuleTests(TestCase):
                 "operation": "future_operation",
                 "input": "activity_quantity",
                 "factor": "emission_factor",
+                "activity_key": "electricity_consumption"
             },
         )
 
@@ -433,6 +437,7 @@ class CalculationRuleTests(TestCase):
                 "operation": "multiply",
                 "input": "activity_quantity",
                 "factor": "emission_factor",
+                "activity_key":"electricity_consumption"
             },
         )
 
@@ -443,6 +448,7 @@ class CalculationRuleTests(TestCase):
                 "operation": "multiply",
                 "input": "activity_quantity",
                 "factor": "emission_factor",
+                "activity_key":"electricity_consumption"
             },
         )
 
@@ -1162,7 +1168,7 @@ class SeedCommandTests(TestCase):
             name="Mass",
         )
 
-        Unit.objects.create(
+        cls.kwh = Unit.objects.create(
             family=cls.energy_family,
             code="KWH",
             name="Kilowatt-hour",
@@ -1171,7 +1177,33 @@ class SeedCommandTests(TestCase):
             is_active=True,
         )
 
-        Unit.objects.create(
+        cls.module = Module.objects.create(
+            code="energy",
+            name="Energy",
+            esg_pillar=ESGPillar.E,
+        )
+
+        cls.category = DatapointCategory.objects.create(
+            code="ENERGY",
+            name="Energy",
+            module=cls.module,
+        )
+
+        cls.datapoint = Datapoint.objects.create(
+            code="ENERGY_TOTAL_CONSUMPTION",
+            category=cls.category,
+            module=cls.module,
+            label="Total energy consumption",
+            data_type=DatapointDataType.DECIMAL,
+            unit_family=cls.energy_family,
+            default_unit=cls.kwh,
+            collection_level=CollectionLevel.ORG_NODE,
+            frequency=CollectionFrequency.MONTHLY,
+            is_required=False,
+            is_active=True,
+        )
+
+        cls.mwh = Unit.objects.create(
             family=cls.energy_family,
             code="MWH",
             name="Megawatt-hour",
@@ -1180,7 +1212,7 @@ class SeedCommandTests(TestCase):
             is_active=True,
         )
 
-        Unit.objects.create(
+        cls.l = Unit.objects.create(
             family=cls.volume_family,
             code="L",
             name="Litre",
@@ -1189,7 +1221,7 @@ class SeedCommandTests(TestCase):
             is_active=True,
         )
 
-        Unit.objects.create(
+        cls.m3 = Unit.objects.create(
             family=cls.volume_family,
             code="M3",
             name="Cubic metre",
@@ -1198,7 +1230,7 @@ class SeedCommandTests(TestCase):
             is_active=True,
         )
 
-        Unit.objects.create(
+        cls.kg = Unit.objects.create(
             family=cls.mass_family,
             code="KG",
             name="Kilogram",
@@ -1207,7 +1239,7 @@ class SeedCommandTests(TestCase):
             is_active=True,
         )
 
-        Unit.objects.create(
+        cls.tonne = Unit.objects.create(
             family=cls.mass_family,
             code="TONNE",
             name="Tonne",
