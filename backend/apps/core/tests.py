@@ -1,7 +1,12 @@
-from django.test import RequestFactory, TestCase
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+from django.utils import timezone
+from django.conf import settings
+from django.test import RequestFactory, TestCase,TransactionTestCase,Client
 from rest_framework.exceptions import ErrorDetail
 from rest_framework.test import APIClient
 from unittest.mock import patch
+from django.middleware.csrf import get_token
 import uuid
 from apps.accounts.models import TestModel, User
 from apps.core.exceptions import get_error_message
@@ -10,12 +15,12 @@ from apps.core.models import ActivityLog, Notification
 from apps.core.response import no_content_response
 from apps.core.services.notification_service import notify
 from apps.core.thread_local import get_current_request, set_current_request
-from django.utils import timezone
 from django.core.exceptions import ValidationError
 from apps.core.serializers import NotificationSerializer
-
-from django.contrib.admin import AdminSite
 from django.contrib.auth import get_user_model
+from django.urls import reverse
+from rest_framework import status
+from django.contrib.admin import AdminSite
 
 from apps.core.admin import NotificationAdmin
 
@@ -615,7 +620,7 @@ class NotificationAPITests(TestCase):
         self.assertTrue(self.owned_unread.is_read)
         self.assertIsNotNone(self.owned_unread.read_at)
 
-    def test_mark_as_read_is_idempotent(self):
+    def test_api_mark_as_read_is_idempotent(self):
         response = self.client.patch(
             f"/api/notifications/{self.owned_unread.id}/read/",
             {},
@@ -647,6 +652,96 @@ class NotificationAPITests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["count"], 1)
+
+
+class NotificationSessionCSRFApiTests(TestCase):
+    """
+    Smoke tests for the real Django session-authentication and CSRF
+    contract used by the notification API.
+
+    These tests intentionally use Django's test Client rather than
+    DRF force_authenticate(), so that session authentication and CSRF
+    enforcement are exercised explicitly.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="notification-session-user",
+            password="test-password-123",
+        )
+
+        self.notification = Notification.objects.create(
+            recipient=self.user,
+            title="Session CSRF test",
+            message="Notification API session/CSRF smoke test.",
+            notification_type="SYSTEM",
+            priority="NORMAL",
+        )
+
+        self.client = Client(enforce_csrf_checks=True)
+
+    def test_session_authenticated_notification_list(self):
+        logged_in = self.client.login(
+            username="notification-session-user",
+            password="test-password-123",
+        )
+
+        self.assertTrue(logged_in)
+
+        response = self.client.get(
+            reverse("notification-list")
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_unsafe_notification_request_requires_csrf(self):
+        logged_in = self.client.login(
+            username="notification-session-user",
+            password="test-password-123",
+        )
+
+        self.assertTrue(logged_in)
+
+        response = self.client.patch(
+            reverse("notification-read-all")
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_unsafe_notification_request_accepts_valid_csrf(self):
+        logged_in = self.client.login(
+            username="notification-session-user",
+            password="test-password-123",
+        )
+
+        self.assertTrue(logged_in)
+
+        response = self.client.get(
+            reverse("notification-list")
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        csrf_token = get_token(response.wsgi_request)
+
+        self.client.cookies["csrftoken"] = csrf_token
+
+        response = self.client.patch(
+            reverse("notification-read-all"),
+            HTTP_X_CSRFTOKEN=csrf_token,
+        )
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+
+        self.notification.refresh_from_db()
+
+        self.assertTrue(self.notification.is_read)
+        self.assertIsNotNone(self.notification.read_at)
 
 class NotificationAdminTests(TestCase):
     def setUp(self):
@@ -697,6 +792,128 @@ class NotificationAdminTests(TestCase):
                 self.notification,
             )
         )
+
+class NotificationMigrationCompatibilityTests(TransactionTestCase):
+    migrate_from = (
+        "core",
+        "0002_notification_notificatio_recipie_201701_idx_and_more",
+    )
+    migrate_to = (
+        "core",
+        "0003_notification_notification_read_state_consistent",
+    )
+
+    def setUp(self):
+        super().setUp()
+
+        self.executor = MigrationExecutor(connection)
+
+        # The test database is initially at the latest migration.
+        # Move the complete project schema back to the state represented
+        # by core.0002 so that the legacy notification rows are created
+        # against the historical schema.
+
+        migration_state = [
+            self.migrate_from,
+            ("accounts", "0003_permission_testmodel_userdepartment_and_more"),
+        ]
+
+        self.executor.migrate(migration_state)
+
+        # Get the historical app registry after migrating to 0002.
+        old_apps = self.executor.loader.project_state(
+            [self.migrate_from]
+        ).apps
+
+        #User = old_apps.get_model("accounts", "User")
+        Notification = old_apps.get_model("core", "Notification")
+        user_model = get_user_model()
+        self.user = user_model.objects.create(
+            username="migration-notification-user",
+        )
+        self.user_id = self.user.pk
+        self.created_at = timezone.datetime(
+            2026,
+            8,
+            20,
+            10,
+            30,
+            tzinfo=timezone.get_current_timezone(),
+        )
+
+        self.legacy_read = Notification.objects.create(
+            recipient_id=self.user.pk,
+            notification_type="INFO",
+            title="Legacy read notification",
+            message="Legacy read notification",
+            is_read=True,
+            read_at=None,
+        )
+
+        self.legacy_unread = Notification.objects.create(
+            recipient_id=self.user.pk,
+            notification_type="INFO",
+            title="Legacy unread notification",
+            message="Legacy unread notification",
+            is_read=False,
+            read_at=self.created_at,
+        )
+
+        Notification.objects.filter(
+            pk=self.legacy_read.pk,
+        ).update(
+            created_at=self.created_at,
+        )
+
+        Notification.objects.filter(
+            pk=self.legacy_unread.pk,
+        ).update(
+            created_at=self.created_at,
+        )
+
+    def test_legacy_notification_read_state_is_normalized(self):
+        # Use a fresh executor so Django reads the current migration
+        # recorder state after setUp() moved core back to 0002.
+        executor = MigrationExecutor(connection)
+
+        executor.migrate(
+            [
+                self.migrate_to,
+                (
+                    "accounts",
+                    "0003_permission_testmodel_userdepartment_and_more",
+                ),
+            ]
+        )
+
+        apps = executor.loader.project_state(
+            [
+                self.migrate_to,
+                (
+                    "accounts",
+                    "0003_permission_testmodel_userdepartment_and_more",
+                ),
+            ]
+        ).apps
+
+        Notification = apps.get_model("core", "Notification")
+
+        legacy_read = Notification.objects.get(
+            pk=self.legacy_read.pk
+        )
+        legacy_unread = Notification.objects.get(
+            pk=self.legacy_unread.pk
+        )
+
+        self.assertTrue(legacy_read.is_read)
+        self.assertEqual(
+            legacy_read.read_at,
+            self.created_at,
+        )
+
+        self.assertFalse(legacy_unread.is_read)
+        self.assertIsNone(legacy_unread.read_at)
+
 class ErrorContractTests(TestCase):
     def test_error_message_extraction_preserves_detail_and_validation_messages(self):
         self.assertEqual(

@@ -4,6 +4,27 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def normalize_notification_read_state(apps, schema_editor):
+    Notification = apps.get_model("core", "Notification")
+
+    # Legacy read notifications without a timestamp get their original
+    # creation timestamp as a deterministic historical read timestamp.
+    Notification.objects.filter(
+        is_read=True,
+        read_at__isnull=True,
+    ).update(
+        read_at=models.F("created_at"),
+    )
+
+    # Legacy unread notifications must not retain a read timestamp.
+    Notification.objects.filter(
+        is_read=False,
+        read_at__isnull=False,
+    ).update(
+        read_at=None,
+    )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -12,6 +33,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(
+            normalize_notification_read_state,
+            migrations.RunPython.noop,
+        ),
         migrations.AddConstraint(
             model_name="notification",
             constraint=models.CheckConstraint(
