@@ -136,7 +136,7 @@ For example, a future approvals module can notify a user without adding a
 foreign key from `Notification` to `Submission`:
 
 ```python
-from apps.core.notifications.services. import notify
+from apps.core.notifications.services.notification_service import notify
 
 notify(
     recipient=submission.owner,
