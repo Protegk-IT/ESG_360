@@ -5,6 +5,7 @@ import {
   FolderTree,
   LayoutDashboard,
   ShieldCheck,
+  Target,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 export interface SidebarSubItem {
@@ -21,6 +22,12 @@ export interface SidebarItem {
   items?: SidebarSubItem[];
 }
 export const navMain: SidebarItem[] = [
+  {
+    title: "Goals",
+    url: "/goals",
+    icon: Target,
+    permission: "target.set",
+  },
   {
     title: "Dashboard",
     url: "/accounts/dashboard/",

@@ -50,6 +50,8 @@ import UnitManager from "./pages/datapoints/Unitmanager";
 import DatapointEdit from "./pages/datapoints/Datapointedit";
 import CategoryManager from "./pages/datapoints/Categorymanager";
 import DatapointOptionsManager from "./pages/datapoints/DatapointOptionsManager";
+import GoalsList from "./pages/targets/GoalsList";
+import GoalDetail from "./pages/targets/GoalDetail";
 
 export default function App() {
   return (
@@ -57,6 +59,9 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
+
+        <Route path="/goals" element={<ProtectedRoute permission="target.set"><GoalsList /></ProtectedRoute>} />
+        <Route path="/goals/:id" element={<ProtectedRoute permission="target.set"><GoalDetail /></ProtectedRoute>} />
 
         <Route
           path="/dashboard"
