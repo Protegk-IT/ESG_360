@@ -3,8 +3,7 @@ from copy import copy
 from rest_framework import serializers
 from django.core.exceptions import ValidationError as DjangoValidationError
 
-from .models import ActivityLog
-
+from .models import ActivityLog,Notification
 
 class ActivityLogSerializer(serializers.ModelSerializer):
     class Meta:
@@ -15,8 +14,7 @@ class ActivityLogSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
-from rest_framework import serializers
-from apps.core.models import Notification
+
 
 
 class ValidatedModelSerializer(serializers.ModelSerializer):
@@ -43,13 +41,37 @@ class ValidatedModelSerializer(serializers.ModelSerializer):
 
 
 class NotificationSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = Notification
-        fields = "__all__"
-        read_only_fields = (
+        fields = (
             "id",
+            "recipient",
+            "notification_type",
+            "title",
+            "message",
+            "related_model",
+            "related_object_id",
+            "action_url",
+            "priority",
+            "is_read",
+            "read_at",
+            "email_sent",
             "created_at",
             "updated_at",
+        )
+        read_only_fields = (
+            "id",
             "recipient",
+            "notification_type",
+            "title",
+            "message",
+            "related_model",
+            "related_object_id",
+            "action_url",
+            "priority",
+            "is_read",
+            "read_at",
+            "email_sent",
+            "created_at",
+            "updated_at",
         )
