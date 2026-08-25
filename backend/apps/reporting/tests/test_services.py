@@ -464,6 +464,10 @@ class M8TestDataMixin:
         return submission
 class FreezeServiceTests(M8TestDataMixin, TestCase):
 
+    def test_freeze_rejects_non_report_run_input(self):
+        with self.assertRaises(ValidationError):
+            freeze_report_run("not a report run")
+
     def test_01_freeze_creates_snapshot(self):
         run = self.make_report_run()
 
@@ -1245,6 +1249,10 @@ class FreezeServiceTests(M8TestDataMixin, TestCase):
 
 class ReportValueResolverTests(M8TestDataMixin, TestCase):
 
+    def test_build_dataset_rejects_non_report_run_input(self):
+        with self.assertRaises(ValidationError):
+            ReportValueResolver.build_dataset("not a report run")
+
     def _prepare_frozen_mapping(self):
         datapoint = self.make_datapoint(
             code="ENERGY-TOTAL",
@@ -1593,6 +1601,14 @@ class ReportValueResolverTests(M8TestDataMixin, TestCase):
                 run,
             )
 
+    def test_frozen_run_without_snapshot_cannot_be_resolved(self):
+        run = self.make_report_run(
+            status=ReportRun.Status.FROZEN,
+        )
+
+        with self.assertRaises(ValidationError):
+            ReportValueResolver.build_dataset(run)
+
     def test_48_m5_data_is_not_mutated(self):
         run, datapoint, mapping = (
             self._prepare_frozen_mapping()
@@ -1879,6 +1895,35 @@ class ReportValueResolverContractTests(M8TestDataMixin, TestCase):
             resolved[select_datapoint.code]["value"]["code"],
             "YES",
         )
+
+    def test_empty_text_value_is_unresolved(self):
+        context = self.make_capture_context()
+        datapoint = self.make_contract_datapoint(
+            "CONTRACT-EMPTY-TEXT",
+            DatapointDataType.TEXT,
+        )
+        self.make_mapping(node=self.nodes[3], datapoint=datapoint)
+
+        run = self.make_report_run()
+        freeze_report_run(run)
+        run.refresh_from_db()
+
+        request, maker, reviewer = self.make_capture_request_for(
+            datapoint,
+            context,
+        )
+        self.approve_scalar(
+            request,
+            maker,
+            reviewer,
+            "text_value",
+            "",
+        )
+
+        item = ReportValueResolver.build_dataset(run)[0]
+
+        self.assertEqual(item["status"], "UNRESOLVED")
+        self.assertIsNone(item["value"])
 
     def test_table_preserves_fixed_and_dynamic_rows(self):
         context = self.make_capture_context()

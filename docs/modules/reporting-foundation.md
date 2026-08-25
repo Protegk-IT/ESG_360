@@ -1410,6 +1410,12 @@ Coverage includes:
 
 - validation;
 
+- service input validation for freeze and dataset resolution;
+
+- rejection of frozen runs that have no framework snapshot;
+
+- empty text values remaining unresolved;
+
 - retrieval;
 
 - filtering;
@@ -1893,6 +1899,25 @@ git diff --check — OK
 ### 10. Documentation marks future M5/M6 work
 
 This document defines the future value-resolution boundary.
+
+The focused reporting service verification also covers the current
+value-resolution boundary:
+
+```powershell
+
+python manage.py test apps.reporting.tests.test_services
+
+```
+
+Result:
+
+```text
+
+Ran 59 tests
+
+OK
+
+```
 
 **---**
 
