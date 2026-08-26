@@ -12,7 +12,8 @@ from apps.datapoints.models import CollectionFrequency, CollectionLevel, Datapoi
 from apps.modules.models import Module
 from apps.organizations.models import OrgNode
 from apps.periods.models import PeriodType, ReportingPeriod
-from apps.targets.models import Goal, KPI, KPIDirection, KPIAggregation, MetricSourceType, Target
+from apps.materiality.models import AssessmentTopic, MaterialSubTopic, MaterialTopic, MaterialityAssessment, TopicCategory
+from apps.targets.models import Goal, KPI, KPIInitiative, KPIDirection, KPIAggregation, MetricSourceType, Target
 from apps.targets.services.progress import progress_for, trajectory_value
 
 
@@ -28,6 +29,14 @@ class TargetFoundationTests(TestCase):
         self.datapoint = Datapoint.objects.create(code="energy.total.test", category=self.category, module=self.module, label="Energy", data_type=DatapointDataType.DECIMAL, unit_family=self.family, default_unit=self.unit, collection_level=CollectionLevel.ORG_NODE, frequency=CollectionFrequency.ANNUAL)
         self.baseline = ReportingPeriod.objects.create(name="FY 2025", period_type=PeriodType.ANNUAL, start_date=date(2025, 4, 1), end_date=date(2026, 3, 31))
         self.endpoint = ReportingPeriod.objects.create(name="FY 2030", period_type=PeriodType.ANNUAL, start_date=date(2030, 4, 1), end_date=date(2031, 3, 31))
+
+    def materiality_context(self):
+        topic = MaterialTopic.objects.create(category=TopicCategory.objects.create(code="E", name="Environmental"), name="Water")
+        subtopic = MaterialSubTopic.objects.create(topic=topic, code="water-withdrawal", name="Water withdrawal")
+        assessment = MaterialityAssessment.objects.create(
+            company=self.company, name="Water assessment", reporting_period=self.baseline, created_by=self.user,
+        )
+        return topic, subtopic, AssessmentTopic.objects.create(assessment=assessment, subtopic=subtopic)
 
     def test_independent_goal_kpi_target_and_decreasing_trajectory(self):
         goal = Goal.objects.create(name="Independent goal", created_by=self.user)
@@ -102,3 +111,75 @@ class TargetFoundationTests(TestCase):
             target_unit=self.unit, created_by=self.user,
         )
         self.assertEqual(progress_for(target, self.baseline)["actual_value"], Decimal("42"))
+
+    def test_independent_goal_can_later_gain_and_remove_materiality_without_replacing_planning_records(self):
+        permission = Permission.objects.create(code="target.set", name="Set targets", module_code="target", action="EDIT")
+        role = Role.objects.create(role_code="targets-edit", role_name="Targets edit")
+        role.permissions.add(permission)
+        UserRoleAssignment.objects.create(user=self.user, role=role, org_node=self.org, module_code="target")
+        goal = Goal.objects.create(name="Independent", created_by=self.user)
+        kpi = KPI.objects.create(goal=goal, code="manual-goal", name="Manual", metric_source_type=MetricSourceType.MANUAL_REFERENCE, metric_code="manual.goal", direction=KPIDirection.INCREASE)
+        target = Target.objects.create(kpi=kpi, baseline_period=self.baseline, baseline_value=Decimal("1"), target_period=self.endpoint, target_value=Decimal("2"), created_by=self.user)
+        topic, subtopic, assessment_topic = self.materiality_context()
+        client = APIClient(); client.force_login(self.user)
+        response = client.patch(f"/api/targets/goals/{goal.id}/", {"source_assessment_topic": str(assessment_topic.id)}, format="json")
+        self.assertEqual(response.status_code, 200)
+        goal.refresh_from_db()
+        self.assertEqual(goal.material_topic_id, topic.id)
+        self.assertEqual(goal.material_subtopic_id, subtopic.id)
+        self.assertEqual(goal.source_assessment_topic_id, assessment_topic.id)
+        self.assertEqual(goal.kpis.get().id, kpi.id)
+        self.assertEqual(kpi.targets.get().id, target.id)
+        response = client.patch(f"/api/targets/goals/{goal.id}/", {"material_topic": None, "material_subtopic": None, "source_assessment_topic": None}, format="json")
+        self.assertEqual(response.status_code, 200)
+        goal.refresh_from_db()
+        self.assertIsNone(goal.material_topic)
+        self.assertIsNone(goal.material_subtopic)
+        self.assertIsNone(goal.source_assessment_topic)
+        self.assertEqual(goal.kpis.get().id, kpi.id)
+        self.assertEqual(kpi.targets.get().id, target.id)
+
+    def test_rejects_unrelated_subtopic_or_assessment_provenance(self):
+        topic, subtopic, assessment_topic = self.materiality_context()
+        other_topic = MaterialTopic.objects.create(category=topic.category, name="Energy")
+        other_subtopic = MaterialSubTopic.objects.create(topic=other_topic, code="energy-use", name="Energy use")
+        goal = Goal.objects.create(name="Goal", created_by=self.user)
+        with self.assertRaises(ValidationError):
+            Goal.objects.create(name="Invalid subtopic", material_topic=topic, material_subtopic=other_subtopic, created_by=self.user)
+        from apps.targets.serializers import GoalWriteSerializer
+        serializer = GoalWriteSerializer(goal, data={"material_topic": str(other_topic.id), "material_subtopic": str(other_subtopic.id), "source_assessment_topic": str(assessment_topic.id)}, partial=True)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("source_assessment_topic", serializer.errors)
+
+    def test_initiative_create_edit_status_and_validation(self):
+        goal = Goal.objects.create(name="Goal", created_by=self.user)
+        kpi = KPI.objects.create(goal=goal, code="initiative", name="Initiative KPI", metric_source_type=MetricSourceType.MANUAL_REFERENCE, metric_code="initiative.metric", direction=KPIDirection.INCREASE)
+        initiative = KPIInitiative.objects.create(kpi=kpi, name="Install meters", org_node=self.org, owner=self.user, status="PLANNED", due_date=date(2027, 3, 31), anticipated_impact=Decimal("25"))
+        initiative.status = "ONGOING"; initiative.description = "Meter programme"
+        initiative.save(); initiative.refresh_from_db()
+        self.assertEqual(initiative.kpi_id, kpi.id)
+        self.assertEqual(initiative.status, "ONGOING")
+        with self.assertRaises(ValidationError):
+            KPIInitiative.objects.create(kpi=kpi, name="Invalid", anticipated_impact=Decimal("100.01"))
+        with self.assertRaises(ValidationError):
+            KPIInitiative.objects.create(kpi=kpi, name="Invalid", anticipated_impact=Decimal("-0.01"))
+
+    def test_initiative_api_keeps_the_nested_kpi_context(self):
+        permission = Permission.objects.create(code="target.set", name="Set targets", module_code="target", action="EDIT")
+        role = Role.objects.create(role_code="targets-initiative", role_name="Targets initiative")
+        role.permissions.add(permission)
+        UserRoleAssignment.objects.create(user=self.user, role=role, org_node=self.org, module_code="target")
+        goal = Goal.objects.create(name="Goal", created_by=self.user)
+        kpi = KPI.objects.create(goal=goal, code="initiative-api", name="Initiative KPI", metric_source_type=MetricSourceType.MANUAL_REFERENCE, metric_code="initiative.api", direction=KPIDirection.INCREASE)
+        other_kpi = KPI.objects.create(goal=goal, code="other-api", name="Other KPI", metric_source_type=MetricSourceType.MANUAL_REFERENCE, metric_code="other.api", direction=KPIDirection.INCREASE)
+        client = APIClient(); client.force_login(self.user)
+        response = client.post(f"/api/targets/kpis/{kpi.id}/initiatives/", {"name": "Meter programme", "kpi": str(other_kpi.id), "anticipated_impact": "20"}, format="json")
+        self.assertEqual(response.status_code, 201)
+        initiative_id = response.data["data"]["id"]
+        initiative = KPIInitiative.objects.get(pk=initiative_id)
+        self.assertEqual(initiative.kpi_id, kpi.id)
+        response = client.patch(f"/api/targets/initiatives/{initiative.id}/", {"kpi": str(other_kpi.id), "status": "ONGOING"}, format="json")
+        self.assertEqual(response.status_code, 200)
+        initiative.refresh_from_db()
+        self.assertEqual(initiative.kpi_id, kpi.id)
+        self.assertEqual(initiative.status, "ONGOING")

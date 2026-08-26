@@ -33,7 +33,14 @@ class TargetsAPIView(APIView):
         self.require_access()
         if self.request.user.is_superuser or RBACService.get_allowed_org_nodes(self.request.user, "target.set", module_code="target") is None:
             return KPI.objects.select_related("goal", "datapoint", "default_unit")
-        return KPI.objects.filter(targets__in=self.target_queryset()).distinct().select_related("goal", "datapoint", "default_unit")
+        # A newly created KPI has no Target (and therefore no OrgNode scope)
+        # yet.  Its creator must still be able to configure its first target
+        # or initiative; otherwise the normal Goal → KPI → Target flow is
+        # dead-ended.  Once a target exists, other visibility remains tied to
+        # the same-assignment scoped target queryset.
+        return KPI.objects.filter(
+            Q(targets__in=self.target_queryset()) | Q(goal__created_by=self.request.user)
+        ).distinct().select_related("goal", "datapoint", "default_unit")
 
     def visible_goals(self):
         return Goal.objects.filter(
@@ -122,16 +129,29 @@ class TargetProgressAPIView(TargetsAPIView):
 class KPIInitiativeListCreateAPIView(TargetsAPIView):
     def get_kpi(self, kpi_id): return get_object_or_404(self.visible_kpis(), pk=kpi_id)
     def get(self, request, kpi_id):
-        return success_response(InitiativeSerializer(scoped_queryset(KPIInitiative.objects.filter(kpi=self.get_kpi(kpi_id)), request.user), many=True).data)
+        kpi = self.get_kpi(kpi_id)
+        return success_response(InitiativeSerializer(self.initiative_queryset().filter(kpi=kpi), many=True).data)
+
+    def initiative_queryset(self):
+        queryset = KPIInitiative.objects.select_related("kpi__goal", "org_node", "owner")
+        if self.request.user.is_superuser or RBACService.get_allowed_org_nodes(self.request.user, "target.set", module_code="target") is None:
+            return queryset
+        allowed = RBACService.get_allowed_org_nodes(self.request.user, "target.set", module_code="target")
+        return queryset.filter(Q(org_node_id__in=allowed) | Q(kpi__goal__created_by=self.request.user)).distinct()
     def post(self, request, kpi_id):
-        kpi = self.get_kpi(kpi_id); serializer = InitiativeWriteSerializer(data={**request.data, "kpi": str(kpi.id)}); serializer.is_valid(raise_exception=True)
+        kpi = self.get_kpi(kpi_id); serializer = InitiativeWriteSerializer(data=request.data); serializer.is_valid(raise_exception=True)
         org = serializer.validated_data.get("org_node")
         if org and not has_target_scope(request.user, org.id): raise NotFound("Organization node not found.")
-        return created_response(InitiativeSerializer(self.call(serializer.save)).data, "Initiative created.")
+        return created_response(InitiativeSerializer(self.call(lambda: serializer.save(kpi=kpi))).data, "Initiative created.")
 
 
 class InitiativeDetailAPIView(TargetsAPIView):
-    def get_object(self, initiative_id): return get_object_or_404(scoped_queryset(KPIInitiative.objects.select_related("kpi"), self.request.user), pk=initiative_id)
+    def get_object(self, initiative_id):
+        queryset = KPIInitiative.objects.select_related("kpi__goal", "org_node", "owner")
+        if not self.request.user.is_superuser and RBACService.get_allowed_org_nodes(self.request.user, "target.set", module_code="target") is not None:
+            allowed = RBACService.get_allowed_org_nodes(self.request.user, "target.set", module_code="target")
+            queryset = queryset.filter(Q(org_node_id__in=allowed) | Q(kpi__goal__created_by=self.request.user)).distinct()
+        return get_object_or_404(queryset, pk=initiative_id)
     def patch(self, request, initiative_id):
         obj = self.get_object(initiative_id); serializer = InitiativeWriteSerializer(obj, data=request.data, partial=True); serializer.is_valid(raise_exception=True)
         org = serializer.validated_data.get("org_node", obj.org_node)

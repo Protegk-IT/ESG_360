@@ -10,6 +10,13 @@ Goals can be created independently. `material_topic`, `material_subtopic`, and
 sets the link to null, preserving the Goal, KPI and Target records. A later
 association does not recreate planning identities.
 
+The Goal write contract validates that a selected subtopic belongs to its Topic
+and that an `AssessmentTopic` provenance record matches both. Selecting an
+assessment topic through the frontend derives the matching reusable Topic and
+Subtopic; changing a Topic clears incompatible nested context rather than
+silently retaining it. Removing all three links restores a fully independent
+Goal without changing its KPI or Target IDs.
+
 ## Metric and target contract
 
 KPIs use `DATAPOINT`, `CALCULATED_METRIC`, or `MANUAL_REFERENCE` metric
@@ -27,6 +34,8 @@ returns approved actual, trajectory, variance, percentage where meaningful and
 
 `KPIInitiative` is planning-only: name, comments, optional OrgNode/owner, due
 date, `PLANNED|ONGOING|COMPLETE|PARKED`, and 0–100 anticipated impact.
+Initiatives are created through `/kpis/{kpi_id}/initiatives/`; the URL owns the
+KPI association, and a PATCH cannot move an Initiative to another KPI/Goal.
 
 ## API and authorization
 
@@ -37,9 +46,13 @@ mutations scope the OrgNode through the *same* qualifying `UserRoleAssignment`
 that grants `target.set`; out-of-scope objects return 404. Superusers retain
 platform-wide behavior.
 
-The frontend provides `/goals` and `/goals/:id`: independent goal creation,
-KPI tabs, baseline/target configuration, actual/trajectory/target chart and
-initiative creation. It does not fabricate projected values.
+The frontend provides `/goals` and `/goals/:id`: an add/edit Goal dialog with
+optional Materiality provenance and readable owner/status selectors, KPI tabs,
+baseline/target configuration, actual/trajectory/target chart, plus a compact
+KPI-specific Initiative manager. The manager preserves the selected Goal/KPI,
+lists Initiative owner/scope/status/due date/impact, and supports create/edit
+without turning planning records into project-management tasks. It does not
+fabricate projected values.
 
 ## Local visual-test fixture
 
