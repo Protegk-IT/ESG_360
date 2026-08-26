@@ -4,6 +4,26 @@ import django.db.models.deletion
 from django.db import migrations, models
 
 
+def backfill_report_run_company(apps, schema_editor):
+    """Safely scope legacy runs only when ownership is unambiguous.
+
+    ReportRun had no company relation before this migration.  In a database
+    with exactly one company, that company is the only deterministic scope for
+    every legacy run.  In every other case, leaving NULL is safer than guessing
+    and allows the runtime resolver to reject the unscoped report.
+    """
+    Company = apps.get_model("companies", "Company")
+    ReportRun = apps.get_model("reporting", "ReportRun")
+
+    # Reading at most two IDs is enough to distinguish one company from zero
+    # or many, without choosing an arbitrary company in the latter case.
+    company_ids = list(Company.objects.values_list("pk", flat=True)[:2])
+    if len(company_ids) == 1:
+        ReportRun.objects.filter(company__isnull=True).update(
+            company_id=company_ids[0]
+        )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -22,6 +42,10 @@ class Migration(migrations.Migration):
                 related_name="report_runs",
                 to="companies.company",
             ),
+        ),
+        migrations.RunPython(
+            backfill_report_run_company,
+            migrations.RunPython.noop,
         ),
         migrations.AddIndex(
             model_name="reportrun",

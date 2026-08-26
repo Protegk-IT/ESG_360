@@ -118,7 +118,7 @@ M8 does ****not**** implement:
 
 - M5 DataRequest models
 
-- answer/value resolution
+- approved M5 value resolution for frozen report runs
 
 - M6 calculated results
 
@@ -178,7 +178,7 @@ The M8 implementation was kept isolated so that:
 
 - the eventual merge happens through the team's normal integration workflow.
 
-Final verification was performed before commit:
+Foundation verification was performed before the Phase 2 additions:
 
 ```powershell
 
@@ -192,7 +192,7 @@ git diff --check
 
 ```
 
-Final verification result:
+Foundation verification result:
 
 ```text
 
@@ -1378,7 +1378,7 @@ This follows the rule:
 
 ## 33. Automated Test Coverage
 
-The final module test suite contains:
+The original foundation module test suite contained:
 
 ```text
 
@@ -1590,7 +1590,8 @@ No output / no whitespace errors
 
 ## 38. M5/M6 Integration Boundary
 
-M8 intentionally stops before value resolution.
+M8 Phase 2 resolves approved M5 captured values for frozen report runs.
+M6 calculated results remain outside this resolver.
 
 The future architecture is:
 
@@ -1638,7 +1639,8 @@ FrameworkSnapshot
 
 M8 does not assume the final M5/M6 schemas.
 
-This allows the snapshot model to remain stable while future value providers are introduced.
+This keeps the snapshot model stable while allowing M5 and M6 value providers
+to remain separate.
 
 **---**
 
@@ -1848,7 +1850,142 @@ This is essential for reproducible reporting.
 
 **---**
 
-## 43. Final Acceptance Status
+## 43. Phase 2 Approved M5 Value Resolution
+
+For a frozen report, `SnapshotMapping.source_datapoint_id` is the primary
+historical datapoint identity. The frozen
+`canonical_datapoint_code` is retained as historical metadata and is used only
+as a narrow compatibility fallback for legacy mappings that have no source ID.
+
+The resolver reads only M5 submissions with:
+
+```text
+
+status = APPROVED
+
+reporting_period = ReportRun.reporting_period
+
+org_node.company = ReportRun.company
+
+datapoint.id = SnapshotMapping.source_datapoint_id
+
+```
+
+This prevents a value from another company, another reporting period, or an
+unapproved submission from entering a report. Missing approved values are
+returned explicitly as `UNRESOLVED` with `value = null`; numeric zero and
+boolean false remain valid values, while an empty text value is unresolved.
+
+The API endpoint is:
+
+```text
+
+GET /api/reporting/report-runs/<uuid>/resolved-values/
+
+```
+
+It requires authentication and returns the frozen run ID, frozen status, and
+resolved value records containing the frozen mapping identity, organization
+scope, typed value, and captured-value provenance. An unfrozen run is rejected
+because only frozen report structure may be resolved.
+
+The supported integration flow is:
+
+```text
+
+M4 Datapoint
+    |
+    v
+M5 DataRequest -> Answer -> Submit -> Approve
+    |
+    v
+M8 ReportRun -> Freeze -> SnapshotMapping
+    |
+    v
+GET resolved-values
+    |
+    v
+Approved captured value
+
+```
+
+The API integration tests for this flow are in:
+
+```text
+
+apps.reporting.tests.test_e2e_resolved_values
+
+```
+
+They cover approved resolution, company isolation, unapproved values,
+explicit unresolved values, and rejection of unfrozen runs. The M4 live-code
+rename regression remains covered by the reporting service tests because the
+service-level test isolates the historical identity behavior directly.
+
+## 44. Migration Safety for Legacy Report Runs
+
+`ReportRun.company` was added as a nullable field so existing databases could
+be migrated without guessing ownership. Migration `0002_reportrun_company`
+also runs a historical-model data migration:
+
+- exactly one company exists: backfill every legacy `company = NULL` run;
+- multiple companies exist: leave legacy company values null;
+- zero companies exist: leave legacy company values null;
+- populated company values are never overwritten.
+
+The migration uses `apps.get_model()` historical models and database querysets,
+not current runtime model validation or reporting services. This is necessary
+because a legacy frozen run cannot be changed through the current application
+model rules.
+
+Ambiguous legacy runs remain unresolved until an explicit controlled ownership
+remediation is performed. This preserves company isolation instead of
+assigning historical data to an arbitrary company.
+
+Focused regression coverage verifies single-company backfill, multi-company
+non-guessing, and preservation of an existing company scope.
+
+## 45. Current Verification Status
+
+The current reporting implementation and Phase 2 tests were verified with:
+
+```powershell
+
+python manage.py test apps.reporting.tests.test_e2e_resolved_values
+
+python manage.py test apps.reporting
+
+python manage.py check
+
+python manage.py makemigrations --check --dry-run
+
+git diff --check
+
+```
+
+Results:
+
+```text
+
+5 E2E tests: OK
+
+239 reporting tests: OK
+
+System check identified no issues (0 silenced).
+
+No changes detected
+
+```
+
+`git diff --check` reported no whitespace errors. Its LF/CRLF messages are
+line-ending normalization warnings only.
+
+The broader backend suite was previously verified at 584 tests with an `OK`
+result; rerun it after any further changes before release.
+
+**---**
+
+## 46. Final Acceptance Status
 
 ### 1. Report runs can be created
 
@@ -1886,7 +2023,7 @@ Implemented through centralized authentication/RBAC.
 
 ```text
 
-207 tests — OK
+239 reporting tests — OK
 
 Django check — OK
 
@@ -1896,9 +2033,10 @@ git diff --check — OK
 
 ```
 
-### 10. Documentation marks future M5/M6 work
+### 10. Approved M5 resolution is implemented
 
-This document defines the future value-resolution boundary.
+Frozen report mappings resolve approved M5 captured values through the
+resolved-values API. M6 calculated values remain outside the current resolver.
 
 The focused reporting service verification also covers the current
 value-resolution boundary:
@@ -1921,7 +2059,7 @@ OK
 
 **---**
 
-## 44. Final Architecture
+## 47. Final Architecture
 
 ```text
 
@@ -1993,7 +2131,7 @@ OK
 
           v
 
- Future Value Resolution
+ Approved M5 Value Resolution
 
           |
 
@@ -2009,13 +2147,13 @@ OK
 
           |
 
-     Future Report Output
+    Report Output
 
 ```
 
 **---**
 
-## 45. Engineering Principles Used
+## 48. Engineering Principles Used
 
 1. ****Reuse established platform contracts.****
 
@@ -2033,7 +2171,7 @@ OK
 
 8. ****Keep immutable snapshot data read-only after creation.****
 
-9. ****Do not depend on unfinished M5/M6 schemas.****
+9. ****Use approved M5 values through a provider without coupling snapshots to M5 rows.****
 
 10. ****Test upstream dependencies through M8-owned fixtures rather than modifying upstream modules.****
 
@@ -2043,7 +2181,7 @@ OK
 
 **---**
 
-## 46. Final Development Status
+## 49. Final Development Status
 
 M8 Reporting Run and Framework Snapshot Foundation has completed its implementation and verification stage.
 
@@ -2051,7 +2189,7 @@ M8 Reporting Run and Framework Snapshot Foundation has completed its implementat
 
 M8 implementation       COMPLETE
 
-M8 automated tests       207 / 207 PASS
+M8 reporting tests       239 / 239 PASS
 
 Django system check      PASS
 
@@ -2059,9 +2197,9 @@ Migration drift check    PASS
 
 Git whitespace check     PASS
 
-M5 dependency            NONE
+M5 approved-value flow   VERIFIED
 
-M6 dependency            NONE
+M6 calculated values     OUT OF SCOPE
 
 Snapshot isolation       VERIFIED
 
@@ -2071,7 +2209,7 @@ RBAC integration         VERIFIED
 
 ```
 
-## 47. How to Understand This Module After Several Months
+## 50. How to Understand This Module After Several Months
 
 When returning to M8 later, remember the module in this order:
 
@@ -2123,21 +2261,22 @@ The first two identify the reporting context and framework version. The last two
 
 ### Step 5 — What does M8 deliberately NOT contain?
 
-Do not expect answer/value/calculation/report-generation logic here.
-
-Those belong to later platform capabilities:
+M8 now consumes approved M5 values for frozen runs, but it does not own M5
+capture workflow or M6 calculation logic. Final report rendering also remains
+outside this module:
 
 ```text
 M8 snapshot
     |
-    +--> future M5 values/submissions
+    +--> approved M5 values (implemented provider)
     |
     +--> future M6 calculations
     |
     +--> future report output
 ```
 
-M8 intentionally remains independent of unfinished M5/M6 schemas.
+M8 remains independent of M5 row ownership by resolving through a provider and
+keeps M6 calculations outside the current Phase 2 scope.
 
 ### Step 6 — How does authorization work?
 

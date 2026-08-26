@@ -1,6 +1,8 @@
 from unittest.mock import patch
+from importlib import import_module
 from datetime import date
 from decimal import Decimal
+from django.apps import apps as django_apps
 from django.core.exceptions import ValidationError
 from django.db import connection
 from django.test import TestCase
@@ -1761,6 +1763,38 @@ class ReportValueResolverTests(M8TestDataMixin, TestCase):
 
 class ReportValueResolverContractTests(M8TestDataMixin, TestCase):
 
+    @staticmethod
+    def run_company_backfill():
+        """Exercise the migration's historical-model data operation."""
+        migration = import_module(
+            "apps.reporting.migrations.0002_reportrun_company"
+        )
+        migration.backfill_report_run_company(django_apps, None)
+
+    def make_legacy_frozen_run(self, datapoint):
+        """Create persisted pre-#41 data without invoking current freeze rules."""
+        run = ReportRun.objects.create(
+            reporting_period=self.period,
+            framework_version=self.framework_version,
+            created_by=self.user,
+            company=None,
+        )
+        snapshot = self.make_snapshot(run)
+        node = self.make_snapshot_node(snapshot)
+        self.make_snapshot_mapping(
+            node,
+            canonical_datapoint_code=datapoint.code,
+            source_datapoint_id=datapoint.id,
+        )
+        # This represents an already-frozen database row from before the M8
+        # company field existed; do not invoke current runtime validation.
+        ReportRun.objects.filter(pk=run.pk).update(
+            status=ReportRun.Status.FROZEN,
+            snapshot_frozen_at=snapshot.frozen_at,
+        )
+        run.refresh_from_db()
+        return run
+
     def make_capture_context(self, company=None):
         company = company or self.company
         org_node = self.make_capture_org_node(company)
@@ -2166,3 +2200,43 @@ class ReportValueResolverContractTests(M8TestDataMixin, TestCase):
 
         dataset = ReportValueResolver.build_dataset(run)
         self.assertEqual([item["value"] for item in dataset], [100])
+
+    def test_migration_backfills_single_company_legacy_frozen_run(self):
+        datapoint = self.make_contract_datapoint(
+            "LEGACY-SINGLE-COMPANY", DatapointDataType.INTEGER
+        )
+        run = self.make_legacy_frozen_run(datapoint)
+        request, maker, reviewer = self.make_capture_request_for(
+            datapoint, self.make_capture_context(self.company)
+        )
+        self.approve_scalar(request, maker, reviewer, "integer_value", 123)
+
+        self.run_company_backfill()
+        run.refresh_from_db()
+
+        self.assertEqual(run.company_id, self.company.id)
+        self.assertTrue(run.is_frozen)
+        self.assertEqual(ReportValueResolver.build_dataset(run)[0]["value"], 123)
+
+    def test_migration_does_not_guess_for_ambiguous_legacy_run(self):
+        datapoint = self.make_contract_datapoint(
+            "LEGACY-MULTI-COMPANY", DatapointDataType.INTEGER
+        )
+        run = self.make_legacy_frozen_run(datapoint)
+        self.make_capture_company("M8OTHER")
+
+        self.run_company_backfill()
+        run.refresh_from_db()
+
+        self.assertIsNone(run.company_id)
+        self.assertTrue(run.is_frozen)
+
+    def test_migration_never_overwrites_existing_company_scope(self):
+        other_company = self.make_capture_company("M8OTHER")
+        run = self.make_report_run(company=self.company)
+
+        self.run_company_backfill()
+        run.refresh_from_db()
+
+        self.assertEqual(run.company_id, self.company.id)
+        self.assertNotEqual(run.company_id, other_company.id)
