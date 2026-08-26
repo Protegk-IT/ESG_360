@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import Permission, Role, User, UserRoleAssignment
 from apps.companies.models import Company
+from apps.data_capture.models import Answer, DataRequest, Submission, SubmissionStatus
 from apps.datapoints.models import CollectionFrequency, CollectionLevel, Datapoint, DatapointCategory, DatapointDataType, Unit, UnitFamily
 from apps.modules.models import Module
 from apps.organizations.models import OrgNode
@@ -56,3 +57,48 @@ class TargetFoundationTests(TestCase):
         response = client.get("/api/targets/goals/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["data"][0]["name"], "No assessment needed")
+
+    def test_progress_api_uses_annual_periods_and_returns_a_protected_target(self):
+        permission = Permission.objects.create(code="target.set", name="Set targets", module_code="target", action="EDIT")
+        role = Role.objects.create(role_code="targets-progress", role_name="Targets progress")
+        role.permissions.add(permission)
+        UserRoleAssignment.objects.create(user=self.user, role=role, org_node=self.org, module_code="target")
+        goal = Goal.objects.create(name="Goal", created_by=self.user)
+        kpi = KPI.objects.create(goal=goal, code="energy-progress", name="Energy", metric_source_type=MetricSourceType.DATAPOINT, datapoint=self.datapoint, direction=KPIDirection.REDUCE, aggregation=KPIAggregation.SUM)
+        target = Target.objects.create(kpi=kpi, org_node=self.org, baseline_period=self.baseline, baseline_value=Decimal("100"), baseline_unit=self.unit, target_period=self.endpoint, target_value=Decimal("70"), target_unit=self.unit, created_by=self.user)
+        ReportingPeriod.objects.create(parent=self.baseline, name="Apr 2025", period_type=PeriodType.MONTHLY, start_date=date(2025, 4, 1), end_date=date(2025, 4, 30))
+        client = APIClient(); client.force_login(self.user)
+        response = client.get(f"/api/targets/targets/{target.id}/progress/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(all("Apr 2025" != row["name"] for row in response.data["data"]["trajectory"]))
+
+    def test_approved_integer_m5_answers_are_resolved_as_kpi_actuals(self):
+        integer_datapoint = Datapoint.objects.create(
+            code="waste.generated.test", category=self.category, module=self.module,
+            label="Waste", data_type=DatapointDataType.INTEGER,
+            unit_family=self.family, default_unit=self.unit,
+            collection_level=CollectionLevel.ORG_NODE,
+            frequency=CollectionFrequency.ANNUAL,
+        )
+        request = DataRequest.objects.create(
+            datapoint=integer_datapoint, org_node=self.org,
+            reporting_period=self.baseline, assignee=self.user, requested_by=self.user,
+        )
+        submission = Submission.objects.create(data_request=request)
+        Answer.objects.create(submission=submission, integer_value=42, unit=self.unit, entered_by=self.user)
+        submission.status = SubmissionStatus.APPROVED
+        submission._allow_lifecycle_transition = True
+        submission.save()
+        kpi = KPI.objects.create(
+            goal=Goal.objects.create(name="Waste goal", created_by=self.user),
+            code="waste", name="Waste", metric_source_type=MetricSourceType.DATAPOINT,
+            datapoint=integer_datapoint, direction=KPIDirection.REDUCE,
+            aggregation=KPIAggregation.SUM,
+        )
+        target = Target.objects.create(
+            kpi=kpi, org_node=self.org, baseline_period=self.baseline,
+            baseline_value=Decimal("50"), baseline_unit=self.unit,
+            target_period=self.endpoint, target_value=Decimal("20"),
+            target_unit=self.unit, created_by=self.user,
+        )
+        self.assertEqual(progress_for(target, self.baseline)["actual_value"], Decimal("42"))

@@ -104,9 +104,17 @@ class TargetDetailAPIView(TargetsAPIView):
 
 
 class TargetProgressAPIView(TargetsAPIView):
+    def get_object(self, target_id):
+        return get_object_or_404(self.target_queryset(), pk=target_id)
+
     def get(self, request, target_id):
         target = self.get_object(target_id)
-        periods = target.baseline_period.__class__.objects.filter(start_date__gte=target.baseline_period.start_date, start_date__lte=target.target_period.start_date).order_by("start_date")
+        periods = target.baseline_period.__class__.objects.filter(
+            period_type="ANNUAL",
+            is_active=True,
+            start_date__gte=target.baseline_period.start_date,
+            start_date__lte=target.target_period.start_date,
+        ).order_by("start_date")
         rows = [progress_for(target, period) for period in periods]
         return success_response({"target": TargetSerializer(target).data, "trajectory": [{"reporting_period": str(p.id), "name": p.name, "value": trajectory_value(target, p)} for p in periods], "progress": rows})
 

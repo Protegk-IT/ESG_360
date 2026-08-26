@@ -41,6 +41,17 @@ The frontend provides `/goals` and `/goals/:id`: independent goal creation,
 KPI tabs, baseline/target configuration, actual/trajectory/target chart and
 initiative creation. It does not fabricate projected values.
 
+## Local visual-test fixture
+
+`python manage.py seed_m10_demo` is a repeat-safe development fixture. It
+does not reset the database or alter user-created planning records. It reuses
+the active company/root hierarchy where available and creates clearly named
+`DEMO M10` periods, facility, users, goals and targets. Its M10 actuals are
+real M5 `DataRequest -> draft answer -> submit -> approve` records, rather
+than values written into M10. The fixture includes Water Stewardship with
+multiple KPI tabs, Energy Efficiency, Renewable Energy Adoption, and an
+independent Operational Waste Reduction goal with no Materiality link.
+
 ## Deferred
 
 Calculated-provider registration, automated campaign generation, SBTi/scenario

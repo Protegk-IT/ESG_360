@@ -31,8 +31,9 @@ class KPIValueProvider:
         )
         if org_node is not None:
             qs = qs.filter(submission__data_request__org_node=org_node)
-        # Numeric datapoints are enforced by KPI validation.  Unit identity is
-        # preserved; cross-unit aggregation is intentionally not guessed.
+        # Numeric datapoints are enforced by KPI validation. Unit identity is
+        # preserved; conversion is performed only later against the target's
+        # explicitly configured unit.
         if kpi.aggregation == KPIAggregation.NONE:
             return ActualMetricValue(None, None, "M5_APPROVED", "NO_DATA")
         if kpi.aggregation == KPIAggregation.COUNT:
@@ -40,13 +41,18 @@ class KPIValueProvider:
         units = list(qs.exclude(unit__isnull=True).values_list("unit_id", flat=True).distinct()[:2])
         if len(units) > 1:
             return ActualMetricValue(None, None, "M5_APPROVED_INCOMPATIBLE_UNITS")
+        value_field = (
+            "integer_value"
+            if kpi.datapoint.data_type == "INTEGER"
+            else "decimal_value"
+        )
         if kpi.aggregation == KPIAggregation.SUM:
-            value = qs.aggregate(value=Sum("decimal_value"))["value"]
+            value = qs.aggregate(value=Sum(value_field))["value"]
         elif kpi.aggregation == KPIAggregation.AVG:
-            value = qs.aggregate(value=Avg("decimal_value"))["value"]
+            value = qs.aggregate(value=Avg(value_field))["value"]
         else:  # LATEST uses a stable latest approved answer timestamp.
             latest = qs.order_by("-updated_at").first()
-            value = latest.decimal_value if latest else None
+            value = getattr(latest, value_field) if latest else None
         return ActualMetricValue(value, units[0] if units else kpi.default_unit_id, "M5_APPROVED", "AVAILABLE" if value is not None else "NO_DATA")
 
 
