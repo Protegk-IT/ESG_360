@@ -7,6 +7,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.http import Http404
 
 from apps.accounts.permissions import HasRolePermission
 from apps.accounts.services.rbac import RBACService
@@ -252,6 +253,35 @@ class CalculationPreviewAPIView(APIView):
         )
 
 
+def get_scoped_answer_or_404(answer_id, user):
+    try:
+        answer = Answer.objects.select_related(
+            "submission",
+            "submission__data_request",
+            "submission__data_request__org_node",
+            "submission__data_request__reporting_period",
+            "submission__data_request__datapoint",
+            "unit",
+        ).get(pk=answer_id)
+    except Answer.DoesNotExist:
+        raise Http404
+
+    if user.is_superuser:
+        return answer
+
+    org_node_id = answer.submission.data_request.org_node_id
+
+    allowed_nodes = RBACService.get_allowed_org_nodes(
+        user,
+        "data.approve",
+        module_code="data",
+    )
+
+    if allowed_nodes is not None and org_node_id not in allowed_nodes:
+        raise Http404
+
+    return answer
+
 class ApprovedAnswerCalculationAPIView(APIView):
     permission_classes = [IsAuthenticated, HasRolePermission]
     permission_code = "data.approve"
@@ -269,18 +299,10 @@ class ApprovedAnswerCalculationAPIView(APIView):
         calculation_date = request_serializer.validated_data["calculation_date"]
         geography = request_serializer.validated_data.get("geography")
 
-        try:
-            answer = Answer.objects.select_related(
-                "submission",
-                "submission__data_request",
-                "submission__data_request__org_node",
-                "submission__data_request__reporting_period",
-                "submission__data_request__datapoint",
-                "unit",
-            ).get(pk=answer_id)
-        except Answer.DoesNotExist as exc:
-            raise serializers.ValidationError({"answer": "Answer not found."}) from exc
-
+        answer = get_scoped_answer_or_404(
+            answer_id,
+            request.user,
+        )
         try:
             calculation = ApprovedAnswerCalculationService.calculate(
                 answer=answer,
@@ -411,18 +433,10 @@ class CalculationResultCreateAPIView(APIView):
         calculation_date = request_serializer.validated_data["calculation_date"]
         geography = request_serializer.validated_data.get("geography")
 
-        try:
-            answer = Answer.objects.select_related(
-                "submission",
-                "submission__data_request",
-                "submission__data_request__org_node",
-                "submission__data_request__reporting_period",
-                "submission__data_request__datapoint",
-                "unit",
-            ).get(pk=answer_id)
-        except Answer.DoesNotExist as exc:
-            raise serializers.ValidationError({"answer": "Answer not found."}) from exc
-
+        answer = get_scoped_answer_or_404(
+            answer_id,
+            request.user,
+        )
         try:
             calculation = ApprovedAnswerCalculationService.calculate(
                 answer=answer,

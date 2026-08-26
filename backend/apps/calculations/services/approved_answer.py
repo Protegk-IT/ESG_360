@@ -35,10 +35,7 @@ class ApprovedAnswerCalculationService:
             return
 
         org_node_id = answer.submission.data_request.org_node_id
-        if any(
-            has_scoped_permission(actor, permission_code, org_node_id)
-            for permission_code in ("data.manage", "data.approve")
-        ):
+        if has_scoped_permission(actor, "data.approve", org_node_id,):
             return
 
         raise PermissionDenied(
@@ -82,7 +79,39 @@ class ApprovedAnswerCalculationService:
 
         rule = cls._get_calculation_rule(answer)
 
-        activity_key = rule.rule_metadata.get("activity_key")
+        rule_metadata = rule.rule_metadata
+
+        if rule_metadata.get("operation") != "multiply":
+            raise ValidationError(
+                {
+                    "calculation_rule": (
+                        "The approved-answer calculation adapter only "
+                        "supports the 'multiply' operation."
+                    )
+                }
+            )
+
+        if rule_metadata.get("input") != "activity_quantity":
+            raise ValidationError(
+                {
+                    "calculation_rule": (
+                        "The approved-answer calculation adapter requires "
+                        "'activity_quantity' as the input."
+                    )
+                }
+            )
+
+        if rule_metadata.get("factor") != "emission_factor":
+            raise ValidationError(
+                {
+                    "calculation_rule": (
+                        "The approved-answer calculation adapter requires "
+                        "'emission_factor' as the factor."
+                    )
+                }
+            )
+
+        activity_key = rule_metadata.get("activity_key")
 
         if not activity_key:
             raise ValidationError(
@@ -260,10 +289,7 @@ class CalculationResultService:
         else:
             return
 
-        if any(
-            has_scoped_permission(actor, permission_code, org_node_id)
-            for permission_code in ("data.manage", "data.approve")
-        ):
+        if has_scoped_permission(actor,"data.approve",org_node_id):
             return
 
         raise PermissionDenied(
@@ -292,15 +318,71 @@ class CalculationResultService:
         cls.ensure_access(user, result=result)
         return result
 
+    @staticmethod
+    def _is_same_calculation(calculation, result):
+        """
+        Return True when the newly calculated result is materially
+        identical to the existing CURRENT result.
+
+        Versioning is required only when one of the calculation inputs,
+        context, selected rule/factor, or persisted calculation output
+        changes.
+        """
+
+        factor = calculation["factor"]
+        rule = calculation["calculation_rule"]
+
+        return (
+            # Calculation identity
+            result.answer_id == calculation["answer"].id
+            and result.calculation_rule_id == rule.id
+            and result.emission_factor_id == factor.id
+
+            # Calculation context
+            and result.activity_key == calculation["activity_key"]
+            and result.calculation_date == calculation["calculation_date"]
+            and result.geography == (calculation.get("geography") or "")
+
+            # Input snapshot
+            and result.input_quantity == calculation["input_quantity"]
+            and result.input_unit_id == calculation["input_unit"].id
+            and result.normalized_quantity == calculation["normalized_quantity"]
+
+            # Factor snapshot
+            and result.factor_value == factor.factor_value
+            and result.factor_code == factor.code
+            and result.factor_source_code == factor.source.code
+            and result.factor_source_name == factor.source.name
+            and result.factor_source_version == factor.source.version
+            and result.factor_source_reference == factor.source.source_reference
+
+            # Result snapshot
+            and result.calculated_value == calculation["calculated_value"]
+            and result.output_unit_id == calculation["output_unit"].id
+        )
+
     @classmethod
     @transaction.atomic
-    def persist(
-        cls,
-        *,
-        calculation,
-        actor,
-    ):
-        answer = calculation["answer"]
+    def persist(cls, *, calculation, actor,):
+
+        # ---------------------------------------------------------
+        # RELOAD AND LOCK AUTHORITATIVE M5 ANSWER
+        # ---------------------------------------------------------
+
+        answer = (
+            Answer.objects
+            .select_for_update()
+            .select_related(
+                "submission",
+                "submission__data_request",
+                "submission__data_request__datapoint",
+                "submission__data_request__org_node",
+                "submission__data_request__reporting_period",
+                "unit",
+            )
+            .get(pk=calculation["answer"].pk)
+        )
+
         rule = calculation["calculation_rule"]
         factor = calculation["factor"]
         cls.ensure_access(actor, answer=answer)
@@ -327,11 +409,37 @@ class CalculationResultService:
         data_request = submission.data_request
 
         # ---------------------------------------------------------
+        # CHECK EXISTING CURRENT RESULT
+        # ---------------------------------------------------------
+
+        current_result = (
+            CalculationResult.objects
+            .select_for_update()
+            .filter(
+                answer=answer,
+                status=CalculationResultStatus.CURRENT,
+            )
+            .first()
+        )
+
+        # ---------------------------------------------------------
+        # IDEMPOTENT REPLAY
+        # ---------------------------------------------------------
+
+        if current_result is not None:
+            if cls._is_same_calculation(
+                calculation,
+                current_result,
+            ):
+                return current_result
+
+        # ---------------------------------------------------------
         # DETERMINE NEXT VERSION
         # ---------------------------------------------------------
 
         latest_result = (
             CalculationResult.objects
+            .select_for_update()
             .filter(answer=answer)
             .order_by("-calculation_version")
             .first()
@@ -348,14 +456,9 @@ class CalculationResultService:
         # SUPERSEDE PREVIOUS CURRENT RESULT
         # ---------------------------------------------------------
 
-        if latest_result is not None:
-            CalculationResult.objects.filter(
-                answer=answer,
-                status=CalculationResultStatus.CURRENT,
-            ).update(
-                status=CalculationResultStatus.SUPERSEDED,
-            )
-            latest_result.status = CalculationResultStatus.SUPERSEDED
+        if current_result is not None:
+            current_result.status = CalculationResultStatus.SUPERSEDED
+            current_result.save(update_fields=["status", "updated_at"])
 
         # ---------------------------------------------------------
         # CREATE RESULT + PROVENANCE SNAPSHOT
@@ -383,6 +486,9 @@ class CalculationResultService:
             # -----------------------------------------------------
 
             calculation_rule=rule,
+            calculation_rule_code=rule.code,
+            calculation_rule_name=rule.name,
+            calculation_rule_metadata=rule.rule_metadata,
             emission_factor=factor,
 
             # -----------------------------------------------------
@@ -391,6 +497,12 @@ class CalculationResultService:
 
             input_quantity=calculation["input_quantity"],
             input_unit=calculation["input_unit"],
+            input_unit_code=calculation["input_unit"].code,
+            input_unit_name=calculation["input_unit"].name,
+            input_unit_factor_to_base=calculation["input_unit"].factor_to_base,
+            factor_input_unit_code=factor.input_unit.code,
+            factor_input_unit_name=factor.input_unit.name,
+            factor_input_unit_factor_to_base=factor.input_unit.factor_to_base,
             normalized_quantity=calculation["normalized_quantity"],
 
             # -----------------------------------------------------
@@ -418,6 +530,8 @@ class CalculationResultService:
 
             calculated_value=calculation["calculated_value"],
             output_unit=calculation["output_unit"],
+            output_unit_code=calculation["output_unit"].code,
+            output_unit_name=calculation["output_unit"].name,
 
             # -----------------------------------------------------
             # VERSION / STATUS

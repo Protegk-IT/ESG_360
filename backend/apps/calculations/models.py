@@ -472,6 +472,20 @@ class CalculationResult(BaseModel):
         related_name="calculation_results",
     )
 
+    calculation_rule_code = models.CharField(
+        max_length=150,
+        help_text="Snapshot of the calculation rule code used.",
+    )
+
+    calculation_rule_name = models.CharField(
+        max_length=200,
+        help_text="Snapshot of the calculation rule name used.",
+    )
+
+    calculation_rule_metadata = models.JSONField(
+        help_text="Snapshot of the calculation rule metadata used.",
+    )
+
     # ------------------------------------------------------------------
     # SELECTED FACTOR
     # ------------------------------------------------------------------
@@ -497,6 +511,38 @@ class CalculationResult(BaseModel):
         on_delete=models.PROTECT,
         related_name="calculation_result_inputs",
     )
+
+    input_unit_code = models.CharField(
+        max_length=100,
+        help_text="Snapshot of the factor input unit code used for normalization.",
+    )
+
+    input_unit_name = models.CharField(
+        max_length=255,
+        help_text="Snapshot of the factor input unit name used for normalization.",
+    )
+
+    input_unit_factor_to_base = models.DecimalField(
+        max_digits=30,
+        decimal_places=15,
+        help_text="Snapshot of the input unit conversion factor used for normalization.",
+    )
+
+    factor_input_unit_code = models.CharField(
+        max_length=100,
+        help_text="Snapshot of the emission factor input unit code.",
+        )
+
+    factor_input_unit_name = models.CharField(
+        max_length=255,
+        help_text="Snapshot of the emission factor input unit name.",
+        )
+
+    factor_input_unit_factor_to_base = models.DecimalField(
+        max_digits=30,
+        decimal_places=15,
+        help_text="Snapshot of the emission factor input unit conversion factor.",
+        )
 
     normalized_quantity = models.DecimalField(
         max_digits=30,
@@ -575,6 +621,16 @@ class CalculationResult(BaseModel):
         Unit,
         on_delete=models.PROTECT,
         related_name="calculation_result_outputs",
+    )
+
+    output_unit_code = models.CharField(
+        max_length=100,
+        help_text="Snapshot of the output unit code used.",
+    )
+
+    output_unit_name = models.CharField(
+        max_length=255,
+        help_text="Snapshot of the output unit name used.",
     )
 
     # ------------------------------------------------------------------

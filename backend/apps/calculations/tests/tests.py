@@ -15,12 +15,19 @@ from apps.accounts.models import (
     UserRoleAssignment,
 )
 from apps.calculations.models import (
+    CalculationResult,
+    CalculationResultStatus,
     CalculationRule,
     EmissionFactor,
     EmissionFactorSource,
 )
+from apps.companies.models import Company
+from apps.data_capture.models import Answer, SubmissionStatus
+from apps.data_capture.services.lifecycle import DataCaptureLifecycleService
 from apps.datapoints.models import CollectionFrequency, CollectionLevel, Datapoint, DatapointCategory, DatapointDataType, Unit, UnitFamily
 from apps.modules.models import ESGPillar, Module
+from apps.organizations.models import OrgNode
+from apps.periods.models import PeriodType, ReportingPeriod
 
 
 class EmissionFactorSourceTests(TestCase):
@@ -1141,6 +1148,422 @@ class CalculationAPITests(TestCase):
             "factor",
             response.data["errors"],
         )
+
+
+class CalculationResultApiTests(TestCase):
+    """Real API coverage for the approved-answer M6 result flow."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(
+            company_name="Result API Co",
+            company_code="RAPI",
+            contact_person="Owner",
+            email="owner@result-api.test",
+            mobile_number="1234567890",
+        )
+        cls.root = OrgNode.objects.get(company=cls.company, parent__isnull=True)
+        cls.org_a = OrgNode.objects.create(
+            company=cls.company,
+            parent=cls.root,
+            node_type="FACILITY",
+            code="ORG-A",
+            name="Org A",
+        )
+        cls.org_b = OrgNode.objects.create(
+            company=cls.company,
+            parent=cls.root,
+            node_type="FACILITY",
+            code="ORG-B",
+            name="Org B",
+        )
+
+        cls.period = ReportingPeriod.objects.create(
+            name="FY 2027",
+            period_type=PeriodType.ANNUAL,
+            start_date=date(2027, 4, 1),
+            end_date=date(2028, 3, 31),
+        )
+
+        cls.module = Module.objects.create(
+            code="energy",
+            name="Energy",
+            esg_pillar=ESGPillar.E,
+        )
+        cls.category = DatapointCategory.objects.create(
+            code="M6_RESULT_API",
+            name="Result API",
+            module=cls.module,
+        )
+
+        cls.energy_family = UnitFamily.objects.create(code="ENERGY", name="Energy")
+        cls.mass_family = UnitFamily.objects.create(code="MASS", name="Mass")
+        cls.kwh = Unit.objects.create(
+            family=cls.energy_family,
+            code="KWH",
+            name="Kilowatt-hour",
+            factor_to_base=Decimal("1"),
+            is_base_unit=True,
+            is_active=True,
+        )
+        cls.kg = Unit.objects.create(
+            family=cls.mass_family,
+            code="KG",
+            name="Kilogram",
+            factor_to_base=Decimal("1"),
+            is_base_unit=True,
+            is_active=True,
+        )
+
+        cls.datapoint = Datapoint.objects.create(
+            code="RESULT_API_ELECTRICITY",
+            category=cls.category,
+            module=cls.module,
+            label="Electricity consumption",
+            data_type=DatapointDataType.DECIMAL,
+            unit_family=cls.energy_family,
+            default_unit=cls.kwh,
+            collection_level=CollectionLevel.ORG_NODE,
+            frequency=CollectionFrequency.MONTHLY,
+            is_required=True,
+        )
+
+        cls.manager = User.objects.create_user(username="result-manager", password="pass")
+        cls.maker = User.objects.create_user(username="result-maker", password="pass")
+        cls.reviewer = User.objects.create_user(username="result-reviewer", password="pass")
+        cls.other_reviewer = User.objects.create_user(username="result-other-reviewer", password="pass")
+
+        cls.data_manage = Permission.objects.create(
+            code="data.manage",
+            name="Manage data",
+            module_code="data",
+            action="MANAGE",
+        )
+        cls.data_enter = Permission.objects.create(
+            code="data.enter",
+            name="Enter data",
+            module_code="data",
+            action="ENTER",
+        )
+        cls.data_submit = Permission.objects.create(
+            code="data.submit",
+            name="Submit data",
+            module_code="data",
+            action="SUBMIT",
+        )
+        cls.data_approve = Permission.objects.create(
+            code="data.approve",
+            name="Approve data",
+            module_code="data",
+            action="APPROVE",
+        )
+
+        cls.manage_role = Role.objects.create(role_code="result-manage", role_name="Result manage")
+        cls.manage_role.permissions.add(cls.data_manage, cls.data_enter, cls.data_submit)
+        cls.approve_role = Role.objects.create(role_code="result-approve", role_name="Result approve")
+        cls.approve_role.permissions.add(cls.data_approve)
+
+        UserRoleAssignment.objects.create(user=cls.manager, role=cls.manage_role, org_node=cls.org_a)
+        UserRoleAssignment.objects.create(user=cls.maker, role=cls.manage_role, org_node=cls.org_a)
+        UserRoleAssignment.objects.create(user=cls.reviewer, role=cls.approve_role, org_node=cls.org_a)
+        UserRoleAssignment.objects.create(user=cls.other_reviewer, role=cls.approve_role, org_node=cls.org_b)
+
+        cls.source = EmissionFactorSource.objects.create(
+            code="RESULT_API_SOURCE",
+            name="Result API Source",
+            publisher="Publisher",
+            version="1.0",
+            is_active=True,
+        )
+        cls.factor = EmissionFactor.objects.create(
+            code="RESULT_API_FACTOR",
+            source=cls.source,
+            activity_key="electricity_consumption",
+            input_unit=cls.kwh,
+            output_unit=cls.kg,
+            factor_value=Decimal("0.5"),
+            geography="",
+            is_active=True,
+        )
+        cls.rule = CalculationRule.objects.create(
+            code="RESULT_API_RULE",
+            name="Result API Rule",
+            datapoint=cls.datapoint,
+            rule_metadata={
+                "operation": "multiply",
+                "input": "activity_quantity",
+                "factor": "emission_factor",
+                "activity_key": "electricity_consumption",
+            },
+            is_active=True,
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+
+    def _create_approved_answer(self, *, org_node, assignee, actor, value=Decimal("100"), unit=None):
+        request = DataCaptureLifecycleService.create_request(
+            actor=actor,
+            datapoint=self.datapoint,
+            org_node=org_node,
+            reporting_period=self.period,
+            assignee=assignee,
+        )
+        submission = request.submission
+        answer = DataCaptureLifecycleService.save_scalar_answer(
+            submission,
+            actor=assignee,
+            decimal_value=value,
+            unit=unit or self.kwh,
+        )
+        DataCaptureLifecycleService.submit(submission, actor=assignee)
+        DataCaptureLifecycleService.approve(submission, actor=self.reviewer)
+        return request, submission, answer
+
+    def test_non_superuser_with_same_assignment_scope_can_calculate_and_retrieve_result(self):
+        _, _, answer = self._create_approved_answer(
+            org_node=self.org_a,
+            assignee=self.maker,
+            actor=self.manager,
+        )
+
+        self.client.force_authenticate(user=self.reviewer)
+        response = self.client.post(
+            "/api/calculations/results/create/",
+            {
+                "answer": str(answer.id),
+                "calculation_date": "2027-08-21",
+                "geography": "",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        result = CalculationResult.objects.get(pk=response.data["id"])
+        self.assertEqual(result.calculation_version, 1)
+        self.assertEqual(result.status, CalculationResultStatus.CURRENT)
+        self.assertEqual(Decimal(response.data["calculated_value"]), Decimal("50"))
+        self.assertEqual(Decimal(response.data["normalized_quantity"]), Decimal("100"))
+
+        retrieve = self.client.get(f"/api/calculations/results/{result.id}/")
+        self.assertEqual(retrieve.status_code, 200)
+        self.assertEqual(str(retrieve.data["id"]), str(result.id))
+        self.assertEqual(retrieve.data["status"], CalculationResultStatus.CURRENT)
+        self.assertEqual(retrieve.data["calculation_version"], 1)
+        self.assertEqual(retrieve.data["org_node"], self.org_a.id)
+        self.assertEqual(retrieve.data["factor_source_code"], self.source.code)
+
+    def test_result_create_rejects_unapproved_answer_and_wrong_scope(self):
+        request = DataCaptureLifecycleService.create_request(
+            actor=self.manager,
+            datapoint=self.datapoint,
+            org_node=self.org_a,
+            reporting_period=self.period,
+            assignee=self.maker,
+        )
+        submission = request.submission
+        answer = DataCaptureLifecycleService.save_scalar_answer(
+            submission,
+            actor=self.maker,
+            decimal_value=Decimal("100"),
+            unit=self.kwh,
+        )
+        DataCaptureLifecycleService.submit(submission, actor=self.maker)
+
+        self.client.force_authenticate(user=self.reviewer)
+        unapproved = self.client.post(
+            "/api/calculations/results/create/",
+            {"answer": str(answer.id), "calculation_date": "2027-08-21"},
+            format="json",
+        )
+        self.assertEqual(unapproved.status_code, 400)
+
+        org_b_maker = User.objects.create_user(username="org-b-maker", password="pass")
+        UserRoleAssignment.objects.create(user=org_b_maker, role=self.manage_role, org_node=self.org_b)
+
+        other_answer = self._create_approved_answer(
+            org_node=self.org_b,
+            assignee=org_b_maker,
+            actor=self.manager,
+        )[2]
+
+        scoped = self.client.post(
+            "/api/calculations/results/create/",
+            {"answer": str(other_answer.id), "calculation_date": "2027-08-21"},
+            format="json",
+        )
+        self.assertEqual(scoped.status_code, 404)
+
+    def test_result_create_rejects_domain_errors_via_api(self):
+        _, _, answer = self._create_approved_answer(
+            org_node=self.org_a,
+            assignee=self.maker,
+            actor=self.manager,
+        )
+
+        self.client.force_authenticate(user=self.reviewer)
+
+        unit = Unit.objects.create(
+            family=self.mass_family,
+            code="TONNE",
+            name="Tonne",
+            factor_to_base=Decimal("1000"),
+            is_base_unit=False,
+            is_active=True,
+        )
+        Answer.objects.filter(pk=answer.pk).update(unit=unit)
+        answer.refresh_from_db()
+        incompatible = self.client.post(
+            "/api/calculations/results/create/",
+            {"answer": str(answer.id), "calculation_date": "2027-08-21"},
+            format="json",
+        )
+        self.assertEqual(incompatible.status_code, 400)
+
+        self.factor.activity_key = "different_activity"
+        self.factor.save(update_fields=["activity_key"])
+
+        org_b = OrgNode.objects.create(
+            company=self.company,
+            parent=self.root,
+            node_type="FACILITY",
+            code="ORG-B-NO-MATCH",
+            name="Org B no match",
+        )
+        org_b_maker = User.objects.create_user(username="org-b-no-match-maker", password="pass")
+        UserRoleAssignment.objects.create(user=self.manager, role=self.manage_role, org_node=org_b)
+        UserRoleAssignment.objects.create(user=org_b_maker, role=self.manage_role, org_node=org_b)
+        UserRoleAssignment.objects.create(user=self.reviewer, role=self.approve_role, org_node=org_b)
+
+        no_match_request = DataCaptureLifecycleService.create_request(
+            actor=self.manager,
+            datapoint=self.datapoint,
+            org_node=org_b,
+            reporting_period=self.period,
+            assignee=org_b_maker,
+        )
+        no_match_submission = no_match_request.submission
+        answer2 = DataCaptureLifecycleService.save_scalar_answer(
+            no_match_submission,
+            actor=org_b_maker,
+            decimal_value=Decimal("80"),
+            unit=self.kwh,
+        )
+        DataCaptureLifecycleService.submit(no_match_submission, actor=org_b_maker)
+        DataCaptureLifecycleService.approve(no_match_submission, actor=self.reviewer)
+        no_match = self.client.post(
+            "/api/calculations/results/create/",
+            {"answer": str(answer2.id), "calculation_date": "2027-08-21"},
+            format="json",
+        )
+        self.assertEqual(no_match.status_code, 400)
+
+        self.factor.activity_key = "electricity_consumption"
+        self.factor.save(update_fields=["activity_key"])
+        duplicate = EmissionFactor.objects.create(
+            code="RESULT_API_FACTOR_DUPLICATE",
+            source=self.source,
+            activity_key="electricity_consumption",
+            input_unit=self.kwh,
+            output_unit=self.kg,
+            factor_value=Decimal("0.75"),
+            geography="",
+            is_active=True,
+        )
+        self.assertIsNotNone(duplicate)
+
+        org_c = OrgNode.objects.create(
+            company=self.company,
+            parent=self.root,
+            node_type="FACILITY",
+            code="ORG-C-AMBIGUOUS",
+            name="Org C ambiguous",
+        )
+        org_c_maker = User.objects.create_user(username="org-c-ambiguous-maker", password="pass")
+        UserRoleAssignment.objects.create(user=self.manager, role=self.manage_role, org_node=org_c)
+        UserRoleAssignment.objects.create(user=org_c_maker, role=self.manage_role, org_node=org_c)
+        UserRoleAssignment.objects.create(user=self.reviewer, role=self.approve_role, org_node=org_c)
+
+        ambiguous_request = DataCaptureLifecycleService.create_request(
+            actor=self.manager,
+            datapoint=self.datapoint,
+            org_node=org_c,
+            reporting_period=self.period,
+            assignee=org_c_maker,
+        )
+        ambiguous_submission = ambiguous_request.submission
+        answer3 = DataCaptureLifecycleService.save_scalar_answer(
+            ambiguous_submission,
+            actor=org_c_maker,
+            decimal_value=Decimal("60"),
+            unit=self.kwh,
+        )
+        DataCaptureLifecycleService.submit(ambiguous_submission, actor=org_c_maker)
+        DataCaptureLifecycleService.approve(ambiguous_submission, actor=self.reviewer)
+        ambiguous = self.client.post(
+            "/api/calculations/results/create/",
+            {"answer": str(answer3.id), "calculation_date": "2027-08-21"},
+            format="json",
+        )
+        self.assertEqual(ambiguous.status_code, 400)
+
+    def test_result_api_protects_wrong_scope_result_and_preserves_m5_state(self):
+        _, _, answer = self._create_approved_answer(
+            org_node=self.org_a,
+            assignee=self.maker,
+            actor=self.manager,
+        )
+        self.client.force_authenticate(user=self.reviewer)
+        create_response = self.client.post(
+            "/api/calculations/results/create/",
+            {"answer": str(answer.id), "calculation_date": "2027-08-21"},
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+
+        result = CalculationResult.objects.get(pk=create_response.data["id"])
+        answer.refresh_from_db()
+        submission = result.submission
+        submission.refresh_from_db()
+        request = result.data_request
+        request.refresh_from_db()
+
+        self.assertEqual(answer.decimal_value, Decimal("100"))
+        self.assertEqual(answer.unit_id, self.kwh.id)
+        self.assertEqual(submission.status, SubmissionStatus.APPROVED)
+        self.assertEqual(request.status, "COMPLETED")
+
+        other_user = User.objects.create_user(username="result-scope-user", password="pass")
+        UserRoleAssignment.objects.create(user=other_user, role=self.approve_role, org_node=self.org_b)
+        self.client.force_authenticate(user=other_user)
+        protected = self.client.get(f"/api/calculations/results/{result.id}/")
+        self.assertEqual(protected.status_code, 404)
+
+    def test_calculation_result_mutation_routes_are_405(self):
+        _, _, answer = self._create_approved_answer(
+            org_node=self.org_a,
+            assignee=self.maker,
+            actor=self.manager,
+        )
+        self.client.force_authenticate(user=self.reviewer)
+        create_response = self.client.post(
+            "/api/calculations/results/create/",
+            {"answer": str(answer.id), "calculation_date": "2027-08-21"},
+            format="json",
+        )
+        result = CalculationResult.objects.get(pk=create_response.data["id"])
+
+        response = self.client.post("/api/calculations/results/", {"answer": str(answer.id)}, format="json")
+        self.assertEqual(response.status_code, 405)
+
+        put_response = self.client.put(f"/api/calculations/results/{result.id}/", {"answer": str(answer.id)}, format="json")
+        self.assertEqual(put_response.status_code, 405)
+
+        patch_response = self.client.patch(f"/api/calculations/results/{result.id}/", {"answer": str(answer.id)}, format="json")
+        self.assertEqual(patch_response.status_code, 405)
+
+        delete_response = self.client.delete(f"/api/calculations/results/{result.id}/")
+        self.assertEqual(delete_response.status_code, 405)
 
 
 class SeedCommandTests(TestCase):

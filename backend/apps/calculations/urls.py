@@ -21,8 +21,8 @@ router.register(r"results",CalculationResultViewSet,basename="calculation-result
 
 
 urlpatterns = [
-    path("",include(router.urls),),
     path("preview/",CalculationPreviewAPIView.as_view(),name="calculation-preview",),
     path("approved-answer/",ApprovedAnswerCalculationAPIView.as_view(),name="approved-answer-calculate",),
     path("results/create/",CalculationResultCreateAPIView.as_view(),name="calculation-result-create",),
+    path("",include(router.urls),),
 ]

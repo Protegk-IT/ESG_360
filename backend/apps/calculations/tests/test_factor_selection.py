@@ -259,3 +259,30 @@ class FactorSelectionServiceTests(TestCase):
         )
 
         self.assertEqual(result, factor)
+
+
+    def test_factor_for_different_geography_is_not_selected(self):
+        self.create_factor(
+            code="DIESEL_IN",
+            geography="IN",
+        )
+
+        with self.assertRaises(ValidationError):
+            FactorSelectionService.select_factor(
+                activity_key="DIESEL",
+                geography="US",
+            )
+
+
+    def test_factor_for_matching_geography_is_selected(self):
+        factor = self.create_factor(
+            code="DIESEL_US",
+            geography="US",
+        )
+
+        result = FactorSelectionService.select_factor(
+            activity_key="DIESEL",
+            geography="US",
+        )
+
+        self.assertEqual(result, factor)
