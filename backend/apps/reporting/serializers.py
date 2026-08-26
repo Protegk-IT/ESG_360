@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from apps.periods.models import ReportingPeriod
 from apps.frameworks.models import FrameworkVersion
+from apps.companies.models import Company
 
 from .models import (
     ReportRun,
@@ -27,6 +28,8 @@ class ReportRunSerializer(serializers.ModelSerializer):
         source="reporting_period.name",
         read_only=True,
     )
+
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
 
     framework_code = serializers.CharField(
         source="framework_version.framework.code",
@@ -56,6 +59,8 @@ class ReportRunSerializer(serializers.ModelSerializer):
             "id",
             "reporting_period",
             "reporting_period_name",
+            "company",
+            "company_name",
             "framework_version",
             "framework_code",
             "framework_version_code",
@@ -75,6 +80,7 @@ class ReportRunSerializer(serializers.ModelSerializer):
             "created_by",
             "created_by_name",
             "reporting_period_name",
+            "company_name",
             "framework_code",
             "framework_version_code",
             "framework_version_name",
@@ -136,6 +142,16 @@ class ReportRunSerializer(serializers.ModelSerializer):
             ),
         )
 
+        company = attrs.get("company", getattr(self.instance, "company", None))
+        # Preserve the existing single-company creation flow while refusing
+        # an ambiguous multi-company request.  New multi-company clients must
+        # choose the reporting scope explicitly.
+        if company is None and self.instance is None:
+            companies = list(Company.objects.only("id")[:2])
+            if len(companies) == 1:
+                company = companies[0]
+                attrs["company"] = company
+
         errors = {}
 
         if reporting_period is None:
@@ -147,6 +163,9 @@ class ReportRunSerializer(serializers.ModelSerializer):
             errors["framework_version"] = (
                 "A framework version is required."
             )
+
+        if company is None:
+            errors["company"] = "A company is required."
 
 
 
@@ -185,6 +204,11 @@ class ReportRunSerializer(serializers.ModelSerializer):
                             "after the report run is frozen."
                         )
                     }
+                )
+
+            if "company" in attrs and attrs["company"].pk != self.instance.company_id:
+                raise serializers.ValidationError(
+                    {"company": "Company cannot be changed after the report run is frozen."}
                 )
 
         return attrs

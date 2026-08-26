@@ -37,6 +37,17 @@ class ReportRun(BaseModel):
         related_name="report_runs",
     )
 
+    # Reporting periods are global, whereas captured values belong to an
+    # OrgNode and therefore a company.  Keep legacy rows nullable, but never
+    # resolve them without an explicit scope.
+    company = models.ForeignKey(
+        "companies.Company",
+        on_delete=models.PROTECT,
+        related_name="report_runs",
+        null=True,
+        blank=True,
+    )
+
     framework_version = models.ForeignKey(
         FrameworkVersion,
         on_delete=models.PROTECT,
@@ -100,6 +111,7 @@ class ReportRun(BaseModel):
                 fields=["status"],
                 name="idx_report_run_status",
             ),
+            models.Index(fields=["company"], name="idx_report_run_company"),
         ]
 
     def __str__(self):
@@ -165,6 +177,11 @@ class ReportRun(BaseModel):
                             "after the report run is frozen."
                         )
                     }
+                )
+
+            if previous.company_id != self.company_id:
+                raise ValidationError(
+                    {"company": "Company cannot be changed after the report run is frozen."}
                 )
 
             if self.status != self.Status.FROZEN:

@@ -26,6 +26,7 @@ from apps.frameworks.models import (
     FrameworkVersion,
 )
 from apps.modules.models import Module
+from apps.companies.models import Company
 from apps.periods.models import (
     PeriodType,
     ReportingPeriod,
@@ -278,6 +279,7 @@ class ReportingViewTestMixin:
             framework_version=(
                 framework_version or self.framework_version
             ),
+            company=self.company,
             created_by=(
                 created_by or self.user
             ),
@@ -306,6 +308,12 @@ class ReportingViewTestMixin:
             f"{run_id}/snapshot/"
         )
 
+    def resolved_values_url(self, run_id):
+        return (
+            f"/api/reporting/report-runs/"
+            f"{run_id}/resolved-values/"
+        )
+
 
 # ============================================================
 # BASE TEST SETUP
@@ -329,6 +337,14 @@ class BaseReportingViewTests(
             cls,
             username="m8_normal_user",
             is_superuser=False,
+        )
+
+        cls.company = Company.objects.create(
+            company_name="M8 View Test Company",
+            company_code="M8VIEW",
+            contact_person="M8 View Owner",
+            email="m8view@example.com",
+            mobile_number="1234567890",
         )
 
         cls.reporting_period = cls.create_reporting_period(
@@ -488,6 +504,7 @@ class ReportRunAuthenticationTests(
             status.HTTP_200_OK,
         )
 
+
     def test_02_authenticated_create_allowed_for_superuser(self):
         response = self.client.post(
             "/api/reporting/report-runs/",
@@ -609,6 +626,7 @@ class ReportRunAuthenticationTests(
             status.HTTP_200_OK,
         )
 
+
     def test_09_list_response_is_list(self):
         response = self.client.get(
             "/api/reporting/report-runs/"
@@ -645,6 +663,62 @@ class ReportRunAuthenticationTests(
 # ============================================================
 # 11-25: CREATE / RETRIEVE TESTS
 # ============================================================
+
+
+class ReportRunResolvedValuesViewTests(
+    BaseReportingViewTests,
+):
+
+    def test_resolved_values_requires_authentication(self):
+        run = self.create_report_run()
+        self.client.force_authenticate(user=None)
+
+        response = self.client.get(
+            self.resolved_values_url(run.id),
+        )
+
+        self.assertIn(
+            response.status_code,
+            {
+                status.HTTP_401_UNAUTHORIZED,
+                status.HTTP_403_FORBIDDEN,
+            },
+        )
+
+    def test_resolved_values_rejects_unfrozen_run(self):
+        run = self.create_report_run()
+
+        response = self.client.get(
+            self.resolved_values_url(run.id),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
+
+    def test_resolved_values_returns_explicit_missing_values(self):
+        run = self.create_report_run()
+        self.freeze_run(run)
+
+        response = self.client.get(
+            self.resolved_values_url(run.id),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+        )
+        self.assertEqual(
+            response.data["report_run_id"],
+            str(run.id),
+        )
+        self.assertTrue(
+            all(
+                value["status"] == "UNRESOLVED"
+                for value in response.data["values"]
+            )
+        )
 
 
 class ReportRunCreateViewTests(

@@ -1,7 +1,12 @@
 from unittest.mock import patch
-
+from importlib import import_module
+from datetime import date
+from decimal import Decimal
+from django.apps import apps as django_apps
 from django.core.exceptions import ValidationError
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 
 from apps.reporting.models import (
     ReportRun,
@@ -10,6 +15,7 @@ from apps.reporting.models import (
     SnapshotMapping,
 )
 from apps.reporting.services import freeze_report_run
+from apps.reporting.services import ReportValueResolver
 
 from apps.accounts.models import (
     Permission,
@@ -24,10 +30,20 @@ from apps.frameworks.models import (
     FrameworkNode,
     DatapointMapping,
 )
-from apps.datapoints.models import DatapointCategory
+from apps.datapoints.models import (
+    DatapointCategory,
+    DatapointDataType,
+    DatapointOption,
+    DatapointTableColumn,
+    DatapointTableRow,
+)
 from apps.modules.models import Module
 
 from apps.datapoints.models import Datapoint
+
+from apps.data_capture.models import SubmissionStatus
+from apps.data_capture.services.lifecycle import DataCaptureLifecycleService
+from apps.organizations.models import OrgNode
 
 class M8TestDataMixin:
     """
@@ -42,6 +58,8 @@ class M8TestDataMixin:
 
     def setUp(self):
         self.user = self.make_user()
+
+        self.company = self.make_capture_company()
 
         permission = Permission.objects.create(
             code="report.create_run",
@@ -258,6 +276,7 @@ class M8TestDataMixin:
                 "framework_version",
                 self.framework_version,
             ),
+            company=kwargs.pop("company", self.company),
             created_by=kwargs.pop(
                 "created_by",
                 self.user,
@@ -338,7 +357,124 @@ class M8TestDataMixin:
             ),
             **kwargs,
         )
+
+    def make_capture_company(self, code="M8CAP"):
+        from apps.companies.models import Company
+
+        existing = Company.objects.filter(company_code=code).first()
+        if existing:
+            return existing
+        return Company.objects.create(
+            company_name="M8 Capture Company",
+            company_code=code,
+            contact_person="M8 Owner",
+            email="m8capture@example.com",
+            mobile_number="1234567890",
+        )
+
+    def make_capture_org_node(self, company, code="M8-ROOT"):
+        return OrgNode.objects.get(
+            company=company,
+            node_type="LEGAL_ENTITY",
+            parent__isnull=True,
+        )
+
+    def make_capture_user(self, username):
+        user = User.objects.create_user(
+            username=username,
+            password="TestPassword123!",
+        )
+
+        enter_permission, _ = Permission.objects.get_or_create(
+            code="data.enter",
+            defaults={
+                "name": "Enter data",
+                "module_code": "data",
+                "action": "EDIT",
+            },
+        )
+        submit_permission, _ = Permission.objects.get_or_create(
+            code="data.submit",
+            defaults={
+                "name": "Submit data",
+                "module_code": "data",
+                "action": "APPROVE",
+            },
+        )
+        capture_role, _ = Role.objects.get_or_create(
+            role_code="reporting-capture",
+            defaults={
+                "role_name": "Reporting Capture",
+            },
+        )
+        capture_role.permissions.add(
+            enter_permission,
+            submit_permission,
+        )
+        UserRoleAssignment.objects.create(
+            user=user,
+            role=capture_role,
+            module_code="data",
+        )
+
+        return user
+
+    def make_capture_request(
+        self,
+        *,
+        datapoint,
+        org_node,
+        reporting_period,
+        assignee,
+        requester,
+    ):
+        return DataCaptureLifecycleService.create_request(
+            actor=requester,
+            datapoint=datapoint,
+            org_node=org_node,
+            reporting_period=reporting_period,
+            assignee=assignee,
+        )
+
+    def approve_decimal_submission(
+        self,
+        *,
+        request,
+        maker,
+        reviewer,
+        value,
+    ):
+        submission = request.submission
+
+        DataCaptureLifecycleService.save_scalar_answer(
+            submission,
+            actor=maker,
+            decimal_value=value,
+        )
+
+        DataCaptureLifecycleService.submit(
+            submission,
+            actor=maker,
+        )
+
+        DataCaptureLifecycleService.approve(
+            submission,
+            actor=reviewer,
+        )
+
+        submission.refresh_from_db()
+
+        self.assertEqual(
+            submission.status,
+            SubmissionStatus.APPROVED,
+        )
+
+        return submission
 class FreezeServiceTests(M8TestDataMixin, TestCase):
+
+    def test_freeze_rejects_non_report_run_input(self):
+        with self.assertRaises(ValidationError):
+            freeze_report_run("not a report run")
 
     def test_01_freeze_creates_snapshot(self):
         run = self.make_report_run()
@@ -376,6 +512,7 @@ class FreezeServiceTests(M8TestDataMixin, TestCase):
         run = self.make_report_run()
 
         freeze_report_run(run)
+        run.refresh_from_db()
 
         snapshot = FrameworkSnapshot.objects.get(
             report_run=run
@@ -1116,3 +1253,990 @@ class FreezeServiceTests(M8TestDataMixin, TestCase):
         self.assertTrue(
             result.is_frozen,
         )
+
+
+class ReportValueResolverTests(M8TestDataMixin, TestCase):
+
+    def test_build_dataset_rejects_non_report_run_input(self):
+        with self.assertRaises(ValidationError):
+            ReportValueResolver.build_dataset("not a report run")
+
+    def _prepare_frozen_mapping(self):
+        datapoint = self.make_datapoint(
+            code="ENERGY-TOTAL",
+        )
+
+        self.make_mapping(
+            node=self.nodes[3],
+            datapoint=datapoint,
+        )
+
+        run = self.make_report_run()
+
+        freeze_report_run(run)
+        run.refresh_from_db()
+
+        snapshot = FrameworkSnapshot.objects.get(
+            report_run=run,
+        )
+
+        snapshot_node = snapshot.nodes.get(
+            code="302-1",
+        )
+
+        mapping = snapshot_node.mappings.get()
+
+        return run, datapoint, mapping
+
+    def _make_capture_context(self):
+        company = self.make_capture_company()
+
+        org_node = self.make_capture_org_node(
+            company,
+        )
+
+        requester = self.make_capture_user(
+            "capture-requester",
+        )
+
+        maker = self.make_capture_user(
+            "capture-maker",
+        )
+
+        reviewer = self.make_capture_user(
+            "capture-reviewer",
+        )
+
+        return (
+            org_node,
+            requester,
+            maker,
+            reviewer,
+        )
+
+    def test_41_approved_value_is_resolved(self):
+        run, datapoint, mapping = (
+            self._prepare_frozen_mapping()
+        )
+
+        (
+            org_node,
+            requester,
+            maker,
+            reviewer,
+        ) = self._make_capture_context()
+
+        request = self.make_capture_request(
+            datapoint=datapoint,
+            org_node=org_node,
+            reporting_period=self.period,
+            assignee=maker,
+            requester=requester,
+        )
+
+        self.approve_decimal_submission(
+            request=request,
+            maker=maker,
+            reviewer=reviewer,
+            value="125.50",
+        )
+
+        dataset = ReportValueResolver.build_dataset(
+            run,
+        )
+
+        resolved = [
+            item
+            for item in dataset
+            if item["snapshot_mapping_id"] == mapping.id
+        ]
+
+        self.assertEqual(
+            len(resolved),
+            1,
+        )
+
+        self.assertEqual(
+            resolved[0]["status"],
+            "RESOLVED",
+        )
+
+        self.assertEqual(
+            resolved[0]["value"],
+            125.50,
+        )
+
+        self.assertEqual(
+            resolved[0]["canonical_datapoint_code"],
+            "ENERGY-TOTAL",
+        )
+
+    def test_42_draft_submission_is_not_resolved(self):
+        run, datapoint, mapping = (
+            self._prepare_frozen_mapping()
+        )
+
+        (
+            org_node,
+            requester,
+            maker,
+            reviewer,
+        ) = self._make_capture_context()
+
+        request = self.make_capture_request(
+            datapoint=datapoint,
+            org_node=org_node,
+            reporting_period=self.period,
+            assignee=maker,
+            requester=requester,
+        )
+
+        DataCaptureLifecycleService.save_scalar_answer(
+            request.submission,
+            actor=maker,
+            decimal_value="100.00",
+        )
+
+        dataset = ReportValueResolver.build_dataset(
+            run,
+        )
+
+        resolved = [
+            item
+            for item in dataset
+            if item["snapshot_mapping_id"] == mapping.id
+        ]
+
+        self.assertEqual(
+            len(resolved),
+            1,
+        )
+
+        self.assertEqual(
+            resolved[0]["status"],
+            "UNRESOLVED",
+        )
+
+        self.assertIsNone(
+            resolved[0]["value"],
+        )
+
+    def test_43_submitted_submission_is_not_resolved(self):
+        run, datapoint, mapping = (
+            self._prepare_frozen_mapping()
+        )
+
+        (
+            org_node,
+            requester,
+            maker,
+            reviewer,
+        ) = self._make_capture_context()
+
+        request = self.make_capture_request(
+            datapoint=datapoint,
+            org_node=org_node,
+            reporting_period=self.period,
+            assignee=maker,
+            requester=requester,
+        )
+
+        DataCaptureLifecycleService.save_scalar_answer(
+            request.submission,
+            actor=maker,
+            decimal_value="200.00",
+        )
+
+        DataCaptureLifecycleService.submit(
+            request.submission,
+            actor=maker,
+        )
+
+        dataset = ReportValueResolver.build_dataset(
+            run,
+        )
+
+        resolved = [
+            item
+            for item in dataset
+            if item["snapshot_mapping_id"] == mapping.id
+        ]
+
+        self.assertEqual(
+            resolved[0]["status"],
+            "UNRESOLVED",
+        )
+
+    def test_44_rejected_submission_is_not_resolved(self):
+        run, datapoint, mapping = (
+            self._prepare_frozen_mapping()
+        )
+
+        (
+            org_node,
+            requester,
+            maker,
+            reviewer,
+        ) = self._make_capture_context()
+
+        request = self.make_capture_request(
+            datapoint=datapoint,
+            org_node=org_node,
+            reporting_period=self.period,
+            assignee=maker,
+            requester=requester,
+        )
+
+        DataCaptureLifecycleService.save_scalar_answer(
+            request.submission,
+            actor=maker,
+            decimal_value="300.00",
+        )
+
+        DataCaptureLifecycleService.submit(
+            request.submission,
+            actor=maker,
+        )
+
+        DataCaptureLifecycleService.reject(
+            request.submission,
+            actor=reviewer,
+            reason="Needs correction.",
+        )
+
+        dataset = ReportValueResolver.build_dataset(
+            run,
+        )
+
+        resolved = [
+            item
+            for item in dataset
+            if item["snapshot_mapping_id"] == mapping.id
+        ]
+
+        self.assertEqual(
+            resolved[0]["status"],
+            "UNRESOLVED",
+        )
+
+    def test_45_wrong_reporting_period_is_not_resolved(self):
+        run, datapoint, mapping = (
+            self._prepare_frozen_mapping()
+        )
+
+        (
+            org_node,
+            requester,
+            maker,
+            reviewer,
+        ) = self._make_capture_context()
+
+        wrong_period = ReportingPeriod.objects.create(
+            name="Wrong Period",
+            period_type="ANNUAL",
+            start_date=date(2024, 4, 1),
+            end_date=date(2025, 3, 31),
+        )
+
+        request = self.make_capture_request(
+            datapoint=datapoint,
+            org_node=org_node,
+            reporting_period=wrong_period,
+            assignee=maker,
+            requester=requester,
+        )
+
+        self.approve_decimal_submission(
+            request=request,
+            maker=maker,
+            reviewer=reviewer,
+            value="500.00",
+        )
+
+        dataset = ReportValueResolver.build_dataset(
+            run,
+        )
+
+        resolved = [
+            item
+            for item in dataset
+            if item["snapshot_mapping_id"] == mapping.id
+        ]
+
+        self.assertEqual(
+            resolved[0]["status"],
+            "UNRESOLVED",
+        )
+
+        self.assertIsNone(
+            resolved[0]["value"],
+        )
+
+    def test_46_no_approved_value_returns_unresolved(self):
+        run, datapoint, mapping = (
+            self._prepare_frozen_mapping()
+        )
+
+        dataset = ReportValueResolver.build_dataset(
+            run,
+        )
+
+        resolved = [
+            item
+            for item in dataset
+            if item["snapshot_mapping_id"] == mapping.id
+        ]
+
+        self.assertEqual(
+            len(resolved),
+            1,
+        )
+
+        self.assertEqual(
+            resolved[0]["status"],
+            "UNRESOLVED",
+        )
+
+        self.assertIsNone(
+            resolved[0]["value"],
+        )
+
+    def test_47_unfrozen_report_run_cannot_be_resolved(self):
+        run = self.make_report_run()
+
+        with self.assertRaises(ValidationError):
+            ReportValueResolver.build_dataset(
+                run,
+            )
+
+    def test_frozen_run_without_snapshot_cannot_be_resolved(self):
+        run = self.make_report_run(
+            status=ReportRun.Status.FROZEN,
+        )
+
+        with self.assertRaises(ValidationError):
+            ReportValueResolver.build_dataset(run)
+
+    def test_48_m5_data_is_not_mutated(self):
+        run, datapoint, mapping = (
+            self._prepare_frozen_mapping()
+        )
+
+        (
+            org_node,
+            requester,
+            maker,
+            reviewer,
+        ) = self._make_capture_context()
+
+        request = self.make_capture_request(
+            datapoint=datapoint,
+            org_node=org_node,
+            reporting_period=self.period,
+            assignee=maker,
+            requester=requester,
+        )
+
+        submission = self.approve_decimal_submission(
+            request=request,
+            maker=maker,
+            reviewer=reviewer,
+            value="750.00",
+        )
+
+        answer = submission.answer
+
+        original_value = answer.decimal_value
+        original_status = submission.status
+
+        ReportValueResolver.build_dataset(
+            run,
+        )
+
+        answer.refresh_from_db()
+        submission.refresh_from_db()
+
+        self.assertEqual(
+            answer.decimal_value,
+            original_value,
+        )
+
+        self.assertEqual(
+            submission.status,
+            original_status,
+        )
+
+    def test_49_multiple_approved_values_are_deterministic(self):
+        run, datapoint, mapping = (
+            self._prepare_frozen_mapping()
+        )
+
+        company = self.make_capture_company()
+
+        root = self.make_capture_org_node(
+            company,
+            code="M8-ROOT",
+        )
+
+        requester = self.make_capture_user(
+            "multi-requester",
+        )
+
+        maker_one = self.make_capture_user(
+            "maker-one",
+        )
+
+        maker_two = self.make_capture_user(
+            "maker-two",
+        )
+
+        reviewer = self.make_capture_user(
+            "multi-reviewer",
+        )
+
+        child_one = OrgNode.objects.create(
+            company=company,
+            parent=root,
+            node_type="BUSINESS_UNIT",
+            code="BU-01",
+            name="Business Unit 01",
+        )
+
+        child_two = OrgNode.objects.create(
+            company=company,
+            parent=root,
+            node_type="BUSINESS_UNIT",
+            code="BU-02",
+            name="Business Unit 02",
+        )
+
+        request_one = self.make_capture_request(
+            datapoint=datapoint,
+            org_node=child_one,
+            reporting_period=self.period,
+            assignee=maker_one,
+            requester=requester,
+        )
+
+        request_two = self.make_capture_request(
+            datapoint=datapoint,
+            org_node=child_two,
+            reporting_period=self.period,
+            assignee=maker_two,
+            requester=requester,
+        )
+
+        self.approve_decimal_submission(
+            request=request_one,
+            maker=maker_one,
+            reviewer=reviewer,
+            value="100.00",
+        )
+
+        self.approve_decimal_submission(
+            request=request_two,
+            maker=maker_two,
+            reviewer=reviewer,
+            value="200.00",
+        )
+
+        dataset = ReportValueResolver.build_dataset(
+            run,
+        )
+
+        resolved = [
+            item
+            for item in dataset
+            if item["snapshot_mapping_id"] == mapping.id
+        ]
+
+        self.assertEqual(
+            len(resolved),
+            2,
+        )
+
+        self.assertEqual(
+            [item["value"] for item in resolved],
+            [100.00, 200.00],
+        )
+
+
+class ReportValueResolverContractTests(M8TestDataMixin, TestCase):
+
+    @staticmethod
+    def run_company_backfill():
+        """Exercise the migration's historical-model data operation."""
+        migration = import_module(
+            "apps.reporting.migrations.0002_reportrun_company"
+        )
+        migration.backfill_report_run_company(django_apps, None)
+
+    def make_legacy_frozen_run(self, datapoint):
+        """Create persisted pre-#41 data without invoking current freeze rules."""
+        run = ReportRun.objects.create(
+            reporting_period=self.period,
+            framework_version=self.framework_version,
+            created_by=self.user,
+            company=None,
+        )
+        snapshot = self.make_snapshot(run)
+        node = self.make_snapshot_node(snapshot)
+        self.make_snapshot_mapping(
+            node,
+            canonical_datapoint_code=datapoint.code,
+            source_datapoint_id=datapoint.id,
+        )
+        # This represents an already-frozen database row from before the M8
+        # company field existed; do not invoke current runtime validation.
+        ReportRun.objects.filter(pk=run.pk).update(
+            status=ReportRun.Status.FROZEN,
+            snapshot_frozen_at=snapshot.frozen_at,
+        )
+        run.refresh_from_db()
+        return run
+
+    def make_capture_context(self, company=None):
+        company = company or self.company
+        org_node = self.make_capture_org_node(company)
+        suffix = company.company_code.lower()
+        return (
+            org_node,
+            self.make_capture_user(f"contract-requester-{suffix}"),
+            self.make_capture_user(f"contract-maker-{suffix}"),
+            self.make_capture_user(f"contract-reviewer-{suffix}"),
+        )
+
+    def make_contract_datapoint(self, code, data_type, **kwargs):
+        return Datapoint.objects.create(
+            code=code,
+            category=self.datapoint_category,
+            module=self.module,
+            label=code,
+            data_type=data_type,
+            collection_level="ORG_NODE",
+            frequency="ANNUAL",
+            is_active=True,
+            **kwargs,
+        )
+
+    def make_capture_request_for(self, datapoint, context):
+        org_node, requester, maker, reviewer = context
+        return self.make_capture_request(
+            datapoint=datapoint,
+            org_node=org_node,
+            reporting_period=self.period,
+            assignee=maker,
+            requester=requester,
+        ), maker, reviewer
+
+    def approve_scalar(self, request, maker, reviewer, field_name, value):
+        DataCaptureLifecycleService.save_scalar_answer(
+            request.submission,
+            actor=maker,
+            **{field_name: value},
+        )
+        DataCaptureLifecycleService.submit(
+            request.submission,
+            actor=maker,
+        )
+        DataCaptureLifecycleService.approve(
+            request.submission,
+            actor=reviewer,
+        )
+
+    def test_primitive_types_and_provenance_are_preserved(self):
+        context = self.make_capture_context()
+        primitive_cases = [
+            (DatapointDataType.DECIMAL, "decimal_value", Decimal("12.50")),
+            (DatapointDataType.INTEGER, "integer_value", 12),
+            (DatapointDataType.TEXT, "text_value", "short text"),
+            (DatapointDataType.LONG_TEXT, "text_value", "long text"),
+            (DatapointDataType.BOOLEAN, "boolean_value", False),
+            (DatapointDataType.DATE, "date_value", date(2026, 8, 24)),
+        ]
+        datapoints = []
+        requests = []
+        for index, (data_type, field_name, value) in enumerate(primitive_cases):
+            datapoint = self.make_contract_datapoint(
+                f"CONTRACT-{index}",
+                data_type,
+            )
+            self.make_mapping(
+                node=self.nodes[3],
+                datapoint=datapoint,
+                is_primary=index == 0,
+            )
+            datapoints.append(datapoint)
+
+        select_datapoint = self.make_contract_datapoint(
+            "CONTRACT-SELECT",
+            DatapointDataType.SELECT,
+        )
+        select_option = DatapointOption.objects.create(
+            datapoint=select_datapoint,
+            code="YES",
+            label="Yes",
+        )
+        self.make_mapping(
+            node=self.nodes[3],
+            datapoint=select_datapoint,
+            is_primary=False,
+        )
+        datapoints.append(select_datapoint)
+
+        run = self.make_report_run()
+        freeze_report_run(run)
+        run.refresh_from_db()
+
+        for datapoint, case in zip(datapoints[:-1], primitive_cases):
+            request, maker, reviewer = self.make_capture_request_for(
+                datapoint,
+                context,
+            )
+            self.approve_scalar(
+                request,
+                maker,
+                reviewer,
+                case[1],
+                case[2],
+            )
+            requests.append(request)
+
+        request, maker, reviewer = self.make_capture_request_for(
+            select_datapoint,
+            context,
+        )
+        self.approve_scalar(
+            request,
+            maker,
+            reviewer,
+            "selected_option",
+            select_option,
+        )
+        requests.append(request)
+
+        dataset = ReportValueResolver.build_dataset(run)
+        resolved = {
+            item["canonical_datapoint_code"]: item
+            for item in dataset
+            if item["status"] == "RESOLVED"
+        }
+
+        for datapoint, case in zip(datapoints[:-1], primitive_cases):
+            item = resolved[datapoint.code]
+            self.assertEqual(item["data_type"], case[0])
+            self.assertEqual(item["value"], case[2])
+            self.assertEqual(item["data_request_id"], requests[datapoints.index(datapoint)].id)
+            self.assertEqual(item["provenance"]["source_type"], "CAPTURED")
+            self.assertIsNotNone(item["provenance"]["approved_by"])
+            self.assertIsNotNone(item["provenance"]["approved_at"])
+            self.assertIsNotNone(item["provenance"]["entered_by"])
+
+        self.assertEqual(
+            resolved[select_datapoint.code]["value"]["code"],
+            "YES",
+        )
+
+    def test_empty_text_value_is_unresolved(self):
+        context = self.make_capture_context()
+        datapoint = self.make_contract_datapoint(
+            "CONTRACT-EMPTY-TEXT",
+            DatapointDataType.TEXT,
+        )
+        self.make_mapping(node=self.nodes[3], datapoint=datapoint)
+
+        run = self.make_report_run()
+        freeze_report_run(run)
+        run.refresh_from_db()
+
+        request, maker, reviewer = self.make_capture_request_for(
+            datapoint,
+            context,
+        )
+        self.approve_scalar(
+            request,
+            maker,
+            reviewer,
+            "text_value",
+            "",
+        )
+
+        item = ReportValueResolver.build_dataset(run)[0]
+
+        self.assertEqual(item["status"], "UNRESOLVED")
+        self.assertIsNone(item["value"])
+
+    def test_table_preserves_fixed_and_dynamic_rows(self):
+        context = self.make_capture_context()
+        datapoint = self.make_contract_datapoint(
+            "CONTRACT-TABLE",
+            DatapointDataType.TABLE,
+            allow_dynamic_rows=True,
+        )
+        quantity = DatapointTableColumn.objects.create(
+            datapoint=datapoint,
+            code="quantity",
+            label="Quantity",
+            data_type=DatapointDataType.INTEGER,
+            display_order=1,
+        )
+        note = DatapointTableColumn.objects.create(
+            datapoint=datapoint,
+            code="note",
+            label="Note",
+            data_type=DatapointDataType.TEXT,
+            display_order=2,
+        )
+        fixed_row = DatapointTableRow.objects.create(
+            datapoint=datapoint,
+            code="fixed-1",
+            label="Fixed row",
+            display_order=1,
+        )
+        self.make_mapping(node=self.nodes[3], datapoint=datapoint)
+        run = self.make_report_run()
+        freeze_report_run(run)
+        run.refresh_from_db()
+
+        request, maker, reviewer = self.make_capture_request_for(
+            datapoint,
+            context,
+        )
+        DataCaptureLifecycleService.save_table_row(
+            request.submission,
+            actor=maker,
+            definition_row=fixed_row,
+            cells=[
+                {"column": quantity, "integer_value": 4},
+                {"column": note, "text_value": "fixed value"},
+            ],
+        )
+        DataCaptureLifecycleService.save_table_row(
+            request.submission,
+            actor=maker,
+            label="Dynamic row",
+            display_order=2,
+            cells=[{"column": quantity, "integer_value": 8}],
+        )
+        DataCaptureLifecycleService.submit(request.submission, actor=maker)
+        DataCaptureLifecycleService.approve(request.submission, actor=reviewer)
+
+        item = ReportValueResolver.build_dataset(run)[0]
+        self.assertEqual(item["data_type"], DatapointDataType.TABLE)
+        self.assertEqual(len(item["value"]), 2)
+        self.assertEqual(item["value"][0]["definition_row"]["code"], "fixed-1")
+        self.assertEqual(item["value"][0]["cells"][0]["value"], 4)
+        self.assertEqual(item["value"][1]["label"], "Dynamic row")
+        self.assertEqual(item["value"][1]["cells"][0]["value"], 8)
+
+    def test_resolution_uses_bounded_query_count_for_many_mappings(self):
+        for index in range(3):
+            datapoint = self.make_contract_datapoint(
+                f"QUERY-{index}",
+                DatapointDataType.INTEGER,
+            )
+            self.make_mapping(
+                node=self.nodes[3],
+                datapoint=datapoint,
+                is_primary=index == 0,
+            )
+
+        run = self.make_report_run()
+        freeze_report_run(run)
+        run.refresh_from_db()
+
+        with CaptureQueriesContext(connection) as queries:
+            ReportValueResolver.build_dataset(run)
+
+        self.assertLessEqual(len(queries), 8)
+
+    def test_approved_value_for_wrong_datapoint_is_excluded(self):
+        context = self.make_capture_context()
+        mapped_datapoint = self.make_contract_datapoint(
+            "MAPPED-DATAPOINT",
+            DatapointDataType.INTEGER,
+        )
+        wrong_datapoint = self.make_contract_datapoint(
+            "WRONG-DATAPOINT",
+            DatapointDataType.INTEGER,
+        )
+        mapping = self.make_mapping(
+            node=self.nodes[3],
+            datapoint=mapped_datapoint,
+        )
+        run = self.make_report_run()
+        freeze_report_run(run)
+        run.refresh_from_db()
+
+        request, maker, reviewer = self.make_capture_request_for(
+            wrong_datapoint,
+            context,
+        )
+        self.approve_scalar(
+            request,
+            maker,
+            reviewer,
+            "integer_value",
+            99,
+        )
+
+        dataset = ReportValueResolver.build_dataset(run)
+        self.assertEqual(len(dataset), 1)
+        item = dataset[0]
+        self.assertEqual(item["canonical_datapoint_code"], mapped_datapoint.code)
+        self.assertNotEqual(item["canonical_datapoint_code"], wrong_datapoint.code)
+        self.assertEqual(item["status"], "UNRESOLVED")
+        self.assertIsNone(item["value"])
+
+    def test_query_count_is_bounded_with_approved_values(self):
+        datapoints = []
+        for index in range(3):
+            datapoint = self.make_contract_datapoint(
+                f"APPROVED-QUERY-{index}",
+                DatapointDataType.INTEGER,
+            )
+            self.make_mapping(
+                node=self.nodes[3],
+                datapoint=datapoint,
+                is_primary=index == 0,
+            )
+            datapoints.append(datapoint)
+
+        run = self.make_report_run()
+        freeze_report_run(run)
+        run.refresh_from_db()
+
+        request, maker, reviewer = self.make_capture_request_for(
+            datapoints[0],
+            self.make_capture_context(),
+        )
+        self.approve_scalar(
+            request,
+            maker,
+            reviewer,
+            "integer_value",
+            10,
+        )
+
+        with CaptureQueriesContext(connection) as queries:
+            ReportValueResolver.build_dataset(run)
+
+        self.assertLessEqual(len(queries), 8)
+
+    def test_live_mapping_edit_after_freeze_does_not_change_resolution(self):
+        context = self.make_capture_context()
+        original_datapoint = self.make_contract_datapoint(
+            "FROZEN-DATAPOINT",
+            DatapointDataType.INTEGER,
+        )
+        replacement_datapoint = self.make_contract_datapoint(
+            "REPLACEMENT-DATAPOINT",
+            DatapointDataType.INTEGER,
+        )
+        live_mapping = self.make_mapping(
+            node=self.nodes[3],
+            datapoint=original_datapoint,
+        )
+        run = self.make_report_run()
+        freeze_report_run(run)
+        run.refresh_from_db()
+
+        live_mapping.datapoint = replacement_datapoint
+        live_mapping.save()
+
+        request, maker, reviewer = self.make_capture_request_for(
+            original_datapoint,
+            context,
+        )
+        self.approve_scalar(
+            request,
+            maker,
+            reviewer,
+            "integer_value",
+            42,
+        )
+
+        item = ReportValueResolver.build_dataset(run)[0]
+        self.assertEqual(item["canonical_datapoint_code"], "FROZEN-DATAPOINT")
+        self.assertEqual(item["source_datapoint_id"], original_datapoint.id)
+        self.assertNotEqual(item["snapshot_mapping_id"], live_mapping.id)
+        self.assertEqual(item["value"], 42)
+
+    def test_live_datapoint_code_rename_keeps_frozen_uuid_resolution(self):
+        context = self.make_capture_context()
+        datapoint = self.make_contract_datapoint("RENAME-SAFE", DatapointDataType.INTEGER)
+        self.make_mapping(node=self.nodes[3], datapoint=datapoint)
+        run = self.make_report_run()
+        run = freeze_report_run(run)
+
+        request, maker, reviewer = self.make_capture_request_for(datapoint, context)
+        self.approve_scalar(request, maker, reviewer, "integer_value", 42)
+        frozen_mapping = SnapshotMapping.objects.get()
+        datapoint.code = "RENAME-SAFE-LIVE"
+        datapoint.save()
+
+        item = ReportValueResolver.build_dataset(run)[0]
+        self.assertEqual(frozen_mapping.source_datapoint_id, datapoint.id)
+        self.assertEqual(frozen_mapping.canonical_datapoint_code, "RENAME-SAFE")
+        self.assertEqual(item["status"], "RESOLVED")
+        self.assertEqual(item["value"], 42)
+
+    def test_company_scope_excludes_other_company_value(self):
+        datapoint = self.make_contract_datapoint("COMPANY-SCOPE", DatapointDataType.INTEGER)
+        self.make_mapping(node=self.nodes[3], datapoint=datapoint)
+        run = self.make_report_run(company=self.company)
+        run = freeze_report_run(run)
+
+        own_request, maker, reviewer = self.make_capture_request_for(
+            datapoint, self.make_capture_context(self.company)
+        )
+        self.approve_scalar(own_request, maker, reviewer, "integer_value", 100)
+
+        other_company = self.make_capture_company("M8OTHER")
+        other_request, maker, reviewer = self.make_capture_request_for(
+            datapoint, self.make_capture_context(other_company)
+        )
+        self.approve_scalar(other_request, maker, reviewer, "integer_value", 500)
+
+        dataset = ReportValueResolver.build_dataset(run)
+        self.assertEqual([item["value"] for item in dataset], [100])
+
+    def test_migration_backfills_single_company_legacy_frozen_run(self):
+        datapoint = self.make_contract_datapoint(
+            "LEGACY-SINGLE-COMPANY", DatapointDataType.INTEGER
+        )
+        run = self.make_legacy_frozen_run(datapoint)
+        request, maker, reviewer = self.make_capture_request_for(
+            datapoint, self.make_capture_context(self.company)
+        )
+        self.approve_scalar(request, maker, reviewer, "integer_value", 123)
+
+        self.run_company_backfill()
+        run.refresh_from_db()
+
+        self.assertEqual(run.company_id, self.company.id)
+        self.assertTrue(run.is_frozen)
+        self.assertEqual(ReportValueResolver.build_dataset(run)[0]["value"], 123)
+
+    def test_migration_does_not_guess_for_ambiguous_legacy_run(self):
+        datapoint = self.make_contract_datapoint(
+            "LEGACY-MULTI-COMPANY", DatapointDataType.INTEGER
+        )
+        run = self.make_legacy_frozen_run(datapoint)
+        self.make_capture_company("M8OTHER")
+
+        self.run_company_backfill()
+        run.refresh_from_db()
+
+        self.assertIsNone(run.company_id)
+        self.assertTrue(run.is_frozen)
+
+    def test_migration_never_overwrites_existing_company_scope(self):
+        other_company = self.make_capture_company("M8OTHER")
+        run = self.make_report_run(company=self.company)
+
+        self.run_company_backfill()
+        run.refresh_from_db()
+
+        self.assertEqual(run.company_id, self.company.id)
+        self.assertNotEqual(run.company_id, other_company.id)
