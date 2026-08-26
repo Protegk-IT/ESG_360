@@ -57,6 +57,8 @@ class M8TestDataMixin:
     def setUp(self):
         self.user = self.make_user()
 
+        self.company = self.make_capture_company()
+
         permission = Permission.objects.create(
             code="report.create_run",
             name="Create report run",
@@ -272,6 +274,7 @@ class M8TestDataMixin:
                 "framework_version",
                 self.framework_version,
             ),
+            company=kwargs.pop("company", self.company),
             created_by=kwargs.pop(
                 "created_by",
                 self.user,
@@ -353,12 +356,15 @@ class M8TestDataMixin:
             **kwargs,
         )
 
-    def make_capture_company(self):
+    def make_capture_company(self, code="M8CAP"):
         from apps.companies.models import Company
 
+        existing = Company.objects.filter(company_code=code).first()
+        if existing:
+            return existing
         return Company.objects.create(
             company_name="M8 Capture Company",
-            company_code="M8CAP",
+            company_code=code,
             contact_person="M8 Owner",
             email="m8capture@example.com",
             mobile_number="1234567890",
@@ -1755,14 +1761,15 @@ class ReportValueResolverTests(M8TestDataMixin, TestCase):
 
 class ReportValueResolverContractTests(M8TestDataMixin, TestCase):
 
-    def make_capture_context(self):
-        company = self.make_capture_company()
+    def make_capture_context(self, company=None):
+        company = company or self.company
         org_node = self.make_capture_org_node(company)
+        suffix = company.company_code.lower()
         return (
             org_node,
-            self.make_capture_user("contract-requester"),
-            self.make_capture_user("contract-maker"),
-            self.make_capture_user("contract-reviewer"),
+            self.make_capture_user(f"contract-requester-{suffix}"),
+            self.make_capture_user(f"contract-maker-{suffix}"),
+            self.make_capture_user(f"contract-reviewer-{suffix}"),
         )
 
     def make_contract_datapoint(self, code, data_type, **kwargs):
@@ -2120,3 +2127,42 @@ class ReportValueResolverContractTests(M8TestDataMixin, TestCase):
         self.assertEqual(item["source_datapoint_id"], original_datapoint.id)
         self.assertNotEqual(item["snapshot_mapping_id"], live_mapping.id)
         self.assertEqual(item["value"], 42)
+
+    def test_live_datapoint_code_rename_keeps_frozen_uuid_resolution(self):
+        context = self.make_capture_context()
+        datapoint = self.make_contract_datapoint("RENAME-SAFE", DatapointDataType.INTEGER)
+        self.make_mapping(node=self.nodes[3], datapoint=datapoint)
+        run = self.make_report_run()
+        run = freeze_report_run(run)
+
+        request, maker, reviewer = self.make_capture_request_for(datapoint, context)
+        self.approve_scalar(request, maker, reviewer, "integer_value", 42)
+        frozen_mapping = SnapshotMapping.objects.get()
+        datapoint.code = "RENAME-SAFE-LIVE"
+        datapoint.save()
+
+        item = ReportValueResolver.build_dataset(run)[0]
+        self.assertEqual(frozen_mapping.source_datapoint_id, datapoint.id)
+        self.assertEqual(frozen_mapping.canonical_datapoint_code, "RENAME-SAFE")
+        self.assertEqual(item["status"], "RESOLVED")
+        self.assertEqual(item["value"], 42)
+
+    def test_company_scope_excludes_other_company_value(self):
+        datapoint = self.make_contract_datapoint("COMPANY-SCOPE", DatapointDataType.INTEGER)
+        self.make_mapping(node=self.nodes[3], datapoint=datapoint)
+        run = self.make_report_run(company=self.company)
+        run = freeze_report_run(run)
+
+        own_request, maker, reviewer = self.make_capture_request_for(
+            datapoint, self.make_capture_context(self.company)
+        )
+        self.approve_scalar(own_request, maker, reviewer, "integer_value", 100)
+
+        other_company = self.make_capture_company("M8OTHER")
+        other_request, maker, reviewer = self.make_capture_request_for(
+            datapoint, self.make_capture_context(other_company)
+        )
+        self.approve_scalar(other_request, maker, reviewer, "integer_value", 500)
+
+        dataset = ReportValueResolver.build_dataset(run)
+        self.assertEqual([item["value"] for item in dataset], [100])

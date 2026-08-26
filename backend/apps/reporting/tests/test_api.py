@@ -77,6 +77,7 @@ class ReportRunAPITests(M8TestDataMixin, TestCase):
                 "framework_version": str(
                     self.framework_version.pk
                 ),
+                "company": str(self.company.pk),
                 "metadata": {
                     "source": "api-test"
                 },
@@ -104,6 +105,7 @@ class ReportRunAPITests(M8TestDataMixin, TestCase):
                 "framework_version": str(
                     self.framework_version.pk
                 ),
+                "company": str(self.company.pk),
             },
             format="json",
         )
@@ -132,6 +134,7 @@ class ReportRunAPITests(M8TestDataMixin, TestCase):
                 "framework_version": str(
                     self.framework_version.pk
                 ),
+                "company": str(self.company.pk),
             },
             format="json",
         )
@@ -160,6 +163,7 @@ class ReportRunAPITests(M8TestDataMixin, TestCase):
                 "framework_version": str(
                     self.framework_version.pk
                 ),
+                "company": str(self.company.pk),
             },
             format="json",
         )
@@ -186,6 +190,7 @@ class ReportRunAPITests(M8TestDataMixin, TestCase):
                 "framework_version": str(
                     uuid.uuid4()
                 ),
+                "company": str(self.company.pk),
             },
             format="json",
         )

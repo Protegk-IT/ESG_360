@@ -77,6 +77,7 @@ class ReportRunViewSet(ReportingModelViewSet):
         ReportRun.objects
         .select_related(
             "reporting_period",
+            "company",
             "framework_version",
             "framework_version__framework",
             "created_by",
@@ -100,6 +101,7 @@ class ReportRunViewSet(ReportingModelViewSet):
             ReportRun.objects
             .select_related(
                 "reporting_period",
+                "company",
                 "framework_version",
                 "framework_version__framework",
                 "created_by",
@@ -284,6 +286,7 @@ class ReportRunFreezeView(APIView):
         report_run = get_object_or_404(
             ReportRun.objects.select_related(
                 "reporting_period",
+                "company",
                 "framework_version",
                 "framework_version__framework",
                 "created_by",
@@ -427,7 +430,7 @@ class ReportRunResolvedValuesView(APIView):
 
     def get(self, request, run_id):
         report_run = get_object_or_404(
-            ReportRun.objects.select_related("reporting_period"),
+            ReportRun.objects.select_related("reporting_period", "company"),
             pk=run_id,
         )
 

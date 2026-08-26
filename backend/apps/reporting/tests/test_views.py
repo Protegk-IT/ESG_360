@@ -26,6 +26,7 @@ from apps.frameworks.models import (
     FrameworkVersion,
 )
 from apps.modules.models import Module
+from apps.companies.models import Company
 from apps.periods.models import (
     PeriodType,
     ReportingPeriod,
@@ -278,6 +279,7 @@ class ReportingViewTestMixin:
             framework_version=(
                 framework_version or self.framework_version
             ),
+            company=self.company,
             created_by=(
                 created_by or self.user
             ),
@@ -335,6 +337,14 @@ class BaseReportingViewTests(
             cls,
             username="m8_normal_user",
             is_superuser=False,
+        )
+
+        cls.company = Company.objects.create(
+            company_name="M8 View Test Company",
+            company_code="M8VIEW",
+            contact_person="M8 View Owner",
+            email="m8view@example.com",
+            mobile_number="1234567890",
         )
 
         cls.reporting_period = cls.create_reporting_period(

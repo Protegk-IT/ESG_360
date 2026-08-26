@@ -60,6 +60,11 @@ def freeze_report_run(report_run):
             "This report run has already been frozen."
         )
 
+    if report_run.company_id is None:
+        raise ValidationError(
+            "A report run must have a company scope before it can be frozen."
+        )
+
     # --------------------------------------------------------------
     # 2. Lock the ReportRun
     # --------------------------------------------------------------
@@ -348,11 +353,29 @@ class CapturedValueProvider:
         }
 
     @classmethod
-    def resolve(cls, mappings, *, reporting_period):
-        codes = {mapping.canonical_datapoint_code for mapping in mappings}
-        definitions = {
+    def resolve(cls, mappings, *, reporting_period, company):
+        """Resolve frozen UUIDs; use frozen codes only for legacy snapshots.
+
+        A SnapshotMapping written by M8 freeze has ``source_datapoint_id``.
+        It is the historical identity and survives later M4 code changes.
+        Snapshots without that value use the frozen code as a compatibility
+        fallback only.
+        """
+        source_ids = {
+            mapping.source_datapoint_id for mapping in mappings
+            if mapping.source_datapoint_id is not None
+        }
+        legacy_codes = {
+            mapping.canonical_datapoint_code for mapping in mappings
+            if mapping.source_datapoint_id is None
+        }
+        definitions_by_id = {
+            datapoint.id: datapoint
+            for datapoint in Datapoint.objects.filter(id__in=source_ids)
+        }
+        definitions_by_legacy_code = {
             datapoint.code: datapoint
-            for datapoint in Datapoint.objects.filter(code__in=codes)
+            for datapoint in Datapoint.objects.filter(code__in=legacy_codes)
         }
         table_cells = Prefetch(
             "cells",
@@ -368,8 +391,9 @@ class CapturedValueProvider:
         )
         requests = (
             DataRequest.objects.filter(
-                datapoint__code__in=codes,
+                datapoint_id__in=source_ids,
                 reporting_period=reporting_period,
+                org_node__company=company,
                 submission__status=SubmissionStatus.APPROVED,
             )
             .select_related(
@@ -378,13 +402,34 @@ class CapturedValueProvider:
                 "submission__answer__entered_by", "submission__answer__selected_option",
             )
             .prefetch_related(table_rows)
-            .order_by("datapoint__code", "org_node__path", "org_node__name", "org_node__id", "id")
+            .order_by("datapoint_id", "org_node__path", "org_node__name", "org_node__id", "id")
         )
-        values_by_code = {code: [] for code in codes}
+        legacy_requests = DataRequest.objects.none()
+        if legacy_codes:
+            legacy_requests = (
+                DataRequest.objects.filter(
+                    datapoint__code__in=legacy_codes,
+                    reporting_period=reporting_period,
+                    org_node__company=company,
+                    submission__status=SubmissionStatus.APPROVED,
+                )
+                .select_related(
+                    "datapoint", "org_node", "submission", "submission__approved_by",
+                    "submission__answer", "submission__answer__unit",
+                    "submission__answer__entered_by", "submission__answer__selected_option",
+                )
+                .prefetch_related(table_rows)
+                .order_by("datapoint__code", "org_node__path", "org_node__name", "org_node__id", "id")
+            )
+        values_by_identity = {("id", source_id): [] for source_id in source_ids}
+        values_by_identity.update({("code", code): [] for code in legacy_codes})
         for record in requests:
-            definition = definitions.get(record.datapoint.code, record.datapoint)
-            values_by_code[record.datapoint.code].append(cls._record(record, definition))
-        return values_by_code, definitions
+            definition = definitions_by_id.get(record.datapoint_id, record.datapoint)
+            values_by_identity[("id", record.datapoint_id)].append(cls._record(record, definition))
+        for record in legacy_requests:
+            definition = definitions_by_legacy_code.get(record.datapoint.code, record.datapoint)
+            values_by_identity[("code", record.datapoint.code)].append(cls._record(record, definition))
+        return values_by_identity, definitions_by_id, definitions_by_legacy_code
 
 
 class ReportValueResolver:
@@ -416,6 +461,11 @@ class ReportValueResolver:
             raise ValidationError(
                 "Report values can only be resolved for "
                 "a frozen report run."
+            )
+
+        if report_run.company_id is None:
+            raise ValidationError(
+                "A report run must have a company scope to resolve values."
             )
 
         # ----------------------------------------------------------
@@ -462,18 +512,21 @@ class ReportValueResolver:
             )
         )
 
-        values_by_code, definitions = CapturedValueProvider.resolve(
+        values_by_identity, definitions_by_id, definitions_by_legacy_code = CapturedValueProvider.resolve(
             mappings,
             reporting_period=report_run.reporting_period,
+            company=report_run.company,
         )
         dataset = []
 
         for mapping in mappings:
-            definition = definitions.get(mapping.canonical_datapoint_code)
-            resolved_values = values_by_code.get(
-                mapping.canonical_datapoint_code,
-                [],
-            )
+            if mapping.source_datapoint_id is not None:
+                identity = ("id", mapping.source_datapoint_id)
+                definition = definitions_by_id.get(mapping.source_datapoint_id)
+            else:
+                identity = ("code", mapping.canonical_datapoint_code)
+                definition = definitions_by_legacy_code.get(mapping.canonical_datapoint_code)
+            resolved_values = values_by_identity.get(identity, [])
             if not resolved_values:
                 resolved_values = [{
                     "status": "UNRESOLVED",

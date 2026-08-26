@@ -2215,3 +2215,892 @@ docs/modules/reporting-foundation.md
 > **M8 creates a ReportRun from an M3 reporting period and M7 framework version, then freezes the live M7 structure and mappings into an immutable historical snapshot using a transactional, centrally authorized workflow.**
 
 ---
+
+
+Ater Review documentation :------
+
+M8_Phase2_Value_Resolution_Review_Hardening.md
+
+
+M8 Phase 2 — Approved M5 Value Resolution and Review Hardening
+Purpose
+M8 Phase 2 adds the value-resolution layer on top of the frozen M8 reporting structure.
+
+M8 Phase 1 answers:
+
+What framework structure and datapoint mappings does this report contain?
+
+M8 Phase 2 answers:
+
+For each frozen mapping in this report, what approved captured value is currently available for the corresponding M4 canonical datapoint?
+
+The architecture is:
+
+M3 ReportingPeriod
+        +
+M7 FrameworkVersion
+        |
+        v
+    M8 ReportRun
+        |
+      FREEZE
+        |
+        v
+M8 FrameworkSnapshot
+        |
+        +--> SnapshotNode
+        |       |
+        |       +--> SnapshotMapping
+        |                  |
+        |                  | frozen M4 datapoint identity
+        |                  v
+        |            M5 DataRequest
+        |                  |
+        |             Submission
+        |                  |
+        |              APPROVED
+        |                  |
+        |                Answer
+        |                  |
+        |                  v
+        +----------> ResolvedValue
+Phase 2 does not create another M5 answer model. It reads the existing approved M5 captured values and exposes them through an M8 reporting-oriented representation.
+
+1. Phase 1 vs Phase 2
+Phase 1 — Structure freezing
+Phase 1 freezes the selected framework structure and mapping identity:
+
+Framework
+FrameworkVersion
+FrameworkNode
+DatapointMapping
+M4 datapoint identity
+mapping order
+reporting context
+into:
+
+FrameworkSnapshot
+SnapshotNode
+SnapshotMapping
+It answers:
+
+What exactly is this report supposed to contain?
+
+Phase 2 — Value resolution
+Phase 2 reads:
+
+SnapshotMapping
+        |
+        v
+M5 DataRequest
+        |
+        v
+M5 Submission
+        |
+        v
+M5 Answer
+and produces:
+
+ResolvedValue
+It answers:
+
+What approved value currently exists for each frozen mapping?
+
+Therefore:
+
+Phase 1 = freeze the question/report structure
+Phase 2 = resolve the answer/value for that frozen structure
+2. M7 Mapping vs M8 SnapshotMapping
+M7 establishes the reusable framework relationship:
+
+Framework requirement/question
+            |
+            v
+     DatapointMapping
+            |
+            v
+     M4 canonical Datapoint
+The M7 mapping means:
+
+This framework requirement uses this canonical datapoint.
+
+M7 does not store the company's reporting-period answer.
+
+M8 Phase 1 copies that relationship into SnapshotMapping so that the report has its own historical copy.
+
+3. What Is Frozen?
+M8 freezes the report structure and source identity.
+
+It does not freeze the M5 answer itself.
+
+At freeze time:
+
+M7 live mapping
+      |
+      v
+SnapshotMapping
+      |
+      +--> source_datapoint_id
+      +--> canonical_datapoint_code
+The snapshot preserves the historical meaning of the report.
+
+The M5 answer remains in M5.
+
+Therefore:
+
+M8 Snapshot
+    = historical report structure
+
+M5 Answer
+    = captured source value
+This separation allows M7 to continue evolving without changing an already frozen report structure.
+
+4. Phase 2 Resolver Architecture
+The main service boundary is conceptually:
+
+ReportValueResolver
+        |
+        v
+CapturedValueProvider
+        |
+        v
+ResolvedValue
+The current provider is CapturedValueProvider because Phase 2 resolves approved M5 captured values.
+
+A future provider can be added for M6:
+
+SnapshotMapping
+       |
+       v
+   ValueProvider
+       |
+       +-------------------+
+       |                   |
+       v                   v
+M5 CapturedProvider   M6 CalculatedProvider
+       |                   |
+       v                   v
+    Answer          CalculationResult
+       |                   |
+       +---------+---------+
+                 |
+                 v
+           ResolvedValue
+M8 therefore does not need to redesign the frozen snapshot when M6 integration is introduced.
+
+5. Approved-Only Resolution Rule
+Only values belonging to an approved submission are eligible:
+
+DRAFT       X
+SUBMITTED   X
+REJECTED    X
+REOPENED    X   (until approved again)
+APPROVED    ✓
+The effective rule is:
+
+SnapshotMapping
++
+same reporting period
++
+same company scope
++
+same frozen datapoint identity
++
+SubmissionStatus.APPROVED
+        |
+        v
+eligible M5 value
+M8 performs no M5 workflow transition. It does not approve, reject, submit, modify, delete, or reopen M5 records.
+
+The resolver is strictly read-only.
+
+6. Historical Datapoint Identity
+A critical Phase 2 review finding was the distinction between:
+
+source_datapoint_id
+and:
+
+canonical_datapoint_code
+The snapshot stores both.
+
+The stable UUID is the primary operational identity.
+
+The code is historical metadata.
+
+Why the UUID Is Used
+Suppose M4 originally contains:
+
+Datapoint UUID = A
+Code = ENERGY_TOTAL_CONSUMPTION
+M8 freezes the mapping.
+
+Later an administrator changes M4:
+
+Datapoint UUID = A
+Code = ENERGY_TOTAL_CONSUMPTION_KWH
+The UUID remains A.
+
+Therefore M8 must resolve using:
+
+source_datapoint_id = A
+rather than depending on the current live code.
+
+The architectural rule is:
+
+stable UUID
+    ↓
+historical operational identity
+
+frozen code
+    ↓
+historical/display metadata
+7. Historical Code Metadata
+canonical_datapoint_code remains useful for:
+
+historical display;
+
+audit;
+
+debugging;
+
+report explanation;
+
+compatibility with older snapshots.
+
+However:
+
+The frozen code is not the normal operational identity when source_datapoint_id exists.
+
+Therefore:
+
+source_datapoint_id
+        ↓
+primary lookup identity
+
+canonical_datapoint_code
+        ↓
+historical/display metadata
+8. Legacy Snapshot Fallback
+Some older or manually-created snapshot records may not contain source_datapoint_id.
+
+For those records, Phase 2 provides a narrow legacy fallback using the frozen canonical datapoint code.
+
+Conceptually:
+
+SnapshotMapping
+      |
+      +----------------------+
+      |                      |
+source_datapoint_id      no source ID
+      |                      |
+      v                      v
+UUID lookup             frozen-code
+                         fallback
+      |                      |
+      +----------+-----------+
+                 |
+                 v
+             M5 value
+The fallback is deliberately separated from the modern UUID-based lookup.
+
+This prevents a modern mapping from silently falling back to a changed live code.
+
+9. Company Scope
+A reporting period is not sufficient to identify the correct M5 value.
+
+For example:
+
+Company A
+FY2025
+ENERGY_TOTAL
+    = 100
+
+Company B
+FY2025
+ENERGY_TOTAL
+    = 500
+A report belonging to Company A must never resolve Company B's value.
+
+Therefore the resolver uses:
+
+reporting period
++
+company
++
+datapoint identity
++
+APPROVED submission
+The M5 organization relationship is followed through:
+
+DataRequest
+    |
+    v
+OrgNode
+    |
+    v
+Company
+M8's ReportRun.company therefore defines the reporting tenant/company scope.
+
+An unscoped ReportRun is rejected rather than allowing potentially mixed-company results.
+
+10. Frozen Report Context
+The complete report context is:
+
+                    ReportRun
+                       |
+        +--------------+--------------+
+        |              |              |
+        v              v              v
+ FrameworkVersion  ReportingPeriod  Company
+        |
+        v
+ FrameworkSnapshot
+        |
+        v
+ SnapshotMapping
+        |
+        v
+source_datapoint_id
+        |
+        v
+      M5
+The resolver is not simply:
+
+datapoint → value
+It is:
+
+report
++
+company
++
+reporting period
++
+frozen mapping
++
+approved workflow state
+        |
+        v
+resolved value
+11. Resolved Value Output
+Each mapping can produce one or more resolved values.
+
+Multiple approved values are possible because M5 data is organization-scoped.
+
+For example:
+
+ENERGY_TOTAL_CONSUMPTION
+
+    |
+    +--> Plant A = 125.5 KWH
+    |
+    +--> Plant B = 210.0 KWH
+    |
+    +--> Plant C = 95.0 KWH
+M8 does not automatically calculate the total.
+
+The values remain separate and retain:
+
+org_node_id
+org_node_name
+value
+unit
+provenance
+for later aggregation/reporting logic.
+
+12. Primitive Typed Values
+M8 preserves the M5 typed answer representation.
+
+Supported primitive representations include:
+
+DECIMAL
+INTEGER
+TEXT
+LONG_TEXT
+BOOLEAN
+SELECT
+DATE
+M8 does not convert everything into a string.
+
+13. Falsy Values Are Still Valid Values
+The resolver must not use:
+
+if value:
+to decide whether a value exists.
+
+For example:
+
+0
+False
+are legitimate values.
+
+Therefore:
+
+DECIMAL 0
+    → RESOLVED
+
+BOOLEAN False
+    → RESOLVED
+Only the explicit resolver status determines whether the value is unresolved.
+
+14. SELECT Values
+SELECT answers retain their typed structure rather than becoming arbitrary strings.
+
+Where applicable, the resolved representation can retain:
+
+option ID
+option code
+option label
+15. TABLE Value Resolution
+TABLE answers are not flattened into an opaque string.
+
+The normalized M5 structure remains available:
+
+Answer
+   |
+   +--> Row
+   |     |
+   |     +--> Cell
+   |     +--> Cell
+   |
+   +--> Row
+         |
+         +--> Cell
+         +--> Cell
+M8 preserves:
+
+fixed-row identity
+dynamic-row label
+row order
+column identity/code
+typed cell value
+cell unit
+Later report rendering can reconstruct the table without parsing a display string.
+
+16. Provenance
+Every resolved value retains source provenance.
+
+Important identities include:
+
+ReportRun
+SnapshotMapping
+canonical datapoint
+DataRequest
+Submission
+Answer
+OrgNode
+Where available, approval and entry information is also retained:
+
+approved_by
+approved_at
+entered_by
+The source is identified as:
+
+source_type = CAPTURED
+This allows future report/audit interfaces to answer:
+
+Where did this displayed reporting value come from?
+
+17. Missing Value Behavior
+A mapping can exist without an approved M5 value.
+
+M8 does not fabricate zero, empty strings, or successful nulls.
+
+Instead it explicitly returns:
+
+{
+  "status": "UNRESOLVED",
+  "value": null
+}
+The distinction is:
+
+MAPPING EXISTS
+        +
+NO APPROVED VALUE
+        |
+        v
+UNRESOLVED
+18. Phase 2 API
+The resolved dataset is exposed through:
+
+GET /api/reporting/report-runs/{id}/resolved-values/
+The report run must be FROZEN.
+
+The endpoint is:
+
+authenticated
+read-only
+deterministically ordered
+19. Phase 2 Output Example
+{
+  "snapshot_node_id": "...",
+  "snapshot_mapping_id": "...",
+  "canonical_datapoint_code": "ENERGY_TOTAL",
+  "status": "RESOLVED",
+  "data_type": "DECIMAL",
+  "value": 125.5,
+  "unit": {
+    "id": "...",
+    "code": "KWH",
+    "name": "Kilowatt-hour"
+  },
+  "data_request_id": "...",
+  "submission_id": "...",
+  "answer_id": "...",
+  "org_node_id": "...",
+  "org_node_name": "Plant A",
+  "provenance": {
+    "source_type": "CAPTURED",
+    "approved_by": {
+      "id": "...",
+      "username": "reviewer",
+      "name": "Reviewer"
+    },
+    "approved_at": "...",
+    "entered_by": {
+      "id": "...",
+      "username": "maker",
+      "name": "Maker"
+    }
+  }
+}
+This output is a reporting dataset, not a final PDF/Excel report.
+
+20. Complete M8 Phase 1 + Phase 2 Flow
+                    M3
+             ReportingPeriod
+                    |
+                    v
+M7 FrameworkVersion
+        |
+        +--> FrameworkNode
+        |
+        +--> DatapointMapping
+                    |
+                    v
+                 M4
+             Datapoint
+                    |
+                    v
+             M8 ReportRun
+                    |
+                  FREEZE
+                    |
+                    v
+          FrameworkSnapshot
+                    |
+              +-----+-----+
+              |           |
+              v           v
+        SnapshotNode  SnapshotNode
+              |
+              v
+       SnapshotMapping
+              |
+              | frozen datapoint identity
+              v
+        Value Provider
+              |
+        +-----+------+
+        |            |
+        v            v
+       M5           future M6
+    Captured       Calculated
+     Answer          Result
+        |            |
+        +-----+------+
+              |
+              v
+        ResolvedValue
+              |
+              v
+      Future Reporting
+21. What Phase 2 Does NOT Do
+Phase 2 does not:
+
+create M5 Answers;
+
+approve M5 submissions;
+
+modify M5 data;
+
+perform emission calculations;
+
+modify M6;
+
+aggregate OrgNode values;
+
+generate PDF;
+
+generate Excel;
+
+create final report templates;
+
+create disclosure tasks;
+
+create narrative answers;
+
+perform regulatory compliance scoring.
+
+Its responsibility is:
+
+Resolve the frozen report mappings against eligible approved source values and expose the result in a deterministic, provenance-preserving reporting contract.
+
+22. Review Hardening — Root Cause
+The Phase 2 review identified a historical-identity problem.
+
+The original lookup relied too heavily on the live M4 datapoint code.
+
+This created a scenario where:
+
+M8 freezes:
+
+UUID = A
+code = ENERGY_TOTAL
+Later:
+
+M4 changes:
+
+UUID = A
+code = ENERGY_TOTAL_KWH
+If M8 resolves using the live code, the frozen report can stop finding the correct M5 value.
+
+The architectural mistake was:
+
+mutable code
+    ↓
+used as historical identity
+The corrected architecture is:
+
+stable UUID
+    ↓
+historical operational identity
+
+frozen code
+    ↓
+historical metadata
+23. Review Hardening — Corrected Lookup
+Modern snapshots resolve using:
+
+SnapshotMapping.source_datapoint_id
+against M5:
+
+DataRequest.datapoint_id
+with additional context:
+
+reporting period
+company
+APPROVED submission
+Conceptually:
+
+source_datapoint_id
+        +
+reporting_period
+        +
+company
+        +
+APPROVED
+        |
+        v
+M5 DataRequest
+        |
+        v
+M5 Answer
+This makes historical resolution robust against live code changes.
+
+24. Review Regression — M4 Code Rename
+A high-value regression scenario is:
+
+1. Create M4 datapoint
+2. Create M7 mapping
+3. Freeze M8 report
+4. Create/approve M5 value
+5. Rename live M4 datapoint code
+6. Resolve M8 report
+7. Verify original approved value is still returned
+The test proves that M8 uses source_datapoint_id rather than the mutable live code.
+
+25. Review Regression — Company Isolation
+Another regression scenario creates:
+
+Company A
+    ENERGY_TOTAL
+    FY2025
+    value = 100
+
+Company B
+    ENERGY_TOTAL
+    FY2025
+    value = 500
+The ReportRun belongs to Company A.
+
+Resolution must produce:
+
+100
+and never:
+
+500
+This verifies that M8 respects the complete reporting scope.
+
+26. Current M8 Phase 2 Architecture Status
+M8 Phase 1 — ReportRun/Snapshot
+        COMPLETE
+
+M8 Phase 2 — Approved M5 Value Resolution
+        COMPLETE
+
+M5 mutation by M8
+        NONE
+
+M6 calculation execution by M8
+        NONE
+
+Framework snapshot
+        IMMUTABLE
+
+Value resolution
+        READ-ONLY
+
+Approved-only filtering
+        ENFORCED
+
+Company scope
+        ENFORCED
+
+Frozen datapoint identity
+        UUID-BASED
+
+Legacy snapshot fallback
+        DOCUMENTED
+
+Typed values
+        PRESERVED
+
+TABLE structure
+        PRESERVED
+
+Provenance
+        PRESERVED
+
+M6 provider extension point
+        READY
+27. Final M8 Mental Model
+PHASE 1
+========
+
+M3 + M7
+   |
+   v
+ReportRun
+   |
+ FREEZE
+   |
+   v
+Immutable M8 Snapshot
+
+
+PHASE 2
+========
+
+Immutable M8 Snapshot
+   |
+   v
+Frozen Mapping
+   |
+   v
+Approved M5 source value
+   |
+   v
+ResolvedValue
+Or, in one sentence:
+
+M8 freezes what the report is asking for, then resolves the frozen mappings against the correct approved source values without changing those source records.
+
+The most important identity rule is:
+
+Use the frozen source datapoint ID for historical resolution; keep the frozen datapoint code as historical metadata, not as the primary identity.
+
+28. Complete Responsibility Boundary
+M4
+Canonical Datapoint
+       |
+       +--------------------+
+       |                    |
+       v                    v
+      M5                   M7
+ Data Capture         Framework Mapping
+       |                    |
+       |                    v
+       |              M8 Phase 1
+       |              Report Snapshot
+       |                    |
+       |                    v
+       +------------> M8 Phase 2
+                    Value Resolution
+                           |
+                     +-----+-----+
+                     |           |
+                     v           v
+                    M5      future M6
+                 captured   calculated
+                    values    results
+                     |           |
+                     +-----+-----+
+                           |
+                           v
+                    Reporting Dataset
+                           |
+                           v
+                 Future Readiness /
+                 Rendering / Export
+The final architecture principle is:
+
+M7 defines the framework structure and mappings. M8 freezes that structure into a historical snapshot. M5 owns captured answers and approval. M6 owns calculations. M8 resolves eligible source values for the frozen reporting context and exposes a stable reporting-value contract.
+
+29. Engineering Lesson From Phase 2 Review
+The most important engineering lesson from this review is:
+
+A historical system must preserve stable identity, not merely mutable labels or codes.
+
+When implementing historical reporting, always ask:
+
+What is the actual identity of this record?
+
+Can that identity change?
+
+What information must remain historically stable?
+
+Which fields are operational identifiers?
+
+Which fields are only display metadata?
+
+What tenant/company scope is required?
+
+What workflow state makes a source record eligible?
+
+What regression test proves the historical behavior?
+For M8:
+
+Stable identity
+    = source_datapoint_id
+
+Historical metadata
+    = canonical_datapoint_code
+
+Tenant scope
+    = ReportRun.company
+
+Time scope
+    = ReportRun.reporting_period
+
+Eligible workflow state
+    = APPROVED
+
+Historical report structure
+    = M8 Snapshot
+
+Current source answer
+    = M5 approved Answer
+
+Future calculated source
+    = M6 provider
+This distinction is fundamental to keeping the reporting architecture correct as M5, M6, and future reporting capabilities evolve.
