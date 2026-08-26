@@ -6,6 +6,26 @@ import type { DatapointTableColumn, DatapointTableRow } from "@/types/datapoint"
  * This deliberately uses catalog UUIDs rather than mutable codes.  It is not
  * an API client: an M5 screen can pass this state to `toM5TableRowPayload`
  * when it saves one normalized AnswerTableRow.
+ *
+ * NOTE (no functional change made in this pass): emptyTableCell() below is
+ * correct as-is — it simply omits text_value entirely for a fresh cell
+ * rather than defaulting it to null, which is exactly why the sibling file
+ * (@/pages/dataCapture/tableAnswerAdapter.ts) needed its own fix: its
+ * tableCellDraftToWritePayload was force-filling every field with `?? null`,
+ * turning this file's intentionally-absent text_value into an explicit null
+ * that violated the backend's NOT NULL constraint on text_value. This file
+ * needed no change — only the other one did.
+ *
+ * Worth a follow-up decision at some point: toM5TableRowPayload here and
+ * tableDraftToRowPayloads/tableCellDraftToWritePayload in the other file
+ * both convert a TableRowDraft into a write payload, but take different
+ * approaches (spread-only-present-keys here vs. force-fill-every-key
+ * there). Only one of them is actually wired into the app
+ * (tableDraftToRowPayloads, via DataCaptureRequestPage's saveTableRows).
+ * Consolidating to a single payload builder — probably this file's
+ * spread-based version, since it can't reintroduce the same null-defaulting
+ * class of bug — would remove the duplicate-implementation risk, but that's
+ * a larger refactor than this bug fix and hasn't been done here.
  */
 export interface TableCellDraft {
   column: string;

@@ -53,6 +53,15 @@ import DatapointOptionsManager from "./pages/datapoints/DatapointOptionsManager"
 import GoalsList from "./pages/targets/GoalsList";
 import GoalDetail from "./pages/targets/GoalDetail";
 
+
+//DataCapture
+import DataCaptureRequestPage from "@/pages/dataCapture/DataCaptureRequestPage";
+import DataCapturePage from "./pages/dataCapture/DataCapturePage";
+import DataCaptureRequestCreate from "./pages/dataCapture/RequestCreate";
+import DataRequestManagerPage from "./pages/dataCapture/DataRequestManagerPage";
+import DataRequestManageDetailPage from "./pages/dataCapture/ManagerDetailPage";
+import DataReviewQueuePage from "./pages/dataCapture/DataReviewQueuePage";
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -346,7 +355,87 @@ export default function App() {
     </ProtectedRoute>
   }
 />
+{/* ==========================================================
+    DATA CAPTURE WORKSPACE
+========================================================== */}
 
+<Route
+  path="/data-capture"
+  element={
+    <ProtectedRoute
+      permissions={[
+        "data.enter",
+        "data.submit",
+        "data.approve",
+        "data.manage",
+      ]}
+    >
+      <DataCapturePage />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/data-capture/requests/:requestId"
+  element={
+    <ProtectedRoute
+      permissions={[
+        "data.enter",
+        "data.submit",
+        "data.approve",
+        "data.manage",
+        "evidence.view",
+        "evidence.upload",
+      ]}
+    >
+      <DataCaptureRequestPage />
+    </ProtectedRoute>
+  }
+/>
+
+{/* ==========================================================
+    CREATE REQUEST
+========================================================== */}
+
+<Route
+  path="/data-capture/requests/create"
+  element={
+    <ProtectedRoute permission="data.manage">
+      <DataCaptureRequestCreate />
+    </ProtectedRoute>
+  }
+/>
+
+{/* ==========================================================
+    MANAGER REQUEST ADMINISTRATION
+========================================================== */}
+
+<Route
+  path="/data-capture/manage"
+  element={
+    <ProtectedRoute permission="data.manage">
+      <DataRequestManagerPage />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/data-capture/manage/:requestId"
+  element={
+    <ProtectedRoute permission="data.manage">
+      <DataRequestManageDetailPage />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/data-capture/review"
+  element={
+    <ProtectedRoute permission="data.approve">
+      <DataReviewQueuePage />
+    </ProtectedRoute>
+  }
+/>
 {/* Materiality */}
 
 

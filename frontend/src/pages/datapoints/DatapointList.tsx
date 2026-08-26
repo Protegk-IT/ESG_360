@@ -310,7 +310,7 @@ const columns = useMemo(
 ================================================== */}
 
 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-  <SelectTrigger className="h-9 w-34 shrink-0">
+  <SelectTrigger className="h-9 w-32 shrink-0">
     <SelectValue placeholder="Category" />
   </SelectTrigger>
 
@@ -335,7 +335,7 @@ const columns = useMemo(
     setTypeFilter(value as "All" | DatapointDataType);
   }}
 >
-  <SelectTrigger className="h-9 w-28 shrink-0">
+  <SelectTrigger className="h-9 w-23 shrink-0">
     <SelectValue placeholder="Data Type" />
   </SelectTrigger>
 
@@ -357,7 +357,7 @@ const columns = useMemo(
 ================================================== */}
 
 <Select value={moduleFilter} onValueChange={setModuleFilter}>
-  <SelectTrigger className="h-9 w-32 shrink-0">
+  <SelectTrigger className="h-9 w-28 shrink-0">
     <SelectValue placeholder="Module" />
   </SelectTrigger>
 

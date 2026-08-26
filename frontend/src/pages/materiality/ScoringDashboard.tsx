@@ -306,13 +306,17 @@ export default function ScoringDashboard() {
     [assessmentId],
   );
 
-  useEffect(() => {
-    loadDashboard();
+useEffect(() => {
+  const load = async () => {
+    await loadDashboard();
+  };
 
-    // loadDashboard is intentionally triggered
-    // whenever assessmentId changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assessmentId]);
+  void load();
+
+  // loadDashboard is intentionally triggered
+  // whenever assessmentId changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [assessmentId]);
   // The only place "Dashboard refreshed" is shown — the manual Refresh
   // button. Actions like Save / Run / Override show their own toast
   // instead and call loadDashboard(true) silently.

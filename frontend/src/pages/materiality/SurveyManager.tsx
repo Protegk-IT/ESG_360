@@ -222,16 +222,25 @@ export default function SurveyManager() {
   }, [id, survey]);
 
   useEffect(() => {
-    void loadSurvey();
-  }, [loadSurvey]);
+  const load = async () => {
+    await loadSurvey();
+  };
 
-  useEffect(() => {
+  void load();
+}, [loadSurvey]);
+
+useEffect(() => {
+  const load = async () => {
     if (!survey) {
       setQuestions([]);
       return;
     }
-    void loadQuestions();
-  }, [survey, loadQuestions]);
+
+    await loadQuestions();
+  };
+
+  void load();
+}, [survey, loadQuestions]);
 
   /* ========================================================
      SURVEY FIELD UPDATE

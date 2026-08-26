@@ -17,16 +17,14 @@ const badgeVariants = cva(
 
   border
 
-  min-h-6
-
-  px-2.5
+  px-3
   py-1
 
-  text-[0.6875rem]
-  font-semibold
-  tracking-[0.01em]
-
+  text-xs
+  font-medium
   leading-none
+
+  text-white
 
   transition-all
   duration-200
@@ -45,102 +43,117 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default: `
-          border-[#CBD5E1]
-          bg-white
-          text-[#334155]
+          border-[#4A5568]
+          bg-[#4A5568]
+          text-white
         `,
 
         secondary: `
-          border-[#DDD6FE]
-          bg-[#F5F3FF]
-          text-[#5B21B6]
+          border-[#64748B]
+          bg-[#64748B]
+          text-white
         `,
 
         success: `
-          border-[#BBE8D4]
-          bg-[#EAF8F0]
-          text-[#167A54]
+          border-[#16A34A]
+          bg-[#16A34A]
+          text-white
         `,
 
         warning: `
-          border-[#F2D8A7]
-          bg-[#FDF3E3]
-          text-[#8A5C12]
+          border-[#D97706]
+          bg-[#D97706]
+          text-white
         `,
 
         info: `
-          border-[#C7D2FE]
-          bg-[#EEF0FF]
-          text-[#4A3FD6]
+          border-[#2563EB]
+          bg-[#2563EB]
+          text-white
         `,
 
         system: `
-          border-[#DDD6FE]
-          bg-[#ECE9FB]
-          text-[#4A3FD6]
+          border-[#7C3AED]
+          bg-[#7C3AED]
+          text-white
         `,
 
         inactive: `
-          border-[#D7DAE1]
-          bg-[#F0F1F6]
-          text-[#5E6472]
+          border-[#6B7280]
+          bg-[#6B7280]
+          text-white
         `,
 
         destructive: `
-          border-[#E8D3D2]
-          bg-[#FBE9E8]
-          text-[#B3453F]
-        `,
-
-        draft: `
-          border-[#D7DAE1]
-          bg-[#F0F1F6]
-          text-[#5E6472]
-        `,
-
-        active: `
-          border-[#BBE8D4]
-          bg-[#EAF8F0]
-          text-[#167A54]
-        `,
-
-        approved: `
-          border-[#BBE8D4]
-          bg-[#EAF8F0]
-          text-[#167A54]
-        `,
-
-        rejected: `
-          border-[#E8D3D2]
-          bg-[#FBE9E8]
-          text-[#B3453F]
-        `,
-
-        locked: `
-          border-[#D7DAE1]
-          bg-[#F0F1F6]
-          text-[#5E6472]
+          border-[#DC2626]
+          bg-[#DC2626]
+          text-white
         `,
 
         outline: `
-          border-[#D9DEE8]
-          bg-transparent
-          text-[#4A5565]
+          border-[#475569]
+          bg-[#475569]
+          text-white
         `,
 
         ghost: `
-          border-transparent
-          bg-[#F5F7FB]
-          text-[#4A5565]
+          border-[#475569]
+          bg-[#475569]
+          text-white
         `,
 
         link: `
-          border-transparent
-          bg-transparent
-          p-0
-          text-[#4A3FD6]
-          underline-offset-4
-          hover:underline
+          border-[#4A3FD6]
+          bg-[#4A3FD6]
+          text-white
+        `,
+
+        purple: `
+          border-[#9333EA]
+          bg-[#9333EA]
+          text-white
+        `,
+
+        pink: `
+          border-[#DB2777]
+          bg-[#DB2777]
+          text-white
+        `,
+
+        orange: `
+          border-[#EA580C]
+          bg-[#EA580C]
+          text-white
+        `,
+
+        teal: `
+          border-[#0D9488]
+          bg-[#0D9488]
+          text-white
+        `,
+
+        cyan: `
+          border-[#0891B2]
+          bg-[#0891B2]
+          text-white
+        `,
+
+        indigo: `
+          border-[#4F46E5]
+          bg-[#4F46E5]
+          text-white
+        `,
+
+        lime: `
+          border-[#65A30D]
+          bg-[#65A30D]
+          text-white
+        `,
+
+        brown: `
+          border-[#92400E]
+          bg-[#92400E]
+          text-white
         `,
       },
     },

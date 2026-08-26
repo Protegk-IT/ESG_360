@@ -1,4 +1,3 @@
-
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -97,21 +96,43 @@ const SELECT_CLEAR_VALUE = "__clear__";
 /* =========================================================
    UNIT LOOKUP
    ---------------------------------------------------------
-   default_unit on a Datapoint/DatapointTableColumn is stored
-   as a unit ID (string). Callers that already have the full
-   Unit list (e.g. a detail/edit page that already fetches
-   units for the relevant unit family) can pass it here as
-   `unitsById` to show a real unit code next to numeric
-   fields/cells. Omitted by a caller → nothing renders, same
-   as before this change.
+   default_unit — on BOTH Datapoint and DatapointTableColumn —
+   may arrive from the backend either as a bare unit ID string
+   or as a nested Unit object (id + code + ...). Every caller
+   that reads a default_unit MUST go through one of these two
+   helpers rather than assuming one shape, since assuming
+   "always a string ID" is exactly what silently dropped the
+   unit suffix on both scalar fields and table cells before
+   this fix — resolveUnitCode(someUnitObject, unitsById) tried
+   to look the object up as a map key and always got undefined.
+
+   resolveUnitId   -> the ID, for building a write payload.
+   resolveUnitCode -> the display code, for rendering. Uses the
+                      object's own `code` directly when the
+                      backend already nested it, so display
+                      doesn't even depend on unitsById having
+                      loaded; falls back to the unitsById map
+                      lookup when only a bare ID is available.
 ========================================================= */
 
+function resolveUnitId(
+  unit: string | Unit | null | undefined
+): string | null {
+  if (!unit) return null;
+  return typeof unit === "string" ? unit : unit.id ?? null;
+}
+
 function resolveUnitCode(
-  unitId: string | null | undefined,
+  unit: string | Unit | null | undefined,
   unitsById?: Record<string, Unit>
 ): string | null {
-  if (!unitId || !unitsById) return null;
-  return unitsById[unitId]?.code ?? null;
+  if (!unit) return null;
+
+  if (typeof unit === "object") {
+    return unit.code ?? null;
+  }
+
+  return unitsById?.[unit]?.code ?? null;
 }
 
 /* Narrows a FieldValue (or unknown table-cell value) down to
@@ -311,12 +332,7 @@ export function DecimalField({
       toCellPrimitive(value),
       isRequired
     );
-  const unitCode = resolveUnitCode(
-    typeof datapoint.default_unit === "string"
-      ? datapoint.default_unit
-      : datapoint.default_unit?.id ?? null,
-    unitsById
-  );
+  const unitCode = resolveUnitCode(datapoint.default_unit, unitsById);
 
   return (
     <FieldWrapper datapoint={datapoint} required={required} error={resolvedError}>
@@ -360,12 +376,7 @@ export function IntegerField({
       toCellPrimitive(value),
       isRequired
     );
-   const unitCode = resolveUnitCode(
-    typeof datapoint.default_unit === "string"
-      ? datapoint.default_unit
-      : datapoint.default_unit?.id ?? null,
-    unitsById
-  );
+  const unitCode = resolveUnitCode(datapoint.default_unit, unitsById);
 
   return (
     <FieldWrapper datapoint={datapoint} required={required} error={resolvedError}>
@@ -578,7 +589,7 @@ export function SelectField({
           <SelectItem value={SELECT_CLEAR_VALUE}>Select an option</SelectItem>
 
           {options.map((option) => (
-            <SelectItem key={option.id} value={option.code}>
+            <SelectItem key={option.id} value={option.id}>
               {option.label}
             </SelectItem>
           ))}
@@ -696,11 +707,27 @@ function typedCellValue(
   current?: TableCellDraft,
 ): TableCellDraft {
   const base = { ...emptyTableCell(column), ...current, column: column.id };
+
   switch (column.data_type) {
     case "INTEGER":
-      return { ...base, integer_value: parseNumeric("INTEGER", String(rawValue ?? "")) as number | null };
+      return {
+        ...base,
+        integer_value: parseNumeric("INTEGER", String(rawValue ?? "")) as number | null,
+        // Fall back to the column's default unit only if this cell has
+        // never had a unit set (i.e. first-time entry, not a hydrated
+        // saved cell whose unit — including an intentional null — should
+        // never be overwritten here). Always go through resolveUnitId so
+        // this stores a plain unit-ID string even if column.default_unit
+        // turns out to be a nested Unit object at runtime — the write
+        // payload must never carry a whole object here.
+        unit: current?.unit ?? resolveUnitId(column.default_unit) ?? null,
+      };
     case "DECIMAL":
-      return { ...base, decimal_value: parseNumeric("DECIMAL", String(rawValue ?? "")) as number | null };
+      return {
+        ...base,
+        decimal_value: parseNumeric("DECIMAL", String(rawValue ?? "")) as number | null,
+        unit: current?.unit ?? resolveUnitId(column.default_unit) ?? null,
+      };
     case "BOOLEAN":
       return { ...base, boolean_value: rawValue === true };
     case "DATE":
@@ -709,11 +736,9 @@ function typedCellValue(
     case "LONG_TEXT":
       return { ...base, text_value: rawValue === "" || rawValue == null ? null : String(rawValue) };
     default:
-      // SELECT and nested TABLE values have no supported M4/M5 representation.
       return base;
   }
 }
-
 /* ---- text cell (single-line or multiline), draft+commit-on-blur ---- */
 
 function TextCellInput({

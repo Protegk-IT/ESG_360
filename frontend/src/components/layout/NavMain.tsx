@@ -20,7 +20,8 @@ import {
 } from "@/components/ui/sidebar";
 
 import { cn } from "@/lib/utils";
-import type { SidebarItem } from "./sidebar-data";
+import { useAuth } from "@/context/AuthContext";
+import type { SidebarItem, SidebarSubItem } from "./sidebar-data";
 
 interface NavMainProps {
   items: SidebarItem[];
@@ -28,18 +29,12 @@ interface NavMainProps {
   assessmentId?: string | null;
 }
 
-// Explicit JS-driven color states (no dependency on data-* variant support).
 const isPathActive = (pathname: string, url?: string, exact = false) => {
-  if (!url) {
-    return false;
-  }
-
-  if (exact || url === "/materiality/assessments") {
-    return pathname === url;
-  }
-
+  if (!url) return false;
+  if (exact || url === "/materiality/assessments") return pathname === url;
   return pathname === url || pathname.startsWith(`${url}/`);
 };
+
 const baseItem =
   "h-11 w-full rounded-xl px-4 text-sm font-medium transition-colors duration-150";
 const restState = "text-gray-600 hover:bg-blue-50 hover:text-blue-700";
@@ -50,13 +45,83 @@ const baseSubItem =
 const restSubState = "text-gray-500 hover:bg-blue-50 hover:text-blue-700";
 const activeSubState = "bg-blue-50 text-blue-700 font-medium";
 
+/* ==========================================================
+   FLATTENED-GROUP TYPE
+   ----------------------------------------------------------
+   A group that collapsed to one visible child renders exactly
+   like a normal top-level SidebarItem (icon + label + link),
+   so it can flow through the same render branch as items that
+   were never a group in the first place.
+========================================================== */
+
+type RenderableItem = SidebarItem & { items?: SidebarSubItem[] };
+
 export function NavMain({ items }: NavMainProps) {
   const location = useLocation();
+  const { user, permissions: userPermissions } = useAuth();
 
-  // Accordion-style: only one section open at a time.
-  // Swap to a Set<string> if you want multiple sections open together.
+  /* ========================================================
+     PERMISSION CHECK
+     ----------------------------------------------------------
+     Mirrors ProtectedRoute's own logic (superuser bypass, then
+     single-permission, then OR-list, then "no permission means
+     public"), so the sidebar and the route guard never disagree
+     about who can see/reach a screen.
+  ======================================================== */
+
+  const hasAccess = (
+    permission?: string,
+    permissionList?: string[],
+  ): boolean => {
+    if (user?.is_superuser) return true;
+    if (!permission && !permissionList) return true;
+    if (permission && userPermissions.includes(permission)) return true;
+    if (permissionList?.some((code) => userPermissions.includes(code))) {
+      return true;
+    }
+    return false;
+  };
+
+  /* ========================================================
+     BUILD THE VISIBLE, ROLE-SHAPED NAV
+     ----------------------------------------------------------
+     1. Drop groups/links the user has no access to at all.
+     2. Within a surviving group, drop sub-items the user can't
+        reach.
+     3. If exactly one sub-item survives, collapse the group
+        into a single flat link — a dropdown with one option
+        is friction, not navigation. Two or more sub-items (or
+        superuser, who always sees everything) keeps the
+        dropdown, since there's an actual choice to present.
+  ======================================================== */
+
+  const visibleItems: RenderableItem[] = items
+    .filter((item) => hasAccess(item.permission, item.permissions))
+    .map((item): RenderableItem => {
+      if (!item.items) return item;
+
+      const visibleSubItems = item.items.filter((sub) =>
+        hasAccess(sub.permission, sub.permissions),
+      );
+
+      if (visibleSubItems.length === 1) {
+        const only = visibleSubItems[0];
+        return {
+          title: item.title,
+          icon: item.icon,
+          url: only.url,
+          permission: item.permission,
+          permissions: item.permissions,
+          // items intentionally omitted — this now renders as a flat link
+        };
+      }
+
+      return { ...item, items: visibleSubItems };
+    })
+    .filter((item) => !item.items || item.items.length > 0);
+
   const [openTitle, setOpenTitle] = useState<string | null>(() => {
-    const match = items.find((item) =>
+    const match = visibleItems.find((item) =>
       item.items?.some((sub) => sub.url === location.pathname),
     );
     return match?.title ?? null;
@@ -66,7 +131,7 @@ export function NavMain({ items }: NavMainProps) {
     <SidebarGroup className="px-2 py-2">
       <SidebarGroupContent>
         <SidebarMenu className="space-y-2">
-          {items.map((item) => {
+          {visibleItems.map((item) => {
             if (!item.items) {
               const isActive = isPathActive(
                 location.pathname,
@@ -82,11 +147,9 @@ export function NavMain({ items }: NavMainProps) {
                   >
                     <Link to={item.url!} className="flex items-center gap-3">
                       <item.icon className="h-[18px] w-[18px] shrink-0" />
-
                       <span className="flex-1 truncate text-left">
                         {item.title}
                       </span>
-
                       {isActive && (
                         <ChevronRight className="h-4 w-4 shrink-0 text-blue-600" />
                       )}
@@ -120,11 +183,9 @@ export function NavMain({ items }: NavMainProps) {
                       )}
                     >
                       <item.icon className="h-[18px] w-[18px] shrink-0" />
-
                       <span className="flex-1 truncate text-left">
                         {item.title}
                       </span>
-
                       <ChevronRight
                         className={cn(
                           "h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200",
@@ -134,16 +195,12 @@ export function NavMain({ items }: NavMainProps) {
                     </SidebarMenuButton>
                   </CollapsibleTrigger>
 
-                  {/* forceMount + explicit hidden/block guarantees this renders
-                      even if tailwindcss-animate isn't set up in the project */}
                   <CollapsibleContent
                     forceMount
                     className={isOpen ? "block" : "hidden"}
                   >
-                    {/* Tree structure: one vertical guide line down the group,
-                        each child gets a short horizontal branch to the line */}
                     <SidebarMenuSub className="relative ml-5 mt-1 space-y-1 border-l border-gray-200 pl-4">
-                      {item.items.map((sub) => {
+                      {item.items!.map((sub) => {
                         const isSubActive = isPathActive(
                           location.pathname,
                           sub.url,
@@ -153,10 +210,7 @@ export function NavMain({ items }: NavMainProps) {
                         );
 
                         return (
-                          <SidebarMenuSubItem
-                            key={sub.title}
-                            className="relative"
-                          >
+                          <SidebarMenuSubItem key={sub.title} className="relative">
                             <span
                               aria-hidden="true"
                               className="pointer-events-none absolute -left-4 top-1/2 h-px w-3 -translate-y-1/2 bg-gray-200"

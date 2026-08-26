@@ -174,17 +174,10 @@ export function ValidationMetadataFields({
   }
 
   if (dataType === "TABLE") {
-    return (
-      <div className="space-y-1.5 rounded-lg border-[1.5px] border-[#8891A3] p-4">
-        <Label className="text-sm font-medium">Minimum rows</Label>
-        <Input
-          type="number"
-          min={0}
-          value={typeof value.min_rows === "number" ? value.min_rows : ""}
-          placeholder="No minimum"
-          onChange={(e) => set("min_rows", toNumberOrUndefined(e.target.value))}
-        />
-      </div>
+     return (
+      <p className="text-sm text-[#6B7280]">
+        No additional validation rules apply to this data type.
+      </p>
     );
   }
 

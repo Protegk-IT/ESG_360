@@ -289,10 +289,13 @@ export default function MaterialityResults() {
      INITIAL LOAD
   ============================================================ */
 
-  useEffect(() => {
-    void loadResults();
-  }, [loadResults]);
+useEffect(() => {
+  const load = async () => {
+    await loadResults();
+  };
 
+  void load();
+}, [loadResults]);
 
   /* ============================================================
      TOPIC RESULTS

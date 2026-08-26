@@ -308,22 +308,21 @@ export default function CompanyForm() {
     /* ==========================================================
       SAME AS REGISTERED ADDRESS
   ========================================================== */
-
-  useEffect(() => {
-
-    if (!sameAsRegistered)
-      return;
+useEffect(() => {
+  const sync = () => {
+    if (!sameAsRegistered) return;
 
     updateField(
       "corporate_address",
       formData.registered_address
     );
+  };
 
-  }, [
-    sameAsRegistered,
-    formData.registered_address,
-  ]);
-
+  sync();
+}, [
+  sameAsRegistered,
+  formData.registered_address,
+]);
   /* ==========================================================
       SUBMIT
   ========================================================== */

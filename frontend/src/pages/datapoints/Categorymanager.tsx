@@ -630,7 +630,7 @@ export default function CategoryManager() {
 
         cell: ({ row }) =>
           row.original.esg_pillar ? (
-            <Badge variant="outline">
+            <Badge variant="purple">
               {row.original.esg_pillar}
             </Badge>
           ) : (

@@ -253,8 +253,13 @@ export default function AssessmentDetail() {
   }, [id]);
 
   useEffect(() => {
-    void loadData();
-  }, [loadData]);
+  const load = async () => {
+    await loadData();
+  };
+
+  void load();
+}, [loadData]);
+
 
   /* ---------------------------- lookup maps ---------------------------- */
 
@@ -457,6 +462,7 @@ export default function AssessmentDetail() {
 
   /* Auto-expand everything that's currently visible while searching. */
   useEffect(() => {
+  const autoExpand = () => {
     if (!search.trim()) {
       return;
     }
@@ -471,8 +477,10 @@ export default function AssessmentDetail() {
         ),
       ),
     );
-  }, [search, visibleTree]);
+  };
 
+  autoExpand();
+}, [search, visibleTree]);
   /* ---------------------------- save ---------------------------- */
 
   const handleSaveTopics = async () => {

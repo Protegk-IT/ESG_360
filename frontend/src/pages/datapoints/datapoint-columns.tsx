@@ -123,7 +123,7 @@ export const getDatapointColumns = ({
     header: "Frequency",
 
     cell: ({ row }) => (
-      <Badge variant="ghost">
+      <Badge variant="purple">
         {formatFrequency(row.original.frequency)}
       </Badge>
     ),

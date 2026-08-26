@@ -195,11 +195,13 @@ export default function StakeholderGroups() {
   // INITIAL LOAD
   // ==========================================================
 
-  useEffect(() => {
+ useEffect(() => {
+  const load = async () => {
+    await loadGroups();
+  };
 
-    loadGroups();
-
-  }, [loadGroups]);
+  void load();
+}, [loadGroups]);
 
 
   // ==========================================================

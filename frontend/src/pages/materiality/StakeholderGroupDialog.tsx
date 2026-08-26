@@ -1,5 +1,4 @@
 import {
-  useEffect,
   useState,
 } from "react";
 
@@ -107,38 +106,32 @@ export default function StakeholderGroupDialog({
     setSaving,
   ] = useState(false);
 
+/* ========================================================
+   RESET / LOAD FORM
+   (reset happens during render, not in an effect, so it
+   never triggers the "setState in effect" warning)
+======================================================== */
 
-  /* ========================================================
-     RESET / LOAD FORM
-  ======================================================== */
+const [prevInitKey, setPrevInitKey] = useState({ open, group });
 
-  useEffect(() => {
+if (open !== prevInitKey.open || group !== prevInitKey.group) {
+  setPrevInitKey({ open, group });
 
-    if (!open) {
-      return;
-    }
-
+  if (open) {
     if (group) {
-
       setForm({
         name: group.name,
         description: group.description ?? "",
         weight: String(group.weight),
         is_internal: group.is_internal,
       });
-
     } else {
-
-      setForm(
-        DEFAULT_FORM
-      );
-
+      setForm(DEFAULT_FORM);
     }
 
     setError(null);
-
-  }, [open, group]);
-
+  }
+}
 
   /* ========================================================
      CURRENT GROUP WEIGHT

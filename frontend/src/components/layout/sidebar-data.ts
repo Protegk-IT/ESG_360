@@ -5,14 +5,13 @@ import {
   FolderTree,
   LayoutDashboard,
   ShieldCheck,
-  Target,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 export interface SidebarSubItem {
   title: string;
   url: string;
   permission?: string;
-  anyPermissions?: string[];
+  permissions?: string[];
   companyAdminOnly?: boolean;
 }
 export interface SidebarItem {
@@ -20,16 +19,10 @@ export interface SidebarItem {
   icon: LucideIcon;
   url?: string;
   permission?: string;
-  anyPermissions?: string[];
+  permissions?: string[];
   items?: SidebarSubItem[];
 }
 export const navMain: SidebarItem[] = [
-  {
-    title: "Goals",
-    url: "/goals",
-    icon: Target,
-    anyPermissions: ["target.view", "target.set"],
-  },
   {
     title: "Dashboard",
     url: "/accounts/dashboard/",
@@ -94,6 +87,29 @@ export const navMain: SidebarItem[] = [
     ],
   },
 
+ // sidebar-data.ts
+{
+  title: "Data Capture",
+  icon: Database,
+  permissions: ["data.enter", "data.submit", "data.approve", "data.manage"],
+  items: [
+    {
+      title: "My Requests",
+      url: "/data-capture",
+      permissions: ["data.enter", "data.submit"],
+    },
+    {
+      title: "Review Requests",
+      url: "/data-capture/review",        // ← was "/data-capture" — the actual bug
+      permission: "data.approve",
+    },
+    {
+      title: "Manage Requests",
+      url: "/data-capture/manage",
+      permission: "data.manage",
+    },
+  ],
+},
   {
     title: "Reports",
     icon: FileBarChart2,
