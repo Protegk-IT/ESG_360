@@ -184,7 +184,13 @@ class Target(ActivityLogMixin, BaseModel):
     class Meta:
         ordering = ["-target_period__start_date", "-created_at"]
         indexes = [models.Index(fields=["kpi", "status"]), models.Index(fields=["org_node"])]
-        constraints = [models.UniqueConstraint(fields=["kpi", "org_node", "target_period"], condition=models.Q(status__in=["DRAFT", "ACTIVE"]), name="uq_active_target_kpi_scope_period")]
+        constraints = [
+            models.UniqueConstraint(fields=["kpi", "org_node", "target_period"], condition=models.Q(status__in=["DRAFT", "ACTIVE"]), name="uq_active_target_kpi_scope_period"),
+            # SQL treats NULL values as distinct in a normal composite unique
+            # constraint.  Company-wide targets use org_node=NULL, so they
+            # need their own database-level invariant.
+            models.UniqueConstraint(fields=["kpi", "target_period"], condition=models.Q(status__in=["DRAFT", "ACTIVE"], org_node__isnull=True), name="uq_active_company_target_kpi_period"),
+        ]
 
     def clean(self):
         errors = {}
@@ -199,8 +205,40 @@ class Target(ActivityLogMixin, BaseModel):
                 errors[field] = "Target units must be active and belong to the KPI unit family."
         if (self.baseline_unit_id is None) != (self.target_unit_id is None):
             errors["target_unit"] = "Baseline and target units must either both be set or both be blank."
+        target_value_in_baseline_unit = self.target_value
+        if (
+            self.target_value is not None
+            and self.baseline_unit_id
+            and self.target_unit_id
+            and self.baseline_unit_id != self.target_unit_id
+        ):
+            target_value_in_baseline_unit = (
+                self.target_value * self.target_unit.factor_to_base / self.baseline_unit.factor_to_base
+            )
+        if self.target_type == TargetType.PERCENTAGE:
+            for field, value in (("baseline_value", self.baseline_value), ("target_value", target_value_in_baseline_unit)):
+                if value is not None and not Decimal("0") <= value <= Decimal("100"):
+                    errors[field] = "Percentage targets must use values between 0 and 100."
+        if self.change_percentage is not None and self.baseline_value is not None and target_value_in_baseline_unit is not None:
+            if self.baseline_value == Decimal("0"):
+                errors["change_percentage"] = "A change percentage cannot be set when the baseline value is zero."
+            else:
+                expected_change = ((target_value_in_baseline_unit - self.baseline_value) / self.baseline_value * Decimal("100"))
+                if abs(expected_change - self.change_percentage) > Decimal("0.0001"):
+                    errors["change_percentage"] = "Change percentage must agree with the frozen baseline and target values."
         if self.kpi_id and self.kpi.direction == KPIDirection.MAINTAIN and self.change_percentage not in (None, Decimal("0")):
             errors["change_percentage"] = "Maintain KPIs cannot define a non-zero change percentage."
+        if self.status in (TargetStatus.DRAFT, TargetStatus.ACTIVE):
+            duplicate = Target.objects.filter(
+                kpi_id=self.kpi_id,
+                org_node_id=self.org_node_id,
+                target_period_id=self.target_period_id,
+                status__in=(TargetStatus.DRAFT, TargetStatus.ACTIVE),
+            )
+            if self.pk:
+                duplicate = duplicate.exclude(pk=self.pk)
+            if duplicate.exists():
+                errors["target_period"] = "An active or draft target already exists for this KPI, scope, and target period."
         if errors:
             raise ValidationError(errors)
 

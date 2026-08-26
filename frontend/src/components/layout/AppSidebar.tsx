@@ -16,10 +16,12 @@ export function AppSidebar() {
   const roleLabel = user?.is_superuser
     ? "Platform administrator"
     : user?.roles?.join(", ") || "User";
-    const canAccess = (permission?: string) =>
+  const canAccess = (permission?: string, anyPermissions?: string[]) =>
     Boolean(
-      user?.is_superuser || !permission || permissions.includes(permission),
-    );
+      user?.is_superuser ||
+      ((!permission || permissions.includes(permission)) &&
+        (!anyPermissions?.length || anyPermissions.some((code) => permissions.includes(code)))
+    ));
   const canSeeMaterialityLibrary = Boolean(
     user?.is_superuser || user?.roles?.includes("Company Admin"),
   );
@@ -29,12 +31,12 @@ export function AppSidebar() {
   )?.params.assessmentId;
   const platformItems = navMain.flatMap((item): SidebarItem[] =>
     !item.items
-      ? canAccess(item.permission)
+      ? canAccess(item.permission, item.anyPermissions)
         ? [item]
         : []
       : item.items.filter(
             (child) =>
-              canAccess(child.permission) &&
+              canAccess(child.permission, child.anyPermissions) &&
               (!child.companyAdminOnly || canSeeMaterialityLibrary),
           ).length
         ? [
@@ -42,7 +44,7 @@ export function AppSidebar() {
               ...item,
               items: item.items.filter(
                 (child) =>
-                  canAccess(child.permission) &&
+                  canAccess(child.permission, child.anyPermissions) &&
                   (!child.companyAdminOnly || canSeeMaterialityLibrary),
               ),
             },

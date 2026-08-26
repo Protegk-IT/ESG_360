@@ -40,11 +40,29 @@ KPI association, and a PATCH cannot move an Initiative to another KPI/Goal.
 ## API and authorization
 
 All routes are session-authenticated under `/api/targets/`: goals, nested KPI
-and target collections, target progress, and KPI initiatives. `target.set` is
-required for the current M10 read/write slice. Target/initiative detail and
-mutations scope the OrgNode through the *same* qualifying `UserRoleAssignment`
-that grants `target.set`; out-of-scope objects return 404. Superusers retain
-platform-wide behavior.
+and target collections, target progress, and KPI initiatives. `target.view`
+provides read-only access; `target.set` provides scoped planning writes and
+also permits reads. Target/initiative detail and mutations scope the OrgNode
+through the *same* qualifying `UserRoleAssignment` that grants `target.set`;
+out-of-scope objects return 404. A `target.view` scope can only grant reads,
+never writes. Superusers retain platform-wide behavior.
+
+Goals and KPIs intentionally have no OrgNode before their first Target. A
+scoped setter may see and configure only the setup records it created until a
+Target exists. From that point onward, access is derived only from the actual
+Target/Initiative OrgNode scope. Company-wide Targets and Initiatives require a
+company-wide `target.set` assignment; a site-scoped setter cannot create them.
+
+Routes are:
+
+- `GET/POST /api/targets/goals/`, `GET/PATCH /api/targets/goals/{goal_id}/`
+- `GET/POST /api/targets/goals/{goal_id}/kpis/`,
+  `GET/PATCH /api/targets/kpis/{kpi_id}/`
+- `GET/POST /api/targets/kpis/{kpi_id}/targets/`,
+  `GET/PATCH /api/targets/targets/{target_id}/`, and
+  `GET /api/targets/targets/{target_id}/progress/`
+- `GET/POST /api/targets/kpis/{kpi_id}/initiatives/` and
+  `GET/PATCH /api/targets/initiatives/{initiative_id}/`
 
 The frontend provides `/goals` and `/goals/:id`: an add/edit Goal dialog with
 optional Materiality provenance and readable owner/status selectors, KPI tabs,

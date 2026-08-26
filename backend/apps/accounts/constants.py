@@ -88,6 +88,8 @@ PERMISSIONS = [
 
     ("report.export", "Export report", "report", "EXPORT"),
 
+    ("target.view", "View goals and targets", "target", "VIEW"),
+
     ("target.set", "Set targets", "target", "EDIT"),
 
     ("dashboard.view", "View dashboards", "dashboard", "VIEW"),
@@ -167,6 +169,7 @@ ROLE_PERMISSIONS = {
         "evidence.upload",
         "reporting_period.reopen",
         "report.export",
+        "target.view",
         "target.set",
         "dashboard.view",
         "evidence.view",
@@ -202,6 +205,7 @@ ROLE_PERMISSIONS = {
         "disclosure.approve",
         "report.finalise",
         "report.export",
+        "target.view",
         "target.set",
         "dashboard.view",
         "evidence.view",
@@ -217,6 +221,7 @@ ROLE_PERMISSIONS = {
         "evidence.view",
         "audit.respond_query",
         "user.view",
+        "target.view",
     ],
 
     "data_entry": [
@@ -242,10 +247,12 @@ ROLE_PERMISSIONS = {
         "evidence.view",
         "audit.raise_query",
         "activity_log.view",
+        "target.view",
     ],
 
     "exec": [
         "report.export",
         "dashboard.view",
+        "target.view",
     ],
 }

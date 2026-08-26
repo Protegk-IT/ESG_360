@@ -60,8 +60,8 @@ export default function App() {
         <Route path="/" element={<Login />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
 
-        <Route path="/goals" element={<ProtectedRoute permission="target.set"><GoalsList /></ProtectedRoute>} />
-        <Route path="/goals/:id" element={<ProtectedRoute permission="target.set"><GoalDetail /></ProtectedRoute>} />
+        <Route path="/goals" element={<ProtectedRoute anyPermissions={["target.view", "target.set"]}><GoalsList /></ProtectedRoute>} />
+        <Route path="/goals/:id" element={<ProtectedRoute anyPermissions={["target.view", "target.set"]}><GoalDetail /></ProtectedRoute>} />
 
         <Route
           path="/dashboard"
