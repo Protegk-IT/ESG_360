@@ -80,6 +80,14 @@ class InitiativeStatus(models.TextChoices):
 
 
 class Goal(ActivityLogMixin, BaseModel):
+    # Goals are planning records owned by one tenant.  KPIs, targets and
+    # initiatives inherit this context through their Goal; they must not
+    # attempt to infer it from whichever OrgNode happens to be present.
+    # Nullable only for safely migrated legacy goals that predate M10 tenant
+    # ownership. New API-created Goals always receive a company; legacy
+    # company-wide records intentionally resolve no actual rather than risk a
+    # cross-company aggregate.
+    company = models.ForeignKey("companies.Company", null=True, blank=True, on_delete=models.PROTECT, related_name="goals")
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
     material_topic = models.ForeignKey("materiality.MaterialTopic", null=True, blank=True, on_delete=models.SET_NULL, related_name="goals")
@@ -190,14 +198,39 @@ class Target(ActivityLogMixin, BaseModel):
             # constraint.  Company-wide targets use org_node=NULL, so they
             # need their own database-level invariant.
             models.UniqueConstraint(fields=["kpi", "target_period"], condition=models.Q(status__in=["DRAFT", "ACTIVE"], org_node__isnull=True), name="uq_active_company_target_kpi_period"),
+            # One editable planning window per KPI/scope is intentional for
+            # the annual MVP.  It prevents overlapping DRAFT/ACTIVE plans
+            # with different endpoints from making progress ambiguous.
+            models.UniqueConstraint(fields=["kpi", "org_node"], condition=models.Q(status__in=["DRAFT", "ACTIVE"], org_node__isnull=False), name="uq_editable_target_kpi_org_scope"),
+            models.UniqueConstraint(fields=["kpi"], condition=models.Q(status__in=["DRAFT", "ACTIVE"], org_node__isnull=True), name="uq_editable_company_target_kpi"),
         ]
 
     def clean(self):
         errors = {}
+        previous = None
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).first()
+            if previous and previous.status in {
+                TargetStatus.ACHIEVED, TargetStatus.MISSED, TargetStatus.RETIRED,
+            }:
+                immutable = (
+                    "kpi_id", "org_node_id", "baseline_period_id", "baseline_value",
+                    "baseline_unit_id", "baseline_source", "target_period_id", "target_value",
+                    "target_unit_id", "target_type", "change_percentage", "owner_id",
+                    "basis", "source_reference", "methodology", "rationale", "status",
+                )
+                if any(getattr(previous, field) != getattr(self, field) for field in immutable):
+                    errors["status"] = "Achieved, missed, and retired targets are immutable historical planning records."
         if self.baseline_period_id and self.target_period_id and self.baseline_period.start_date >= self.target_period.start_date:
             errors["target_period"] = "The target period must start after the baseline period."
+        for field in ("baseline_period", "target_period"):
+            period = getattr(self, field, None)
+            if period and period.period_type != "ANNUAL":
+                errors[field] = "M10 target trajectories currently support annual reporting periods only."
         if self.org_node_id and not self.org_node.is_active:
             errors["org_node"] = "Inactive OrgNodes cannot be used by targets."
+        if self.org_node_id and self.kpi_id and self.kpi.goal.company_id and self.org_node.company_id != self.kpi.goal.company_id:
+            errors["org_node"] = "Target OrgNode must belong to the Goal's company."
         family_id = self.kpi.unit_family_id if self.kpi_id else None
         for field in ("baseline_unit", "target_unit"):
             unit = getattr(self, field)
@@ -228,17 +261,34 @@ class Target(ActivityLogMixin, BaseModel):
                     errors["change_percentage"] = "Change percentage must agree with the frozen baseline and target values."
         if self.kpi_id and self.kpi.direction == KPIDirection.MAINTAIN and self.change_percentage not in (None, Decimal("0")):
             errors["change_percentage"] = "Maintain KPIs cannot define a non-zero change percentage."
+        if self.kpi_id and self.baseline_value is not None and target_value_in_baseline_unit is not None:
+            if self.kpi.direction == KPIDirection.REDUCE and target_value_in_baseline_unit > self.baseline_value:
+                errors["target_value"] = "Reduce KPI targets cannot move upward from the baseline."
+            elif self.kpi.direction == KPIDirection.INCREASE and target_value_in_baseline_unit < self.baseline_value:
+                errors["target_value"] = "Increase KPI targets cannot move downward from the baseline."
+            elif self.kpi.direction == KPIDirection.MAINTAIN and target_value_in_baseline_unit != self.baseline_value:
+                errors["target_value"] = "Maintain KPI targets must equal the frozen baseline."
+        if self.baseline_source == BaselineSource.SYSTEM_DATA and self.kpi_id and self.baseline_period_id:
+            # Resolve and compare a real approved source value rather than
+            # accepting a user-entered value that is merely labelled system data.
+            from .services.progress import KPIValueProvider, convert_value
+            actual = KPIValueProvider.actual_for(self.kpi, self.baseline_period, self.org_node)
+            if actual.status != "AVAILABLE" or actual.value is None:
+                errors["baseline_source"] = "Approved system data is unavailable for this KPI, scope, and baseline period."
+            else:
+                frozen = convert_value(actual.value, actual.unit_id, self.baseline_unit_id)
+                if frozen is None or frozen != self.baseline_value:
+                    errors["baseline_value"] = "System-data baselines must equal the resolved approved M5 value."
         if self.status in (TargetStatus.DRAFT, TargetStatus.ACTIVE):
             duplicate = Target.objects.filter(
                 kpi_id=self.kpi_id,
                 org_node_id=self.org_node_id,
-                target_period_id=self.target_period_id,
                 status__in=(TargetStatus.DRAFT, TargetStatus.ACTIVE),
             )
             if self.pk:
                 duplicate = duplicate.exclude(pk=self.pk)
             if duplicate.exists():
-                errors["target_period"] = "An active or draft target already exists for this KPI, scope, and target period."
+                errors["target_period"] = "An editable target already exists for this KPI and scope. Retire it before creating another planning window."
         if errors:
             raise ValidationError(errors)
 
@@ -264,6 +314,8 @@ class KPIInitiative(ActivityLogMixin, BaseModel):
         errors = {}
         if self.org_node_id and not self.org_node.is_active:
             errors["org_node"] = "Inactive OrgNodes cannot be used by initiatives."
+        if self.org_node_id and self.kpi_id and self.kpi.goal.company_id and self.org_node.company_id != self.kpi.goal.company_id:
+            errors["org_node"] = "Initiative OrgNode must belong to the Goal's company."
         if self.anticipated_impact is not None and not Decimal("0") <= self.anticipated_impact <= Decimal("100"):
             errors["anticipated_impact"] = "Anticipated impact must be between 0 and 100."
         if errors:

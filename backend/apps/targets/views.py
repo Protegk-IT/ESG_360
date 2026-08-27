@@ -6,6 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
 from apps.accounts.services.rbac import RBACService
+from apps.companies.models import Company
 from apps.core.response import created_response, success_response
 from .authorization import (
     can_read_targets,
@@ -37,7 +38,7 @@ class TargetsAPIView(APIView):
             raise ValidationError(exc.message_dict if hasattr(exc, "message_dict") else exc.messages) from exc
 
     def target_base_queryset(self):
-        return Target.objects.select_related("kpi__goal", "org_node", "baseline_period", "target_period")
+        return Target.objects.select_related("kpi__goal__company", "kpi__datapoint", "kpi__default_unit", "org_node", "baseline_period", "target_period", "baseline_unit", "target_unit", "owner")
 
     def readable_targets(self):
         self.require_read_access()
@@ -61,28 +62,28 @@ class TargetsAPIView(APIView):
     def writable_kpis(self):
         self.require_write_access()
         if self.request.user.is_superuser or has_company_wide_target_scope(self.request.user):
-            return KPI.objects.select_related("goal", "datapoint", "default_unit")
+            return KPI.objects.select_related("goal__company", "datapoint", "unit_family", "default_unit")
         return KPI.objects.filter(
             Q(targets__in=self.writable_targets()) | Q(pk__in=self.setup_kpis())
-        ).distinct().select_related("goal", "datapoint", "default_unit")
+        ).distinct().select_related("goal__company", "datapoint", "unit_family", "default_unit")
 
     def readable_kpis(self):
         self.require_read_access()
         queryset = KPI.objects.filter(targets__in=self.readable_targets())
         if RBACService.has_permission(self.request.user, "target.set"):
             queryset = queryset | self.setup_kpis()
-        return queryset.distinct().select_related("goal", "datapoint", "default_unit")
+        return queryset.distinct().select_related("goal__company", "datapoint", "unit_family", "default_unit")
 
     def readable_goals(self):
         return Goal.objects.filter(
             Q(kpis__in=self.readable_kpis())
-        ).distinct().annotate(kpi_count=Count("kpis"))
+        ).distinct().annotate(kpi_count=Count("kpis")).select_related("company", "material_topic", "material_subtopic", "source_assessment_topic__subtopic", "owner", "created_by")
 
     def writable_goals(self):
         self.require_write_access()
         return Goal.objects.filter(
             Q(kpis__in=self.writable_kpis()) | Q(kpis__isnull=True, created_by=self.request.user)
-        ).distinct().annotate(kpi_count=Count("kpis"))
+        ).distinct().annotate(kpi_count=Count("kpis")).select_related("company", "material_topic", "material_subtopic", "source_assessment_topic__subtopic", "owner", "created_by")
 
     def ensure_write_scope(self, org_node):
         if org_node is None:
@@ -104,7 +105,7 @@ class TargetsAPIView(APIView):
     def readable_initiatives(self):
         self.require_read_access()
         queryset = read_scoped_queryset(
-            KPIInitiative.objects.select_related("kpi__goal", "org_node", "owner"),
+            KPIInitiative.objects.select_related("kpi__goal__company", "org_node", "owner"),
             self.request.user,
         )
         if RBACService.has_permission(self.request.user, "target.set"):
@@ -114,10 +115,39 @@ class TargetsAPIView(APIView):
     def writable_initiatives(self):
         self.require_write_access()
         queryset = write_scoped_queryset(
-            KPIInitiative.objects.select_related("kpi__goal", "org_node", "owner"),
+            KPIInitiative.objects.select_related("kpi__goal__company", "org_node", "owner"),
             self.request.user,
         )
         return (queryset | KPIInitiative.objects.filter(kpi__in=self.setup_kpis())).distinct()
+
+    def with_capabilities(self, queryset, serializer_class, writable_queryset):
+        items = list(queryset)
+        writable_ids = set()
+        if RBACService.has_permission(self.request.user, "target.set"):
+            writable_ids = set(writable_queryset().filter(pk__in=[item.pk for item in items]).values_list("pk", flat=True))
+        for item in items:
+            item.can_manage = item.pk in writable_ids
+        return serializer_class(items, many=True).data
+
+    def serialize_goals(self, queryset):
+        return self.with_capabilities(queryset, GoalSerializer, self.writable_goals)
+
+    def serialize_kpis(self, queryset):
+        return self.with_capabilities(queryset, KPISerializer, self.writable_kpis)
+
+    def serialize_targets(self, queryset):
+        return self.with_capabilities(queryset, TargetSerializer, self.writable_targets)
+
+    def serialize_initiatives(self, queryset):
+        return self.with_capabilities(queryset, InitiativeSerializer, self.writable_initiatives)
+
+    def resolve_goal_company(self, serializer):
+        if serializer.validated_data.get("company"):
+            return serializer.validated_data["company"]
+        companies = Company.objects.filter(is_active=True)
+        if companies.count() == 1:
+            return companies.first()
+        raise ValidationError({"company": "Company is required when more than one active company exists."})
 
 
 class GoalListCreateAPIView(TargetsAPIView):
@@ -127,11 +157,12 @@ class GoalListCreateAPIView(TargetsAPIView):
             qs = qs.filter(name__icontains=term)
         if status := request.query_params.get("status"):
             qs = qs.filter(status=status)
-        return success_response(GoalSerializer(qs, many=True).data)
+        return success_response(self.serialize_goals(qs))
     def post(self, request):
         self.require_write_access()
         serializer = GoalWriteSerializer(data=request.data); serializer.is_valid(raise_exception=True)
-        goal = self.call(lambda: serializer.save(created_by=request.user))
+        goal = self.call(lambda: serializer.save(created_by=request.user, company=self.resolve_goal_company(serializer)))
+        goal.can_manage = True
         return created_response(GoalSerializer(goal).data, "Goal created.")
 
 
@@ -139,10 +170,11 @@ class GoalDetailAPIView(TargetsAPIView):
     def get_object(self, goal_id, *, writable=False):
         queryset = self.writable_goals() if writable else self.readable_goals()
         return get_object_or_404(queryset, pk=goal_id)
-    def get(self, request, goal_id): return success_response(GoalSerializer(self.get_object(goal_id)).data)
+    def get(self, request, goal_id): return success_response(self.serialize_goals(self.readable_goals().filter(pk=self.get_object(goal_id).pk))[0])
     def patch(self, request, goal_id):
         goal = self.get_object(goal_id, writable=True); serializer = GoalWriteSerializer(goal, data=request.data, partial=True); serializer.is_valid(raise_exception=True)
-        return success_response(GoalSerializer(self.call(serializer.save)).data, "Goal updated.")
+        saved = self.call(serializer.save)
+        return success_response(self.serialize_goals(self.readable_goals().filter(pk=saved.pk))[0], "Goal updated.")
 
 
 class GoalKPIListCreateAPIView(TargetsAPIView):
@@ -150,39 +182,42 @@ class GoalKPIListCreateAPIView(TargetsAPIView):
         queryset = self.writable_goals() if writable else self.readable_goals()
         return get_object_or_404(queryset, pk=goal_id)
     def get(self, request, goal_id):
-        return success_response(KPISerializer(self.readable_kpis().filter(goal=self.get_goal(goal_id)), many=True).data)
+        return success_response(self.serialize_kpis(self.readable_kpis().filter(goal=self.get_goal(goal_id))))
     def post(self, request, goal_id):
         goal = self.get_goal(goal_id, writable=True); serializer = KPIWriteSerializer(data={**request.data, "goal": str(goal.id)}); serializer.is_valid(raise_exception=True)
-        return created_response(KPISerializer(self.call(serializer.save)).data, "KPI created.")
+        saved = self.call(serializer.save)
+        return created_response(self.serialize_kpis(self.readable_kpis().filter(pk=saved.pk))[0], "KPI created.")
 
 
 class KPIDetailAPIView(TargetsAPIView):
     def get_object(self, kpi_id, *, writable=False): return get_object_or_404(self.writable_kpis() if writable else self.readable_kpis(), pk=kpi_id)
-    def get(self, request, kpi_id): return success_response(KPISerializer(self.get_object(kpi_id)).data)
+    def get(self, request, kpi_id): return success_response(self.serialize_kpis(self.readable_kpis().filter(pk=self.get_object(kpi_id).pk))[0])
     def patch(self, request, kpi_id):
         obj = self.get_object(kpi_id, writable=True); serializer = KPIWriteSerializer(obj, data=request.data, partial=True); serializer.is_valid(raise_exception=True)
-        return success_response(KPISerializer(self.call(serializer.save)).data, "KPI updated.")
+        saved = self.call(serializer.save)
+        return success_response(self.serialize_kpis(self.readable_kpis().filter(pk=saved.pk))[0], "KPI updated.")
 
 
 class KPITargetListCreateAPIView(TargetsAPIView):
     def get_kpi(self, kpi_id, *, writable=False): return get_object_or_404(self.writable_kpis() if writable else self.readable_kpis(), pk=kpi_id)
-    def get(self, request, kpi_id): return success_response(TargetSerializer(self.readable_targets().filter(kpi=self.get_kpi(kpi_id)), many=True).data)
+    def get(self, request, kpi_id): return success_response(self.serialize_targets(self.readable_targets().filter(kpi=self.get_kpi(kpi_id))))
     def post(self, request, kpi_id):
         kpi = self.get_kpi(kpi_id, writable=True); self.ensure_payload_scope(request.data); serializer = TargetWriteSerializer(data={**request.data, "kpi": str(kpi.id)}); serializer.is_valid(raise_exception=True)
         org = serializer.validated_data.get("org_node")
         self.ensure_write_scope(org)
         target = self.call(lambda: serializer.save(created_by=request.user))
-        return created_response(TargetSerializer(target).data, "Target created.")
+        return created_response(self.serialize_targets(self.readable_targets().filter(pk=target.pk))[0], "Target created.")
 
 
 class TargetDetailAPIView(TargetsAPIView):
     def get_object(self, target_id, *, writable=False): return get_object_or_404(self.writable_targets() if writable else self.readable_targets(), pk=target_id)
-    def get(self, request, target_id): return success_response(TargetSerializer(self.get_object(target_id)).data)
+    def get(self, request, target_id): return success_response(self.serialize_targets(self.readable_targets().filter(pk=self.get_object(target_id).pk))[0])
     def patch(self, request, target_id):
         obj = self.get_object(target_id, writable=True); serializer = TargetWriteSerializer(obj, data=request.data, partial=True); serializer.is_valid(raise_exception=True)
         org = serializer.validated_data.get("org_node", obj.org_node)
         self.ensure_write_scope(org)
-        return success_response(TargetSerializer(self.call(serializer.save)).data, "Target updated.")
+        saved = self.call(serializer.save)
+        return success_response(self.serialize_targets(self.readable_targets().filter(pk=saved.pk))[0], "Target updated.")
 
 
 class TargetProgressAPIView(TargetsAPIView):
@@ -198,20 +233,21 @@ class TargetProgressAPIView(TargetsAPIView):
             start_date__lte=target.target_period.start_date,
         ).order_by("start_date")
         rows = [progress_for(target, period) for period in periods]
-        return success_response({"target": TargetSerializer(target).data, "trajectory": [{"reporting_period": str(p.id), "name": p.name, "value": trajectory_value(target, p)} for p in periods], "progress": rows})
+        return success_response({"target": self.serialize_targets(self.readable_targets().filter(pk=target.pk))[0], "trajectory": [{"reporting_period": str(p.id), "name": p.name, "value": trajectory_value(target, p)} for p in periods], "progress": rows})
 
 
 class KPIInitiativeListCreateAPIView(TargetsAPIView):
     def get_kpi(self, kpi_id, *, writable=False): return get_object_or_404(self.writable_kpis() if writable else self.readable_kpis(), pk=kpi_id)
     def get(self, request, kpi_id):
         kpi = self.get_kpi(kpi_id)
-        return success_response(InitiativeSerializer(self.readable_initiatives().filter(kpi=kpi), many=True).data)
+        return success_response(self.serialize_initiatives(self.readable_initiatives().filter(kpi=kpi)))
 
     def post(self, request, kpi_id):
         kpi = self.get_kpi(kpi_id, writable=True); self.ensure_payload_scope(request.data); serializer = InitiativeWriteSerializer(data=request.data); serializer.is_valid(raise_exception=True)
         org = serializer.validated_data.get("org_node")
         self.ensure_write_scope(org)
-        return created_response(InitiativeSerializer(self.call(lambda: serializer.save(kpi=kpi))).data, "Initiative created.")
+        saved = self.call(lambda: serializer.save(kpi=kpi))
+        return created_response(self.serialize_initiatives(self.readable_initiatives().filter(pk=saved.pk))[0], "Initiative created.")
 
 
 class InitiativeDetailAPIView(TargetsAPIView):
@@ -219,9 +255,10 @@ class InitiativeDetailAPIView(TargetsAPIView):
         queryset = self.writable_initiatives() if writable else self.readable_initiatives()
         return get_object_or_404(queryset, pk=initiative_id)
     def get(self, request, initiative_id):
-        return success_response(InitiativeSerializer(self.get_object(initiative_id)).data)
+        return success_response(self.serialize_initiatives(self.readable_initiatives().filter(pk=self.get_object(initiative_id).pk))[0])
     def patch(self, request, initiative_id):
         obj = self.get_object(initiative_id, writable=True); serializer = InitiativeWriteSerializer(obj, data=request.data, partial=True); serializer.is_valid(raise_exception=True)
         org = serializer.validated_data.get("org_node", obj.org_node)
         self.ensure_write_scope(org)
-        return success_response(InitiativeSerializer(self.call(serializer.save)).data, "Initiative updated.")
+        saved = self.call(serializer.save)
+        return success_response(self.serialize_initiatives(self.readable_initiatives().filter(pk=saved.pk))[0], "Initiative updated.")

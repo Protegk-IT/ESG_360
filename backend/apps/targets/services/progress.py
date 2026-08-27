@@ -2,8 +2,6 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
-from django.db.models import Avg, Sum
-
 from apps.data_capture.models import Answer, SubmissionStatus
 
 from ..models import KPIAggregation, KPIDirection, MetricSourceType
@@ -17,47 +15,74 @@ class ActualMetricValue:
     status: str = "NO_DATA"
 
 
+def convert_value(value, source_unit_id, target_unit_id):
+    """Convert through M4's canonical base-unit factor, or return ``None``."""
+    if value is None:
+        return None
+    if source_unit_id == target_unit_id:
+        return Decimal(value)
+    if source_unit_id is None or target_unit_id is None:
+        return None
+    from apps.datapoints.models import Unit
+    source = Unit.objects.filter(pk=source_unit_id, is_active=True).first()
+    target = Unit.objects.filter(pk=target_unit_id, is_active=True).first()
+    if not source or not target or source.family_id != target.family_id:
+        return None
+    return Decimal(value) * source.factor_to_base / target.factor_to_base
+
+
 class KPIValueProvider:
-    """Provider boundary: M5 is the first provider, M6 can register later."""
+    """Provider boundary: approved M5 is first; M6 can register later."""
 
     @classmethod
     def actual_for(cls, kpi, reporting_period, org_node=None):
         if kpi.metric_source_type != MetricSourceType.DATAPOINT:
             return ActualMetricValue(None, None, "UNSUPPORTED_PROVIDER")
+        company_id = kpi.goal.company_id or (org_node.company_id if org_node is not None else None)
+        if company_id is None:
+            # A historical pre-company Goal must never turn into an
+            # unbounded, cross-tenant company-wide aggregate.
+            return ActualMetricValue(None, None, "M5_APPROVED", "NO_DATA")
         qs = Answer.objects.filter(
             submission__status=SubmissionStatus.APPROVED,
             submission__data_request__datapoint=kpi.datapoint,
             submission__data_request__reporting_period=reporting_period,
-        )
+            # Company is needed even for company-wide M10 targets.
+            submission__data_request__org_node__company_id=company_id,
+        ).select_related("unit", "submission")
         if org_node is not None:
             qs = qs.filter(submission__data_request__org_node=org_node)
-        # Numeric datapoints are enforced by KPI validation. Unit identity is
-        # preserved; conversion is performed only later against the target's
-        # explicitly configured unit.
-        if kpi.aggregation == KPIAggregation.NONE:
+
+        value_field = "integer_value" if kpi.datapoint.data_type == "INTEGER" else "decimal_value"
+        answers = [answer for answer in qs if getattr(answer, value_field) is not None]
+        if not answers:
             return ActualMetricValue(None, None, "M5_APPROVED", "NO_DATA")
         if kpi.aggregation == KPIAggregation.COUNT:
-            return ActualMetricValue(Decimal(qs.count()), None, "M5_APPROVED", "AVAILABLE")
-        units = list(qs.exclude(unit__isnull=True).values_list("unit_id", flat=True).distinct()[:2])
-        if len(units) > 1:
-            return ActualMetricValue(None, None, "M5_APPROVED_INCOMPATIBLE_UNITS")
-        value_field = (
-            "integer_value"
-            if kpi.datapoint.data_type == "INTEGER"
-            else "decimal_value"
-        )
+            return ActualMetricValue(Decimal(len(answers)), None, "M5_APPROVED", "AVAILABLE")
+        if kpi.aggregation == KPIAggregation.NONE:
+            if len(answers) != 1:
+                return ActualMetricValue(None, None, "M5_APPROVED", "AMBIGUOUS")
+            answer = answers[0]
+            return ActualMetricValue(Decimal(getattr(answer, value_field)), answer.unit_id or kpi.default_unit_id, "M5_APPROVED", "AVAILABLE")
+
+        output_unit_id = kpi.default_unit_id
+        normalized = [convert_value(getattr(answer, value_field), answer.unit_id or output_unit_id, output_unit_id) for answer in answers]
+        if any(value is None for value in normalized):
+            return ActualMetricValue(None, None, "M5_APPROVED_INCOMPATIBLE_UNITS", "NO_DATA")
         if kpi.aggregation == KPIAggregation.SUM:
-            value = qs.aggregate(value=Sum(value_field))["value"]
-        elif kpi.aggregation == KPIAggregation.AVG:
-            value = qs.aggregate(value=Avg(value_field))["value"]
-        else:  # LATEST uses a stable latest approved answer timestamp.
-            latest = qs.order_by("-updated_at").first()
-            value = getattr(latest, value_field) if latest else None
-        return ActualMetricValue(value, units[0] if units else kpi.default_unit_id, "M5_APPROVED", "AVAILABLE" if value is not None else "NO_DATA")
+            return ActualMetricValue(sum(normalized, Decimal("0")), output_unit_id, "M5_APPROVED", "AVAILABLE")
+        if kpi.aggregation == KPIAggregation.AVG:
+            return ActualMetricValue(sum(normalized, Decimal("0")) / Decimal(len(normalized)), output_unit_id, "M5_APPROVED", "AVAILABLE")
+        latest = max(answers, key=lambda answer: (answer.submission.approved_at, str(answer.submission_id), str(answer.id)))
+        return ActualMetricValue(Decimal(getattr(latest, value_field)), latest.unit_id or output_unit_id, "M5_APPROVED", "AVAILABLE")
+
+
+def target_value_in_baseline_unit(target):
+    return convert_value(target.target_value, target.target_unit_id, target.baseline_unit_id)
 
 
 def trajectory_value(target, period):
-    """Straight-line endpoint interpolation, including both endpoints."""
+    """Straight-line annual endpoint interpolation, including endpoints."""
     baseline = target.baseline_period
     endpoint = target.target_period
     if period.start_date < baseline.start_date or period.start_date > endpoint.start_date:
@@ -65,40 +90,34 @@ def trajectory_value(target, period):
     span = endpoint.start_date.year - baseline.start_date.year
     if span <= 0:
         return None
+    endpoint_value = target_value_in_baseline_unit(target)
+    if endpoint_value is None:
+        return None
     elapsed = period.start_date.year - baseline.start_date.year
-    target_value = target.target_value
-    if target.baseline_unit_id and target.target_unit_id and target.baseline_unit_id != target.target_unit_id:
-        target_value = target.target_value * target.target_unit.factor_to_base / target.baseline_unit.factor_to_base
-    return target.baseline_value + ((target_value - target.baseline_value) * Decimal(elapsed) / Decimal(span))
+    return target.baseline_value + ((endpoint_value - target.baseline_value) * Decimal(elapsed) / Decimal(span))
 
 
 def progress_for(target, period):
     expected = trajectory_value(target, period)
     actual = KPIValueProvider.actual_for(target.kpi, period, target.org_node)
+    actual_value = convert_value(actual.value, actual.unit_id, target.baseline_unit_id)
     payload = {
         "reporting_period": str(period.id), "trajectory_value": expected,
-        "actual_value": actual.value, "actual_unit": str(actual.unit_id) if actual.unit_id else None,
-        "actual_source": actual.source, "status": "NO_DATA", "variance": None, "progress_percentage": None,
+        "actual_value": actual_value, "actual_unit": str(target.baseline_unit_id) if actual_value is not None and target.baseline_unit_id else None,
+        "actual_source": actual.source, "actual_status": actual.status,
+        "status": "NO_DATA", "variance": None, "progress_percentage": None,
     }
-    if actual.value is not None and actual.unit_id and target.baseline_unit_id and actual.unit_id != target.baseline_unit_id:
-        # All metric units have already been constrained to one M4 family.
-        from apps.datapoints.models import Unit
-        unit = Unit.objects.get(pk=actual.unit_id)
-        actual = ActualMetricValue(actual.value * unit.factor_to_base / target.baseline_unit.factor_to_base, target.baseline_unit_id, actual.source, actual.status)
-        payload["actual_value"] = actual.value
-        payload["actual_unit"] = str(actual.unit_id)
-    if expected is None or actual.value is None:
+    if expected is None or actual_value is None:
         return payload
-    variance = actual.value - expected
-    payload["variance"] = variance
-    direction = target.kpi.direction
-    if direction == KPIDirection.REDUCE:
-        payload["status"] = "AHEAD" if actual.value < expected else "ON_TRACK" if actual.value == expected else "BEHIND"
-    elif direction == KPIDirection.INCREASE:
-        payload["status"] = "AHEAD" if actual.value > expected else "ON_TRACK" if actual.value == expected else "BEHIND"
+    payload["variance"] = actual_value - expected
+    if target.kpi.direction == KPIDirection.REDUCE:
+        payload["status"] = "AHEAD" if actual_value < expected else "ON_TRACK" if actual_value == expected else "BEHIND"
+    elif target.kpi.direction == KPIDirection.INCREASE:
+        payload["status"] = "AHEAD" if actual_value > expected else "ON_TRACK" if actual_value == expected else "BEHIND"
     else:
-        payload["status"] = "ON_TRACK" if actual.value == expected else "BEHIND"
-    total_change = target.target_value - target.baseline_value
+        payload["status"] = "ON_TRACK" if actual_value == expected else "BEHIND"
+    endpoint_value = target_value_in_baseline_unit(target)
+    total_change = endpoint_value - target.baseline_value if endpoint_value is not None else None
     if total_change:
-        payload["progress_percentage"] = ((actual.value - target.baseline_value) / total_change) * Decimal("100")
+        payload["progress_percentage"] = ((actual_value - target.baseline_value) / total_change) * Decimal("100")
     return payload

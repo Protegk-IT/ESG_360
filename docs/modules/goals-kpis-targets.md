@@ -1,7 +1,14 @@
 # Goals, KPIs and Targets (M10)
 
-M10 is the planning layer: `Goal -> KPI -> Target`, with lightweight KPI
-Initiatives. It does not own ESG source values or create M5 answers.
+M10 is the planning layer: `Company -> Goal -> KPI -> Target`, with lightweight
+KPI Initiatives. It does not own ESG source values or create M5 answers.
+
+Every new Goal has an explicit Company context. KPIs, Targets and Initiatives
+inherit that tenant context through their Goal; an OrgNode selected for a
+Target or Initiative must belong to that Company. The corrective migration
+keeps pre-existing Goals nullable for upgrade safety. A legacy company-wide
+Goal with no Company deliberately resolves no actuals rather than risking a
+cross-company aggregate.
 
 ## Materiality is optional
 
@@ -22,12 +29,25 @@ Goal without changing its KPI or Target IDs.
 KPIs use `DATAPOINT`, `CALCULATED_METRIC`, or `MANUAL_REFERENCE` metric
 sources. A `DATAPOINT` KPI references one active numeric M4 Datapoint and uses
 only explicit `SUM`, `AVG`, `LATEST`, `COUNT`, or `NONE` aggregation. The M5
-provider includes only `APPROVED` submissions; missing data returns `NO_DATA`,
-not zero. `CALCULATED_METRIC` intentionally has a provider boundary for future
-M6 integration rather than a dependency on unfinished calculation internals.
+provider includes only `APPROVED` submissions from the Goal's Company;
+`DRAFT`, `SUBMITTED`, and `REJECTED` answers never contribute. `COUNT` with no
+approved answers is `NO_DATA`; `NONE` requires exactly one approved value or
+returns an explicit ambiguity state; `LATEST` uses `Submission.approved_at`
+with deterministic UUID tie-breaks. Numeric aggregates and progress normalize
+through the canonical M4 Unit family before arithmetic. `CALCULATED_METRIC`
+intentionally has a provider boundary for future M6 integration rather than a
+dependency on unfinished calculation internals.
 
 Targets freeze baseline and endpoint values/units and link ReportingPeriods.
-Baseline must precede endpoint; units must be active and from the KPI family.
+Baseline must precede endpoint and both periods are ANNUAL in the current MVP;
+units must be active and from the KPI family. `REFERENCE` permits a manual
+baseline with source/provenance. `SYSTEM_DATA` freezes the matching approved
+M5 value server-side, so a caller cannot enter an arbitrary value and label it
+system data. `REDUCE` endpoints cannot increase, `INCREASE` endpoints cannot
+decrease, and `MAINTAIN` endpoints equal their baseline. Only one DRAFT/ACTIVE
+target may exist per KPI plus OrgNode scope (or per company-wide KPI), avoiding
+ambiguous overlapping planning windows. ACHIEVED, MISSED and RETIRED targets
+are immutable historical records.
 The MVP trajectory is linear interpolation by reporting-period year. Progress
 returns approved actual, trajectory, variance, percentage where meaningful and
 `AHEAD`, `ON_TRACK`, `BEHIND`, or `NO_DATA`.
@@ -52,6 +72,9 @@ scoped setter may see and configure only the setup records it created until a
 Target exists. From that point onward, access is derived only from the actual
 Target/Initiative OrgNode scope. Company-wide Targets and Initiatives require a
 company-wide `target.set` assignment; a site-scoped setter cannot create them.
+List/detail responses include a server-calculated `can_manage` capability. The
+frontend uses it for record mutation controls rather than assuming a global
+`target.set` permission grants every visible resource.
 
 Routes are:
 
@@ -82,6 +105,10 @@ real M5 `DataRequest -> draft answer -> submit -> approve` records, rather
 than values written into M10. The fixture includes Water Stewardship with
 multiple KPI tabs, Energy Efficiency, Renewable Energy Adoption, and an
 independent Operational Waste Reduction goal with no Materiality link.
+The command never overwrites an existing M4 Datapoint definition: it reuses a
+compatible canonical code, and fails clearly if an existing definition has
+incompatible type, module, collection-level, unit-family or default-unit
+semantics.
 
 ## Deferred
 
