@@ -114,6 +114,12 @@ const DataCaptureApi = {
     );
   },
 
+   deleteTableRow(requestId: string, rowId: string) {
+    return api.delete<ApiResponse<{ message: string }>>(
+      `/data-capture/requests/${requestId}/submission/table-rows/${rowId}/`,
+    );
+  },
+
   /* ========================================================
      HISTORY
   ======================================================== */

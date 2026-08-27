@@ -1,6 +1,12 @@
 import { useMemo } from "react";
 
 import { useAuth } from "@/context/AuthContext";
+import type {
+  AuthRoleAssignment,
+  AuthUser,
+} from "@/types/auth";
+import type { Role } from "@/types/role";
+import type { OrgNode } from "@/types/organization";
 import type { DataRequestDetail } from "@/types/dataCapture";
 
 /* ==========================================================
@@ -55,9 +61,6 @@ const EMPTY_ACCESS: DataCaptureAccess = {
 
 /* ==========================================================
    SUPERUSER ACCESS
-   ----------------------------------------------------------
-   Superuser is intentionally handled in one place so the
-   page does not need scattered `user.is_superuser` checks.
 ========================================================== */
 
 const SUPERUSER_ACCESS: DataCaptureAccess = {
@@ -82,11 +85,7 @@ const SUPERUSER_ACCESS: DataCaptureAccess = {
 };
 
 /* ==========================================================
-   HELPER
-   ----------------------------------------------------------
-   Backend IDs may arrive as strings while AuthContext may
-   expose a numeric user ID. Compare their string forms so
-   the permission check is type-safe and consistent.
+   ID COMPARISON
 ========================================================== */
 
 function sameId(
@@ -106,17 +105,356 @@ function sameId(
 }
 
 /* ==========================================================
+   DATE VALIDITY
+   ----------------------------------------------------------
+   Mirrors the backend assignment validity rules:
+
+     valid_from IS NULL OR valid_from <= today
+     valid_to   IS NULL OR valid_to   >= today
+========================================================== */
+
+function isAssignmentCurrentlyValid(
+  assignment: AuthRoleAssignment,
+): boolean {
+  if (!assignment.is_active) {
+    return false;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (assignment.valid_from) {
+    const validFrom = new Date(
+      `${assignment.valid_from}T00:00:00`,
+    );
+
+    if (validFrom > today) {
+      return false;
+    }
+  }
+
+  if (assignment.valid_to) {
+    const validTo = new Date(
+      `${assignment.valid_to}T00:00:00`,
+    );
+
+    if (validTo < today) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+
+/* ==========================================================
+   ORG NODE TREE FLATTENING
+   ----------------------------------------------------------
+   `/org/nodes/` currently returns a hierarchical tree.
+
+   The resolver needs a simple:
+
+     node UUID -> OrgNode
+
+   lookup while preserving the original node objects.
+========================================================== */
+
+function flattenOrgNodes(
+  nodes: OrgNode[],
+): Record<string, OrgNode> {
+  const result: Record<string, OrgNode> = {};
+
+  const visit = (node: OrgNode) => {
+    result[node.id] = node;
+
+    for (const child of node.children ?? []) {
+      visit(child);
+    }
+  };
+
+  for (const node of nodes) {
+    visit(node);
+  }
+
+  return result;
+}
+
+/* ==========================================================
+   ROLE LOOKUP
+========================================================== */
+
+function buildRoleMap(
+  roles: Role[],
+): Record<string, Role> {
+  const result: Record<string, Role> = {};
+
+  for (const role of roles) {
+    result[role.id] = role;
+  }
+
+  return result;
+}
+
+/* ==========================================================
+   ORG NODE SCOPE
+   ----------------------------------------------------------
+   Mirrors the backend's hierarchical scope behavior:
+
+     requestNode.path.startsWith(assignmentNode.path)
+
+   A null assignment org_node means company-wide access.
+========================================================== */
+
+function isOrgNodeInScope(
+  assignment: AuthRoleAssignment,
+  requestOrgNodeId: string,
+  nodesById: Record<string, OrgNode>,
+): boolean {
+  /*
+   * Backend behavior:
+   *
+   * org_node IS NULL
+   *     -> company-wide assignment
+   */
+  if (!assignment.org_node) {
+    return true;
+  }
+
+  const assignmentNode =
+    nodesById[assignment.org_node];
+
+  const requestNode =
+    nodesById[requestOrgNodeId];
+
+  /*
+   * Fail closed if the required reference data is missing.
+   */
+  if (!assignmentNode || !requestNode) {
+    return false;
+  }
+
+  return requestNode.path.startsWith(
+    assignmentNode.path,
+  );
+}
+
+/* ==========================================================
+   ROLE PERMISSION CHECK
+   ----------------------------------------------------------
+   Important:
+   `Role.permissions` contains permission UUIDs.
+
+   `Role.permission_details` contains the actual permission
+   codes such as:
+
+     data.enter
+     data.submit
+     data.approve
+     evidence.view
+     evidence.upload
+
+   Therefore we MUST check `permission_details.code`.
+========================================================== */
+
+function roleGrantsPermission(
+  role: Role,
+  permissionCode: string,
+): boolean {
+  if (!role.is_active) {
+    return false;
+  }
+
+  return role.permission_details.some(
+    (permission) =>
+      permission.code === permissionCode,
+  );
+}
+
+/* ==========================================================
+   REQUEST-SCOPED PERMISSION
+   ----------------------------------------------------------
+   This is the core D20 resolver.
+
+   It checks, in order:
+
+     1. assignment is active/current
+     2. assignment role exists and is active
+     3. assignment role grants the exact permission
+     4. assignment module is compatible
+     5. assignment OrgNode covers request OrgNode
+
+   Crucially, ALL of these checks are performed against the
+   SAME role assignment.
+========================================================== */
+
+function assignmentGrantsPermission(
+  assignment: AuthRoleAssignment,
+  role: Role | undefined,
+  permissionCode: string,
+  requestOrgNodeId: string,
+  nodesById: Record<string, OrgNode>,
+): boolean {
+  /*
+   * Assignment itself must currently qualify.
+   */
+  if (!isAssignmentCurrentlyValid(assignment)) {
+    return false;
+  }
+
+  /*
+   * The assignment must point to a role that we have loaded.
+   */
+  if (!role) {
+    return false;
+  }
+
+  /*
+   * The role must contain the requested permission.
+   */
+  if (
+    !roleGrantsPermission(
+      role,
+      permissionCode,
+    )
+  ) {
+    return false;
+  }
+
+  /*
+   * Backend derives the module from the permission code:
+   *
+   *   data.approve      -> data
+   *   evidence.view     -> evidence
+   */
+  const permissionModule =
+    permissionCode.split(".", 1)[0];
+
+  /*
+   * Match backend behavior:
+   *
+   * assignment.module_code IS NULL
+   * OR
+   * assignment.module_code = permission module
+   */
+  if (
+    assignment.module_code !== null &&
+    assignment.module_code !== permissionModule
+  ) {
+    return false;
+  }
+
+  /*
+   * Finally check the actual OrgNode scope.
+   */
+  return isOrgNodeInScope(
+    assignment,
+    requestOrgNodeId,
+    nodesById,
+  );
+}
+
+/* ==========================================================
+   REQUEST-SCOPED PERMISSION HELPER
+   ----------------------------------------------------------
+   A permission is true only when at least ONE individual
+   qualifying role assignment grants that permission for the
+   request's OrgNode.
+
+   We NEVER combine:
+
+     permission from assignment A
+     +
+     scope from assignment B
+========================================================== */
+function hasScopedPermission(
+  user: AuthUser,
+  rolesById: Record<string, Role>,
+  nodesById: Record<string, OrgNode>,
+  requestOrgNodeId: string,
+  permissionCode: string,
+): boolean {
+  return user.role_assignments.some(
+    (assignment) => {
+      if (!isAssignmentCurrentlyValid(assignment)) {
+        return false;
+      }
+
+      const role = rolesById[assignment.role];
+
+      /*
+       * Preferred path:
+       * role definition is available.
+       */
+      if (role) {
+        return assignmentGrantsPermission(
+          assignment,
+          role,
+          permissionCode,
+          requestOrgNodeId,
+          nodesById,
+        );
+      }
+
+      /*
+       * Fallback for normal M5 users who do not have role.view.
+       *
+       * Use the user's effective permission list only together
+       * with THIS SAME assignment's scope.
+       *
+       * Never combine permission from one assignment with the
+       * scope of another assignment.
+       */
+      if (
+        !user.permissions.includes(
+          permissionCode,
+        )
+      ) {
+        return false;
+      }
+
+      if (!assignment.org_node) {
+        return true;
+      }
+
+      const scope =
+        user.scope_summary.find(
+          (item) =>
+            item.role ===
+              assignment.role_name &&
+            sameId(
+              item.org_node.id,
+              assignment.org_node,
+            ),
+        );
+
+      if (!scope?.org_node) {
+        return false;
+      }
+
+      return sameId(
+        scope.org_node.id,
+        requestOrgNodeId,
+      );
+    },
+  );
+}
+
+/* ==========================================================
    ACCESS HOOK
 ========================================================== */
 
 export function useDataCaptureAccess(
   request: DataRequestDetail | null,
 ): DataCaptureAccess {
-  const { user, permissions } = useAuth();
+  const {
+    user,
+    roles,
+    orgNodes,
+  } = useAuth();
 
   return useMemo(() => {
     /* ------------------------------------------------------
-       No request / no authenticated user
+       NO REQUEST / NO AUTHENTICATED USER
     ------------------------------------------------------ */
 
     if (!request || !user) {
@@ -126,7 +464,7 @@ export function useDataCaptureAccess(
     /* ------------------------------------------------------
        SUPERUSER
        ------------------------------------------------------
-       Superuser bypasses normal permission/scope checks.
+       Superuser retains the existing unconditional access.
     ------------------------------------------------------ */
 
     if (user.is_superuser) {
@@ -134,14 +472,25 @@ export function useDataCaptureAccess(
     }
 
     /* ------------------------------------------------------
-       PERMISSION HELPER
+       BUILD REFERENCE MAPS
     ------------------------------------------------------ */
 
-    const hasPermission = (permission: string): boolean =>
-      permissions.includes(permission);
+    const rolesById = buildRoleMap(roles);
+    const nodesById = flattenOrgNodes(orgNodes);
+
+    /*
+     * Request-specific capability resolution cannot safely
+     * proceed without the role/scope reference data.
+     *
+     * Fail closed rather than falling back to the flat
+     * `permissions` union.
+     */
+   const hasScopedData =
+  user.role_assignments.length > 0 &&
+  user.scope_summary.length > 0;
 
     /* ------------------------------------------------------
-       REQUEST SCOPE
+       REQUEST ASSIGNEE
     ------------------------------------------------------ */
 
     const isAssignee = sameId(
@@ -151,11 +500,6 @@ export function useDataCaptureAccess(
 
     /* ------------------------------------------------------
        SUBMISSION OWNERSHIP
-       ------------------------------------------------------
-       The M5 response exposes `submitted_by` as an ID.
-
-       Determine whether the current authenticated user is the
-       person who submitted the request.
     ------------------------------------------------------ */
 
     const isSubmitter = sameId(
@@ -165,102 +509,151 @@ export function useDataCaptureAccess(
 
     /* ------------------------------------------------------
        MAKER / ENTRY ACCESS
+       ------------------------------------------------------
 
-       data.enter  -> edit answers
-       data.submit -> submit draft
+       data.enter:
+         exact permission
+         + exact assignment scope
+         + assignee
 
-       Both are restricted to the request assignee.
+       data.submit:
+         exact permission
+         + exact assignment scope
+         + assignee
     ------------------------------------------------------ */
 
     const canEnter =
-      hasPermission("data.enter") &&
-      isAssignee;
+      hasScopedData &&
+      isAssignee &&
+      hasScopedPermission(
+        user,
+        rolesById,
+        nodesById,
+        request.org_node,
+        "data.enter",
+      );
 
     const canSubmitDraft =
-      hasPermission("data.submit") &&
-      isAssignee;
+      hasScopedData &&
+      isAssignee &&
+      hasScopedPermission(
+        user,
+        rolesById,
+        nodesById,
+        request.org_node,
+        "data.submit",
+      );
 
     /* ------------------------------------------------------
        EVIDENCE VIEW ACCESS
+    ------------------------------------------------------
 
-       evidence.view controls whether evidence metadata/files
-       can be viewed through the M5 evidence workflow.
+       Evidence viewing is permission + request scope.
 
-       This is intentionally independent from evidence.upload.
-       A reviewer may be allowed to view evidence without being
-       allowed to upload/delete it.
+       It does not require assignee status.
     ------------------------------------------------------ */
 
     const canViewEvidence =
-      hasPermission("evidence.view");
+      hasScopedData &&
+      hasScopedPermission(
+        user,
+        rolesById,
+        nodesById,
+        request.org_node,
+        "evidence.view",
+      );
 
     /* ------------------------------------------------------
        EVIDENCE WRITE ACCESS
+    ------------------------------------------------------
 
-       The backend contract uses evidence.upload for uploading
-       evidence. Delete follows the same request-scoped maker
-       capability rather than inventing evidence.delete.
+       Backend uses evidence.upload for this action.
+
+       Existing M5 behavior additionally requires that the
+       current user is the request assignee.
     ------------------------------------------------------ */
 
     const canUploadEvidence =
-      hasPermission("evidence.upload") &&
-      isAssignee;
+      hasScopedData &&
+      isAssignee &&
+      hasScopedPermission(
+        user,
+        rolesById,
+        nodesById,
+        request.org_node,
+        "evidence.upload",
+      );
 
     const canDeleteEvidence =
       canUploadEvidence;
 
     /* ------------------------------------------------------
        REVIEW ACCESS
+    ------------------------------------------------------
 
        Backend contract:
 
-         approve -> data.approve
-         reject  -> data.approve
-         reopen  -> data.approve
+         data.approve -> approve
+         data.approve -> reject
+         data.approve -> reopen
 
-       Self-approval protection:
-       a non-superuser who submitted the request must not get
-       approve/reject controls.
+       All three must come from an assignment that:
 
-       Backend authorization remains authoritative.
+         - is active/current
+         - has a role granting data.approve
+         - has compatible module scope
+         - covers request.org_node
+
+       Self-approval protection remains in place.
     ------------------------------------------------------ */
 
+    const hasApproveScope =
+      hasScopedData &&
+      hasScopedPermission(
+        user,
+        rolesById,
+        nodesById,
+        request.org_node,
+        "data.approve",
+      );
+
     const canApprove =
-      hasPermission("data.approve") &&
+      hasApproveScope &&
       !isSubmitter;
 
     const canReject =
-      hasPermission("data.approve") &&
+      hasApproveScope &&
       !isSubmitter;
 
     const canReopen =
-      hasPermission("data.approve") &&
-  !isSubmitter;
+      hasApproveScope &&
+      !isSubmitter;
 
     /* ------------------------------------------------------
        MANAGER ACCESS
     ------------------------------------------------------ */
 
     const canManage =
-      hasPermission("data.manage");
+      hasScopedData &&
+      hasScopedPermission(
+        user,
+        rolesById,
+        nodesById,
+        request.org_node,
+        "data.manage",
+      );
 
     /* ------------------------------------------------------
        READ-ONLY VIEWER
-
-       A user is considered read-only when they have none of
-       the mutation/review/management capabilities exposed by
-       this request workspace.
-
-       Evidence view alone does not make the user editable.
     ------------------------------------------------------ */
 
     const isReadOnlyViewer =
-  !canEnter &&
-  !canSubmitDraft &&
-  !canApprove &&
-  !canReject &&
-  !canReopen &&
-  !canManage;
+      !canEnter &&
+      !canSubmitDraft &&
+      !canApprove &&
+      !canReject &&
+      !canReopen &&
+      !canManage;
 
     /* ------------------------------------------------------
        FINAL ACCESS OBJECT
@@ -286,5 +679,5 @@ export function useDataCaptureAccess(
 
       isReadOnlyViewer,
     };
-  }, [request, user, permissions]);
+  }, [request, user, roles, orgNodes]);
 }

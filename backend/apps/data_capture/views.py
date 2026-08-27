@@ -392,6 +392,23 @@ class SubmissionTableRowDetailAPIView(DataCaptureAPIView):
         )
         return success_response(SubmissionSerializer(updated.answer.submission).data, "TABLE row saved.")
 
+    def delete(self, request, request_id, row_id):
+        data_request = self.get_action_request(
+            request_id, "data.enter", require_assignee=True
+        )
+        row = get_object_or_404(
+            AnswerTableRow.objects.select_related("answer__submission"),
+            pk=row_id,
+            answer__submission=data_request.submission,
+        )
+        self.service_call(
+            DataCaptureLifecycleService.delete_table_row,
+            data_request.submission,
+            actor=request.user,
+            row=row,
+        )
+        return success_response(message="TABLE row deleted.")
+
 
 class SubmissionHistoryAPIView(DataCaptureAPIView):
     def get(self, request, request_id):

@@ -65,6 +65,7 @@ export default function DataReviewQueuePage() {
   const [statusFilter, setStatusFilter] =
     useState<"All" | SubmissionStatus>("All");
 
+
   const loadRequests = useCallback(async () => {
     try {
       setLoading(true);
@@ -166,22 +167,28 @@ export default function DataReviewQueuePage() {
         },
       },
       {
-        id: "actions",
-        header: () => <div className="text-right">Review</div>,
-        cell: ({ row }) => (
-          <div className="flex justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                navigate(`/data-capture/requests/${row.original.id}`)
-              }
-            >
-              Open
-            </Button>
-          </div>
-        ),
-      },
+  id: "actions",
+  header: () => (
+    <div className="text-right">
+      Review
+    </div>
+  ),
+  cell: ({ row }) => (
+    <div className="flex justify-end">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() =>
+          navigate(
+            `/data-capture/requests/${row.original.id}`,
+          )
+        }
+      >
+        Open
+      </Button>
+    </div>
+  ),
+},
     ],
     [navigate],
   );

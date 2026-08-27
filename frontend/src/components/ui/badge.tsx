@@ -22,9 +22,8 @@ const badgeVariants = cva(
 
   text-xs
   font-medium
-  leading-none
 
-  text-white
+  leading-none
 
   transition-all
   duration-200
@@ -42,72 +41,109 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
+        /* Existing accepted variants */
         default: `
-          border-[#4A5568]
-          bg-[#4A5568]
-          text-white
+          border-[#D9DEE8]
+          bg-white
+          text-[#374151]
         `,
 
         secondary: `
+          border-[#E5E7EB]
+          bg-[#F8FAFC]
+          text-[#475569]
+        `,
+
+        success: `
+          border-[#BBF7D0]
+          bg-[#ECFDF5]
+          text-[#15803D]
+        `,
+
+        warning: `
+          border-[#FDE68A]
+          bg-[#FFFBEB]
+          text-[#B45309]
+        `,
+
+        info: `
+          border-[#BFDBFE]
+          bg-[#EFF6FF]
+          text-[#2563EB]
+        `,
+
+        system: `
+          border-[#DDD6FE]
+          bg-[#F5F3FF]
+          text-[#6D28D9]
+        `,
+
+        inactive: `
+          border-[#E5E7EB]
+          bg-[#F9FAFB]
+          text-[#6B7280]
+        `,
+
+        destructive: `
+          border-[#FECACA]
+          bg-[#FEF2F2]
+          text-[#DC2626]
+        `,
+
+        /* Keep accepted subtle variants unchanged */
+        outline: `
+          border-[#D9DEE8]
+          bg-transparent
+          text-[#4A5565]
+        `,
+
+        ghost: `
+          border-transparent
+          bg-[#F5F7FB]
+          text-[#4A5565]
+        `,
+
+        link: `
+          border-transparent
+          bg-transparent
+          p-0
+          text-[#4A3FD6]
+          underline-offset-4
+          hover:underline
+        `,
+
+        /* Accepted semantic aliases */
+        draft: `
           border-[#64748B]
           bg-[#64748B]
           text-white
         `,
 
-        success: `
+        active: `
           border-[#16A34A]
           bg-[#16A34A]
           text-white
         `,
 
-        warning: `
-          border-[#D97706]
-          bg-[#D97706]
+        approved: `
+          border-[#15803D]
+          bg-[#15803D]
           text-white
         `,
 
-        info: `
-          border-[#2563EB]
-          bg-[#2563EB]
-          text-white
-        `,
-
-        system: `
-          border-[#7C3AED]
-          bg-[#7C3AED]
-          text-white
-        `,
-
-        inactive: `
-          border-[#6B7280]
-          bg-[#6B7280]
-          text-white
-        `,
-
-        destructive: `
+        rejected: `
           border-[#DC2626]
           bg-[#DC2626]
           text-white
         `,
 
-        outline: `
+        locked: `
           border-[#475569]
           bg-[#475569]
           text-white
         `,
 
-        ghost: `
-          border-[#475569]
-          bg-[#475569]
-          text-white
-        `,
-
-        link: `
-          border-[#4A3FD6]
-          bg-[#4A3FD6]
-          text-white
-        `,
-
+        /* Additional solid color variants */
         purple: `
           border-[#9333EA]
           bg-[#9333EA]
@@ -153,6 +189,18 @@ const badgeVariants = cva(
         brown: `
           border-[#92400E]
           bg-[#92400E]
+          text-white
+        `,
+
+        rose: `
+          border-[#E11D48]
+          bg-[#E11D48]
+          text-white
+        `,
+
+        violet: `
+          border-[#7C3AED]
+          bg-[#7C3AED]
           text-white
         `,
       },

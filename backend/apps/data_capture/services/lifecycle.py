@@ -401,3 +401,23 @@ class DataCaptureLifecycleService:
                         validate_complete_value(cell, definition=column, field_name="column")
                     else:
                         validate_typed_value(cell, definition=column, field_name="column")
+
+    @classmethod
+    @transaction.atomic
+    def delete_table_row(cls, submission, *, actor, row):
+        submission = cls._locked_submission(submission)
+        cls._ensure_period_open(submission.data_request)
+        cls._ensure_maker(submission, actor)
+        if submission.status != SubmissionStatus.DRAFT:
+            raise ValidationError("Only draft submissions may be edited.")
+        if row.definition_row_id:
+            raise ValidationError("Fixed rows cannot be removed.")
+        row._allow_service_delete = True
+        try:
+            row.delete()
+        finally:
+            del row._allow_service_delete
+        cls._event(
+            submission, SubmissionEvent.EventType.DRAFT_SAVED,
+            actor, SubmissionStatus.DRAFT, SubmissionStatus.DRAFT,
+        )

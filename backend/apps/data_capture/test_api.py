@@ -594,3 +594,21 @@ class DataCaptureAPITests(APITestCase):
             HTTP_X_CSRFTOKEN=token,
         )
         self.assertEqual(with_token.status_code, status.HTTP_200_OK)
+
+    def test_maker_can_delete_a_dynamic_table_row_but_not_a_fixed_row(self):
+        self.login(self.maker)
+        created = self.client.post(self.path(self.table_request, "submission/table-rows/"), {
+            "label": "Extra site", "display_order": 5,
+        }, format="json")
+        dynamic_row_id = created.data["data"]["answer"]["table_rows"][-1]["id"]
+
+        deleted = self.client.delete(
+            self.path(self.table_request, f"submission/table-rows/{dynamic_row_id}/")
+        )
+        self.assertEqual(deleted.status_code, status.HTTP_200_OK)
+
+        fixed_row_id = created.data["data"]["answer"]["table_rows"][0]["id"]
+        blocked = self.client.delete(
+            self.path(self.table_request, f"submission/table-rows/{fixed_row_id}/")
+        )
+        self.assertEqual(blocked.status_code, status.HTTP_400_BAD_REQUEST)

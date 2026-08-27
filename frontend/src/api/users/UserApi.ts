@@ -1,5 +1,13 @@
 import api from "@/services/api";
-import type { UserData, UserFormData } from "@/types/user";
+
+import type {
+  UserData,
+  UserFormData,
+} from "@/types/user";
+
+import type {
+  Role,
+} from "@/types/role";
 
 const UserApi = {
   // ==========================
@@ -7,42 +15,59 @@ const UserApi = {
   // ==========================
 
   getAll() {
-    return api.get<UserData[]>("/accounts/users/");
+    return api.get<UserData[]>(
+      "/accounts/users/",
+    );
   },
 
   getById(id: number | string) {
-    return api.get<UserData>(`/accounts/users/${id}/`);
+    return api.get<UserData>(
+      `/accounts/users/${id}/`,
+    );
   },
 
   create(data: FormData) {
-    return api.post("/accounts/users/", data, {
-      headers: {
-        "Content-Type": "multipart/form-data",
+    return api.post(
+      "/accounts/users/",
+      data,
+      {
+        headers: {
+          "Content-Type":
+            "multipart/form-data",
+        },
       },
-    });
+    );
   },
 
-  update(id: number | string, data: FormData) {
-    return api.put(`/accounts/users/${id}/`, data, {
-      headers: {
-        "Content-Type": "multipart/form-data",
+  update(
+    id: number | string,
+    data: FormData,
+  ) {
+    return api.put(
+      `/accounts/users/${id}/`,
+      data,
+      {
+        headers: {
+          "Content-Type":
+            "multipart/form-data",
+        },
       },
-    });
+    );
   },
 
   patch(
     id: number | string,
-    data: Partial<UserFormData>
+    data: Partial<UserFormData>,
   ) {
     return api.patch(
       `/accounts/users/${id}/`,
-      data
+      data,
     );
   },
 
   delete(id: number | string) {
     return api.delete(
-      `/accounts/users/${id}/`
+      `/accounts/users/${id}/`,
     );
   },
 
@@ -52,27 +77,31 @@ const UserApi = {
 
   getCompanies() {
     return api.get(
-      "/company/profile/"
+      "/company/profile/",
     );
   },
 
   getDepartments() {
     return api.get(
-      "/company/departments/"
+      "/company/departments/",
     );
   },
 
   // ==========================
-// RBAC
-// ==========================
+  // RBAC
+  // ==========================
 
-getRoles() {
-  return api.get("/accounts/roles/");
-},
+  getRoles() {
+    return api.get<Role[]>(
+      "/accounts/roles/",
+    );
+  },
 
-getOrganizationUnits() {
-  return api.get("/org/nodes/");
-},
+  getOrganizationUnits() {
+    return api.get(
+      "/org/nodes/",
+    );
+  },
 };
 
 export default UserApi;

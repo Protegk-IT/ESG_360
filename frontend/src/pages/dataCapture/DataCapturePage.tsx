@@ -334,38 +334,6 @@ export default function DataCapturePage() {
       },
 
       /* ------------------------------------------------------
-         REPORTING PERIOD
-      ------------------------------------------------------ */
-
-      // {
-      //   accessorKey: "reporting_period_name",
-
-      //   header: "Reporting Period",
-
-      //   cell: ({ row }) => (
-      //     <span className="text-sm text-[#4B5563]">
-      //       {row.original.reporting_period_name}
-      //     </span>
-      //   ),
-      // },
-
-      /* ------------------------------------------------------
-         MODULE
-      ------------------------------------------------------ */
-
-      // {
-      //   accessorKey: "module_code",
-
-      //   header: "Module",
-
-      //   cell: ({ row }) => (
-      //     <Badge variant="system">
-      //       {formatModule(row.original.module_code)}
-      //     </Badge>
-      //   ),
-      // },
-
-      /* ------------------------------------------------------
          DUE DATE
       ------------------------------------------------------ */
 
@@ -522,17 +490,7 @@ export default function DataCapturePage() {
         </p>
       </div>
 
-      {/* <Button
-        type="button"
-        onClick={() =>
-          navigate("/data-capture/requests/create")
-        }
-      >
-        Create Request
-      </Button> */}
     </div>
-
-    {/* existing DataTable / toolbar / cards */}
   </div>
 
       <div className="space-y-6">
@@ -835,13 +793,6 @@ function formatDate(value: string) {
   }).format(date);
 }
 
-// function formatModule(value: string) {
-//   return value
-//     .replace(/_/g, " ")
-//     .replace(/\b\w/g, (character) =>
-//       character.toUpperCase(),
-//     );
-// }
 
 function formatStatus(value: string) {
   return value

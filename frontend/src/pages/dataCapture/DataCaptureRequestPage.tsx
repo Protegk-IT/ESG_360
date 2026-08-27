@@ -1485,19 +1485,25 @@ async function saveTableRows(
   persistedRowIds: Set<string>,
 ): Promise<void> {
   const payloads = tableDraftToRowPayloads(draft);
+  const currentRowIds = new Set(
+    draft.filter((row) => row.id).map((row) => row.id as string),
+  );
+
+  const removedIds = [...persistedRowIds].filter((id) => !currentRowIds.has(id));
+
   const errors: unknown[] = [];
 
-  // Sequential, not Promise.allSettled: SQLite allows only one writer at a
-  // time, so firing every row's request concurrently causes "database is
-  // locked" (OperationalError) under any real load, even just a handful of
-  // rows in one save. Awaiting each row before starting the next avoids
-  // that entirely, at the cost of a save taking roughly
-  // (row count × one request's latency) instead of running in parallel —
-  // an acceptable trade for a table with a handful of rows.
+  for (const rowId of removedIds) {
+    try {
+      await DataCaptureApi.deleteTableRow(requestId, rowId);
+    } catch (rowError) {
+      errors.push(rowError);
+    }
+  }
+
   for (let index = 0; index < draft.length; index += 1) {
     const row = draft[index];
     const payload = payloads[index];
-
     try {
       if (row.id && persistedRowIds.has(row.id)) {
         await DataCaptureApi.updateTableRow(requestId, row.id, payload);
@@ -1505,9 +1511,6 @@ async function saveTableRows(
         await DataCaptureApi.createTableRow(requestId, payload);
       }
     } catch (rowError) {
-      // Still attempt every remaining row rather than stopping at the
-      // first failure — same reasoning as before, just without the
-      // concurrency that caused this regression.
       errors.push(rowError);
     }
   }

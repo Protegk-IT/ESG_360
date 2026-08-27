@@ -537,7 +537,9 @@ class AnswerTableRow(ActivityLogMixin, BaseModel):
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
-        raise ValidationError("TABLE rows must be changed through the data-capture draft workflow.")
+        if not getattr(self, "_allow_service_delete", False):
+            raise ValidationError("TABLE rows must be changed through the data-capture draft workflow.")
+        super().delete(*args, **kwargs)
 
 
 class AnswerTableCell(ActivityLogMixin, BaseModel):
