@@ -4,6 +4,7 @@ import { ArrowRight, Pencil, Plus, Search, Target as TargetIcon, UserRound } fro
 import { toast } from "sonner";
 
 import AppShell from "@/components/layout/AppShell";
+import CompanyApi from "@/api/companies/CompanyApi";
 import { useAuth } from "@/context/AuthContext";
 import { TargetsApi } from "@/api/targets/TargetsApi";
 import { Button } from "@/components/ui/button";
@@ -43,7 +44,18 @@ export default function GoalsList() {
       setSaving(true);
       const payload = { ...goalFormFor(), ...form, name: form.name.trim(), description: form.description?.trim() ?? "", material_topic: form.material_topic || null, material_subtopic: form.material_subtopic || null, source_assessment_topic: form.source_assessment_topic || null, owner: form.owner || null };
       delete payload.assessment_id;
-      if (editing) { await TargetsApi.updateGoal(editing.id, payload); toast.success("Goal updated"); } else { await TargetsApi.createGoal(payload); toast.success("Goal created"); }
+      if (editing) {
+        const legacyCompany = editing.company ? undefined : (await CompanyApi.getProfile()).data.id;
+        await TargetsApi.updateGoal(editing.id, { ...payload, ...(legacyCompany ? { company: legacyCompany } : {}) });
+        toast.success("Goal updated");
+      } else {
+        // The current company profile is the tenant context exposed by the
+        // platform UI. Sending it avoids an ambiguous implicit tenant where
+        // a deployment contains more than one active Company.
+        const company = (await CompanyApi.getProfile()).data;
+        await TargetsApi.createGoal({ ...payload, company: company.id });
+        toast.success("Goal created");
+      }
       setEditorOpen(false); await loadGoals("");
     } catch { toast.error("Unable to save this goal. Review the details and try again."); }
     finally { setSaving(false); }
@@ -54,7 +66,7 @@ export default function GoalsList() {
       <section className="flex flex-col justify-between gap-4 rounded-xl border border-[#D9DEE8] bg-white px-5 py-4 shadow-sm sm:flex-row sm:items-center"><div className="max-w-2xl space-y-1.5"><Badge variant="info">Sustainability planning</Badge><h1 className="text-2xl font-semibold tracking-tight text-[#22243A]">Goals</h1><p className="text-sm leading-5 text-muted-foreground">Plan measurable outcomes with approved ESG actuals, targets, and delivery activity in one place.</p></div>{canManage && <Button className="shrink-0" onClick={openCreate}><Plus className="mr-2 size-4" />Add goal</Button>}</section>
       <section className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div className="relative w-full sm:max-w-sm"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} className="h-9 pl-9" placeholder="Search goals, topics, or owners" /></div><p className="text-xs text-muted-foreground">{loading ? "Loading goals…" : summary}</p></section>
       {error && <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div>}
-      {loading ? <GoalSkeletons /> : goals.length ? <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{goals.map((goal) => <GoalCard key={goal.id} goal={goal} canManage={canManage} onEdit={openEdit} />)}</section> : <Card className="border-dashed shadow-none"><CardContent className="flex min-h-60 flex-col items-center justify-center p-6 text-center"><span className="mb-3 grid size-10 place-items-center rounded-full bg-primary/10"><TargetIcon className="size-5 text-primary" /></span><h2 className="text-base font-semibold">No goals yet</h2><p className="mt-1.5 max-w-md text-sm leading-5 text-muted-foreground">Start with an independent sustainability goal, then connect it to a Material Topic or assessment later if relevant.</p>{canManage && <Button className="mt-4" onClick={openCreate}><Plus className="mr-2 size-4" />Create your first goal</Button>}</CardContent></Card>}
+      {loading ? <GoalSkeletons /> : goals.length ? <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{goals.map((goal) => <GoalCard key={goal.id} goal={goal} canManage={Boolean(goal.can_manage)} onEdit={openEdit} />)}</section> : <Card className="border-dashed shadow-none"><CardContent className="flex min-h-60 flex-col items-center justify-center p-6 text-center"><span className="mb-3 grid size-10 place-items-center rounded-full bg-primary/10"><TargetIcon className="size-5 text-primary" /></span><h2 className="text-base font-semibold">No goals yet</h2><p className="mt-1.5 max-w-md text-sm leading-5 text-muted-foreground">Start with an independent sustainability goal, then connect it to a Material Topic or assessment later if relevant.</p>{canManage && <Button className="mt-4" onClick={openCreate}><Plus className="mr-2 size-4" />Create your first goal</Button>}</CardContent></Card>}
     </main>
     <GoalEditorDialog open={editorOpen} goal={editing} saving={saving} onOpenChange={setEditorOpen} onSave={(form) => void saveGoal(form)} />
   </AppShell>;

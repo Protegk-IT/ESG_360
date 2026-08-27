@@ -60,7 +60,7 @@ class Command(BaseCommand):
             periods = self._demo_periods()
             datapoints = self._datapoints()
             self._seed_approved_values(datapoints, periods["actual"], org_node, maker, reviewer)
-            self._seed_goals(datapoints, periods, org_node, reviewer)
+            self._seed_goals(company, datapoints, periods, org_node, reviewer)
 
         self.stdout.write(self.style.SUCCESS(
             "M10 demo seeded: 4 DEMO M10 goals, real approved M5 values across "
@@ -187,28 +187,44 @@ class Command(BaseCommand):
             "waste_recycled": ("WASTE_RECYCLED", "Waste recycled / recovered", categories["waste"], waste, families["MASS"], units["TONNE"], CollectionLevel.FACILITY),
         }
         for key, (code, label, category, module, family, unit, level) in definitions.items():
-            Datapoint.objects.update_or_create(
-                code=code,
-                defaults={
-                    "label": label, "description": "Controlled M10 demo datapoint.",
-                    "category": category, "module": module, "data_type": DatapointDataType.DECIMAL,
-                    "unit_family": family, "default_unit": unit, "collection_level": level,
-                    "frequency": CollectionFrequency.ANNUAL, "is_required": False,
-                    "validation_metadata": {"min": "0", "decimal_places": 4}, "is_active": True,
-                },
+            existing = Datapoint.objects.filter(code=code).first()
+            if existing:
+                compatible = (
+                    existing.data_type == DatapointDataType.DECIMAL
+                    and existing.unit_family_id == family.id
+                    and existing.default_unit_id == unit.id
+                    # M4's Module relation uses its stable module code as
+                    # the persisted key, not Module's UUID identity.
+                    and existing.module_id == module.code
+                    and existing.collection_level == level
+                )
+                if not compatible:
+                    raise CommandError(
+                        f"Canonical datapoint {code} exists but is incompatible with the M10 demo "
+                        "(type, module, unit family/default unit, or collection level differs)."
+                    )
+                continue
+            Datapoint.objects.create(
+                code=code, label=label, description="Controlled M10 demo datapoint.",
+                category=category, module=module, data_type=DatapointDataType.DECIMAL,
+                unit_family=family, default_unit=unit, collection_level=level,
+                frequency=CollectionFrequency.ANNUAL, is_required=False,
+                validation_metadata={"min": "0", "decimal_places": 4}, is_active=True,
             )
         # The workforce example is present for catalog/KPI selection even
         # though this visual demo concentrates its real trajectory data on
         # environmental direct-capture metrics.
-        Datapoint.objects.update_or_create(
-            code="WORKFORCE_FEMALE_COUNT",
-            defaults={
+        workforce = Datapoint.objects.filter(code="WORKFORCE_FEMALE_COUNT").first()
+        if workforce is None:
+            Datapoint.objects.create(
+                code="WORKFORCE_FEMALE_COUNT",
+                **{
                 "label": "Female employees / workers count", "description": "Controlled M10 demo datapoint.",
                 "category": categories["workforce"], "module": social, "data_type": DatapointDataType.INTEGER,
                 "collection_level": CollectionLevel.ORG_NODE, "frequency": CollectionFrequency.ANNUAL,
                 "is_required": False, "validation_metadata": {"min": "0"}, "is_active": True,
-            },
-        )
+                },
+            )
         return {
             "water": Datapoint.objects.get(code="WATER_TOTAL_WITHDRAWAL"),
             "water_consumption": Datapoint.objects.get(code="WATER_TOTAL_CONSUMPTION"),
@@ -255,7 +271,7 @@ class Command(BaseCommand):
                 DataCaptureLifecycleService.submit(submission, actor=maker)
                 DataCaptureLifecycleService.approve(submission, actor=reviewer)
 
-    def _seed_goals(self, datapoints, periods, org_node, owner):
+    def _seed_goals(self, company, datapoints, periods, org_node, owner):
         topics = {topic.name: topic for topic in MaterialTopic.objects.filter(is_active=True)}
         scenarios = (
             ("Water Stewardship", "Reduce freshwater withdrawal at the demo plant while supporting efficient operations.", "Resource Use & Circular Economy", "water", "Total water withdrawal", KPIDirection.REDUCE, Decimal("120000"), Decimal("90000"), TargetBasis.PRIOR_YEAR_ACTUAL, "M3"),
@@ -266,7 +282,7 @@ class Command(BaseCommand):
         for index, (name, description, topic_name, key, kpi_name, direction, baseline, endpoint, basis, unit_code) in enumerate(scenarios, start=1):
             goal, _ = Goal.objects.update_or_create(
                 name=f"DEMO M10 — {name}", created_by=owner,
-                defaults={"description": description, "material_topic": topics.get(topic_name), "status": GoalStatus.ACTIVE, "owner": owner},
+                defaults={"company": company, "description": description, "material_topic": topics.get(topic_name), "status": GoalStatus.ACTIVE, "owner": owner},
             )
             datapoint = datapoints[key]
             kpi, _ = KPI.objects.update_or_create(

@@ -2,6 +2,7 @@
 from django.db.models import Q
 
 from apps.accounts.services.rbac import RBACService
+from apps.organizations.models import OrgNode
 
 
 TARGET_MODULE = "target"
@@ -36,6 +37,21 @@ def has_company_wide_target_scope(user):
 def has_target_scope(user, org_node_id):
     allowed = allowed_nodes(user, "target.set")
     return allowed is None or org_node_id in allowed
+
+
+def target_set_company_ids(user):
+    """Companies represented by the *same* qualifying ``target.set`` scopes.
+
+    ``None`` preserves the existing company-wide/superuser contract. A list
+    is derived only from assignments that actually grant ``target.set``;
+    another role assignment at a different Company cannot lend its scope.
+    """
+    allowed = allowed_nodes(user, "target.set")
+    if allowed is None:
+        return None
+    return set(
+        OrgNode.objects.filter(pk__in=allowed).values_list("company_id", flat=True)
+    )
 
 
 def write_scoped_queryset(queryset, user, field="org_node_id"):

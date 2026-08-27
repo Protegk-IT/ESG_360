@@ -2,7 +2,10 @@ from datetime import date
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
+from django.test.utils import CaptureQueriesContext
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Permission, Role, User, UserRoleAssignment
@@ -18,7 +21,7 @@ from apps.targets.models import (
     Goal, KPI, KPIInitiative, KPIDirection, KPIAggregation, MetricSourceType,
     Target, TargetStatus, TargetType,
 )
-from apps.targets.services.progress import progress_for, trajectory_value
+from apps.targets.services.progress import KPIValueProvider, progress_for, trajectory_value
 
 
 class TargetFoundationTests(TestCase):
@@ -305,9 +308,30 @@ class TargetAuthorizationAcceptanceTests(TestCase):
         self.grant(self.actor, self.reader_role, self.site_b)
         client = self.client_for(self.actor)
         # Read scope legitimately includes Site B through target.view.
-        self.assertEqual(client.get(f"/api/targets/targets/{self.target_b.id}/").status_code, 200)
+        detail = client.get(f"/api/targets/targets/{self.target_b.id}/")
+        self.assertEqual(detail.status_code, 200)
+        self.assertFalse(detail.data["data"]["can_manage"])
         # Write scope remains only the same qualifying target.set assignment.
         self.assertEqual(client.patch(f"/api/targets/targets/{self.target_b.id}/", {"status": "RETIRED"}, format="json").status_code, 404)
+
+    def test_scoped_target_setter_cannot_create_a_goal_for_an_unrelated_company(self):
+        company_b = Company.objects.create(
+            company_name="Unrelated target company", company_code="TARGET-B",
+            contact_person="Owner", email="target-b@example.test", mobile_number="8888888888",
+        )
+        self.grant(self.actor, self.setter_role, self.site_a)
+        client = self.client_for(self.actor)
+
+        allowed = client.post(
+            "/api/targets/goals/", {"name": "Site A goal", "company": str(self.company.id)}, format="json"
+        )
+        denied = client.post(
+            "/api/targets/goals/", {"name": "Company B goal", "company": str(company_b.id)}, format="json"
+        )
+
+        self.assertEqual(allowed.status_code, 201)
+        self.assertEqual(str(allowed.data["data"]["company"]), str(self.company.id))
+        self.assertEqual(denied.status_code, 404)
 
     def test_ancestor_target_set_scope_covers_descendants_but_not_siblings(self):
         self.grant(self.actor, self.setter_role, self.site_a)
@@ -382,3 +406,189 @@ class TargetAuthorizationAcceptanceTests(TestCase):
         response = client.post("/api/targets/goals/", {"name": "Audited goal", "status": "DRAFT"}, format="json")
         self.assertEqual(response.status_code, 201)
         self.assertTrue(ActivityLog.objects.filter(model_name="Goal", object_id=response.data["data"]["id"], action="CREATE").exists())
+
+
+class TargetCorrectionAcceptanceTests(TestCase):
+    """Review regressions for tenant isolation and provider semantics."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username="m10-correction-owner", password="x")
+        self.company_a = Company.objects.create(company_name="M10 Company A", company_code="M10A", contact_person="A", email="a@example.test", mobile_number="9000000001")
+        self.company_b = Company.objects.create(company_name="M10 Company B", company_code="M10B", contact_person="B", email="b@example.test", mobile_number="9000000002")
+        self.org_a = OrgNode.objects.get(company=self.company_a, node_type="LEGAL_ENTITY")
+        self.org_a_second = OrgNode.objects.create(company=self.company_a, parent=self.org_a, node_type="FACILITY", code="M10-A-SECOND", name="M10 A second facility", facility_type="Test")
+        self.org_a_third = OrgNode.objects.create(company=self.company_a, parent=self.org_a, node_type="FACILITY", code="M10-A-THIRD", name="M10 A third facility", facility_type="Test")
+        self.org_b = OrgNode.objects.get(company=self.company_b, node_type="LEGAL_ENTITY")
+        self.module = Module.objects.create(code="m10-correction-module", name="M10 Correction")
+        self.category = DatapointCategory.objects.create(code="m10-correction-category", name="M10 Correction", module=self.module)
+        self.family = UnitFamily.objects.create(code="M10_CORRECTION", name="M10 correction")
+        self.base_unit = Unit.objects.create(family=self.family, code="M10_BASE", name="M10 base", factor_to_base=Decimal("1"), is_base_unit=True)
+        self.alt_unit = Unit.objects.create(family=self.family, code="M10_ALT", name="M10 alt", factor_to_base=Decimal("10"))
+        self.datapoint = Datapoint.objects.create(code="m10.correction.value", category=self.category, module=self.module, label="M10 correction", data_type=DatapointDataType.DECIMAL, unit_family=self.family, default_unit=self.base_unit, collection_level=CollectionLevel.ORG_NODE, frequency=CollectionFrequency.ANNUAL)
+        self.baseline = ReportingPeriod.objects.create(name="M10 correction FY 2024", period_type=PeriodType.ANNUAL, start_date=date(2024, 4, 1), end_date=date(2025, 3, 31))
+        self.endpoint = ReportingPeriod.objects.create(name="M10 correction FY 2028", period_type=PeriodType.ANNUAL, start_date=date(2028, 4, 1), end_date=date(2029, 3, 31))
+
+    def approved_answer(self, org, value, *, unit=None, approved_at=None):
+        request = DataRequest.objects.create(datapoint=self.datapoint, org_node=org, reporting_period=self.baseline, assignee=self.owner, requested_by=self.owner)
+        submission = Submission.objects.create(data_request=request, status=SubmissionStatus.APPROVED, approved_at=approved_at)
+        Answer.objects.create(submission=submission, decimal_value=Decimal(value), unit=unit or self.base_unit, entered_by=self.owner)
+
+    def kpi_target(self, *, aggregation=KPIAggregation.SUM, direction=KPIDirection.REDUCE, company=None, org_node=None, baseline=Decimal("100"), endpoint=Decimal("50"), baseline_unit=None, target_unit=None):
+        goal = Goal.objects.create(company=company or self.company_a, name="Correction goal", created_by=self.owner)
+        kpi = KPI.objects.create(goal=goal, code="correction", name="Correction", metric_source_type=MetricSourceType.DATAPOINT, datapoint=self.datapoint, direction=direction, aggregation=aggregation)
+        target = Target.objects.create(kpi=kpi, org_node=org_node, baseline_period=self.baseline, baseline_value=baseline, baseline_unit=baseline_unit or self.base_unit, target_period=self.endpoint, target_value=endpoint, target_unit=target_unit or self.base_unit, created_by=self.owner)
+        return kpi, target
+
+    def test_company_wide_sum_isolated_to_goal_company(self):
+        self.approved_answer(self.org_a, "11")
+        self.approved_answer(self.org_b, "999")
+        kpi, target = self.kpi_target(org_node=None)
+        actual = KPIValueProvider.actual_for(kpi, self.baseline)
+        self.assertEqual(actual.value, Decimal("11"))
+        self.assertEqual(progress_for(target, self.baseline)["actual_value"], Decimal("11"))
+
+    def test_count_none_latest_and_normalized_progress_contract(self):
+        kpi, target = self.kpi_target(aggregation=KPIAggregation.COUNT, org_node=self.org_a, baseline=Decimal("10"), endpoint=Decimal("20"), baseline_unit=None, target_unit=None, direction=KPIDirection.INCREASE)
+        self.assertEqual(KPIValueProvider.actual_for(kpi, self.baseline, self.org_a).status, "NO_DATA")
+        self.approved_answer(self.org_a, "2", unit=self.alt_unit)
+        self.assertEqual(KPIValueProvider.actual_for(kpi, self.baseline, self.org_a).value, Decimal("1"))
+        none_kpi, _ = self.kpi_target(aggregation=KPIAggregation.NONE, org_node=None)
+        self.assertEqual(KPIValueProvider.actual_for(none_kpi, self.baseline).status, "AVAILABLE")
+        self.approved_answer(self.org_a_second, "3")
+        self.assertEqual(KPIValueProvider.actual_for(none_kpi, self.baseline).status, "AMBIGUOUS")
+        # The target endpoint is 5 ALT = 50 BASE, so the progress denominator
+        # must use 50 rather than the raw unit value 5.
+        unit_kpi, unit_target = self.kpi_target(org_node=self.org_a_third, baseline=Decimal("100"), endpoint=Decimal("5"), baseline_unit=self.base_unit, target_unit=self.alt_unit)
+        self.approved_answer(self.org_a_third, "75")
+        self.assertEqual(progress_for(unit_target, self.baseline)["progress_percentage"], Decimal("50"))
+
+    def test_direction_terminal_and_company_org_invariants(self):
+        _, target = self.kpi_target(org_node=self.org_a)
+        with self.assertRaises(ValidationError):
+            Target.objects.create(kpi=target.kpi, org_node=self.org_b, baseline_period=self.baseline, baseline_value=Decimal("100"), baseline_unit=self.base_unit, target_period=self.endpoint, target_value=Decimal("50"), target_unit=self.base_unit, created_by=self.owner)
+        with self.assertRaises(ValidationError):
+            self.kpi_target(direction=KPIDirection.REDUCE, org_node=self.org_b, baseline=Decimal("10"), endpoint=Decimal("20"))
+        target.status = TargetStatus.RETIRED; target.save()
+        target.rationale = "must not change"
+        with self.assertRaises(ValidationError):
+            target.save()
+
+    def test_goal_list_stays_bounded_without_per_goal_relation_queries(self):
+        for index in range(4):
+            goal = Goal.objects.create(company=self.company_a, name=f"Goal {index}", created_by=self.owner)
+            KPI.objects.create(goal=goal, code=f"kpi-{index}", name=f"KPI {index}", metric_source_type=MetricSourceType.MANUAL_REFERENCE, metric_code=f"manual.{index}", direction=KPIDirection.MAINTAIN)
+        permission = Permission.objects.create(code="target.set", name="Set targets", module_code="target", action="EDIT")
+        role = Role.objects.create(role_code="m10-query-role", role_name="M10 query role"); role.permissions.add(permission)
+        UserRoleAssignment.objects.create(user=self.owner, role=role, org_node=self.org_a, module_code="target")
+        client = APIClient(); client.force_login(self.owner)
+        with CaptureQueriesContext(connection) as queries:
+            response = client.get("/api/targets/goals/")
+        self.assertEqual(response.status_code, 200)
+        # Authentication, permission/scope resolution and the capability
+        # annotation add a fixed request cost.  The important regression
+        # guard is that the goal list remains bounded (not one relation query
+        # per Goal); this fixture has four Goals and stays below this ceiling.
+        self.assertLessEqual(len(queries), 30)
+
+
+class GoalCompanyMigrationCompatibilityTests(TransactionTestCase):
+    """A pre-0003 scoped Goal must retain a usable tenant context on upgrade."""
+
+    migrate_from = ("targets", "0002_strengthen_target_integrity")
+    migrate_to = ("targets", "0003_goal_company_target_uq_editable_target_kpi_org_scope_and_more")
+
+    def setUp(self):
+        super().setUp()
+        self.executor = MigrationExecutor(connection)
+        self.state = [
+            self.migrate_from,
+            ("accounts", "0003_permission_testmodel_userdepartment_and_more"),
+            ("companies", "0003_city_created_at_city_updated_at_country_created_at_and_more"),
+            ("organizations", "0002_remove_facility_department_remove_facility_city_and_more"),
+            ("periods", "0001_initial"),
+            ("datapoints", "0003_alter_unit_factor_to_base"),
+            ("materiality", "0004_materialityassessment_reporting_period_required"),
+        ]
+        self.executor.migrate(self.state)
+        old_apps = self.executor.loader.project_state(self.state).apps
+
+        User = old_apps.get_model("accounts", "User")
+        Company = old_apps.get_model("companies", "Company")
+        OrgNode = old_apps.get_model("organizations", "OrgNode")
+        ReportingPeriod = old_apps.get_model("periods", "ReportingPeriod")
+        Goal = old_apps.get_model("targets", "Goal")
+        KPI = old_apps.get_model("targets", "KPI")
+        Target = old_apps.get_model("targets", "Target")
+
+        user = User.objects.create(username="legacy-m10-owner")
+        company = Company.objects.create(
+            company_name="Legacy M10 Company", company_code="LEGACY-M10",
+            contact_person="Owner", email="legacy-m10@example.test", mobile_number="7777777777",
+        )
+        org = OrgNode.objects.create(
+            company_id=company.pk, node_type="LEGAL_ENTITY", code="LEGACY-M10-ROOT",
+            name="Legacy M10 root", depth=0, path="legacy-m10-root",
+        )
+        baseline = ReportingPeriod.objects.create(
+            name="Legacy M10 FY 2024", period_type="ANNUAL",
+            start_date=date(2024, 4, 1), end_date=date(2025, 3, 31),
+        )
+        target_period = ReportingPeriod.objects.create(
+            name="Legacy M10 FY 2028", period_type="ANNUAL",
+            start_date=date(2028, 4, 1), end_date=date(2029, 3, 31),
+        )
+        goal = Goal.objects.create(name="Legacy scoped Goal", created_by_id=user.pk)
+        kpi = KPI.objects.create(
+            goal_id=goal.pk, code="legacy", name="Legacy KPI",
+            metric_source_type="MANUAL_REFERENCE", metric_code="legacy.metric",
+            direction="REDUCE", aggregation="NONE",
+        )
+        target = Target.objects.create(
+            kpi_id=kpi.pk, org_node_id=org.pk,
+            baseline_period_id=baseline.pk, baseline_value=Decimal("100"),
+            target_period_id=target_period.pk, target_value=Decimal("80"),
+            created_by_id=user.pk,
+        )
+        company_wide_goal = Goal.objects.create(
+            name="Legacy company-wide Goal", created_by_id=user.pk
+        )
+        company_wide_kpi = KPI.objects.create(
+            goal_id=company_wide_goal.pk, code="legacy-company-wide",
+            name="Legacy company-wide KPI", metric_source_type="MANUAL_REFERENCE",
+            metric_code="legacy.company-wide.metric", direction="REDUCE",
+            aggregation="NONE",
+        )
+        company_wide_target = Target.objects.create(
+            kpi_id=company_wide_kpi.pk,
+            baseline_period_id=baseline.pk, baseline_value=Decimal("100"),
+            target_period_id=target_period.pk, target_value=Decimal("80"),
+            created_by_id=user.pk,
+        )
+        self.legacy_goal_id = goal.pk
+        self.legacy_target_id = target.pk
+        self.company_wide_goal_id = company_wide_goal.pk
+        self.company_wide_target_id = company_wide_target.pk
+        self.company_id = company.pk
+
+    def tearDown(self):
+        self.executor = MigrationExecutor(connection)
+        self.executor.migrate(self.executor.loader.graph.leaf_nodes())
+        super().tearDown()
+
+    def test_scoped_legacy_goal_is_backfilled_to_its_target_company(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate([self.migrate_to])
+        new_apps = executor.loader.project_state([self.migrate_to]).apps
+        Goal = new_apps.get_model("targets", "Goal")
+        Target = new_apps.get_model("targets", "Target")
+
+        goal = Goal.objects.get(pk=self.legacy_goal_id)
+        self.assertEqual(goal.company_id, self.company_id)
+        self.assertEqual(Target.objects.get(pk=self.legacy_target_id).kpi.goal_id, goal.pk)
+
+        company_wide_goal = Goal.objects.get(pk=self.company_wide_goal_id)
+        self.assertEqual(company_wide_goal.company_id, self.company_id)
+        self.assertEqual(
+            Target.objects.get(pk=self.company_wide_target_id).kpi.goal_id,
+            company_wide_goal.pk,
+        )
