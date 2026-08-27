@@ -6,6 +6,7 @@ from .views import (
     ReportRunFreezeView,
     ReportRunResolvedValuesView,
     ReportRunSnapshotView,
+    ReportRunReadinessView,
 )
 
 
@@ -60,5 +61,11 @@ urlpatterns = [
         "report-runs/<uuid:run_id>/resolved-values/",
         ReportRunResolvedValuesView.as_view(),
         name="report-run-resolved-values",
+    ),
+
+    path(
+        "report-runs/<uuid:run_id>/readiness/",
+        ReportRunReadinessView.as_view(),
+        name="report-run-readiness",
     ),
 ]

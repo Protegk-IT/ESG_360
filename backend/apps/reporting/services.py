@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Prefetch
@@ -563,3 +565,197 @@ class ReportValueResolver:
                 )
 
         return dataset
+
+
+class ReportReadinessService:
+    """Derive read-only data coverage from the frozen report dataset."""
+
+    @classmethod
+    def build(cls, report_run):
+        if not isinstance(report_run, ReportRun):
+            raise ValidationError(
+                "Readiness requires a ReportRun instance."
+            )
+
+        if not report_run.is_frozen:
+            raise ValidationError(
+                "Readiness can only be calculated for a frozen report run."
+            )
+
+        try:
+            snapshot = (
+                FrameworkSnapshot.objects
+                .prefetch_related(
+                    Prefetch(
+                        "nodes",
+                        queryset=(
+                            SnapshotNode.objects
+                            .prefetch_related(
+                                Prefetch(
+                                    "mappings",
+                                    queryset=SnapshotMapping.objects.order_by(
+                                        "display_order",
+                                        "canonical_datapoint_code",
+                                        "id",
+                                    ),
+                                )
+                            )
+                            .order_by(
+                                "path",
+                                "display_order",
+                                "code",
+                                "id",
+                            )
+                        ),
+                    )
+                )
+                .get(report_run=report_run)
+            )
+        except FrameworkSnapshot.DoesNotExist as exc:
+            raise ValidationError(
+                "A frozen report run must have a framework snapshot."
+            ) from exc
+
+        dataset = ReportValueResolver.build_dataset(report_run)
+        values_by_mapping = defaultdict(list)
+        for value in dataset:
+            values_by_mapping[value["snapshot_mapping_id"]].append(value)
+
+        nodes = []
+        gaps = []
+        mapping_count = 0
+        available_mappings = 0
+        missing_value_mappings = 0
+        complete_nodes = 0
+        partial_nodes = 0
+        missing_nodes = 0
+        unmapped_nodes = 0
+        frozen_answerable_nodes = 0
+        mapped_answerable_nodes = 0
+
+        for node in snapshot.nodes.all():
+            if not node.is_answerable:
+                continue
+
+            frozen_answerable_nodes += 1
+            mappings = list(node.mappings.all())
+            mapped = bool(mappings)
+            if mapped:
+                mapped_answerable_nodes += 1
+
+            readiness_mappings = []
+            available_for_node = 0
+            for mapping in mappings:
+                mapping_count += 1
+                resolved_values = values_by_mapping.get(mapping.id, [])
+                available = any(
+                    value.get("status") == "RESOLVED"
+                    for value in resolved_values
+                )
+                if available:
+                    available_mappings += 1
+                    available_for_node += 1
+                    mapping_state = "AVAILABLE"
+                else:
+                    missing_value_mappings += 1
+                    mapping_state = "MISSING_VALUE"
+
+                expected_data_type = next(
+                    (
+                        value.get("data_type")
+                        for value in resolved_values
+                        if value.get("data_type") is not None
+                    ),
+                    None,
+                )
+                readiness_mapping = {
+                    "id": str(mapping.id),
+                    "canonical_datapoint_code": mapping.canonical_datapoint_code,
+                    "state": mapping_state,
+                    "expected_data_type": expected_data_type,
+                    "expected_unit": None,
+                    "resolved_values": resolved_values,
+                }
+                readiness_mappings.append(readiness_mapping)
+
+                if mapping_state == "MISSING_VALUE":
+                    gaps.append({
+                        "report_run_id": str(report_run.id),
+                        "snapshot_node_id": str(node.id),
+                        "snapshot_node_code": node.code,
+                        "snapshot_node_title": node.title,
+                        "snapshot_mapping_id": str(mapping.id),
+                        "canonical_datapoint_code": mapping.canonical_datapoint_code,
+                        "gap_type": "MISSING_VALUE",
+                        "source_status": "UNRESOLVED",
+                        "expected_data_type": expected_data_type,
+                        "expected_unit": None,
+                        "resolved_values": resolved_values,
+                    })
+
+            if not mapped:
+                node_state = "UNMAPPED"
+                unmapped_nodes += 1
+                gaps.append({
+                    "report_run_id": str(report_run.id),
+                    "snapshot_node_id": str(node.id),
+                    "snapshot_node_code": node.code,
+                    "snapshot_node_title": node.title,
+                    "snapshot_mapping_id": None,
+                    "canonical_datapoint_code": None,
+                    "gap_type": "UNMAPPED_NODE",
+                    "source_status": None,
+                    "expected_data_type": None,
+                    "expected_unit": None,
+                    "resolved_values": [],
+                })
+            elif available_for_node == len(mappings):
+                node_state = "COMPLETE"
+                complete_nodes += 1
+            elif available_for_node:
+                node_state = "PARTIAL"
+                partial_nodes += 1
+            else:
+                node_state = "MISSING"
+                missing_nodes += 1
+
+            nodes.append({
+                "snapshot_node_id": str(node.id),
+                "code": node.code,
+                "title": node.title,
+                "state": node_state,
+                "mappings": readiness_mappings,
+            })
+
+        gaps.sort(key=lambda gap: (
+            next(
+                node_index
+                for node_index, node in enumerate(nodes)
+                if node["snapshot_node_id"] == gap["snapshot_node_id"]
+            ),
+            gap["snapshot_mapping_id"] is None,
+            gap["snapshot_mapping_id"] or "",
+        ))
+
+        summary = {
+            "frozen_answerable_nodes": frozen_answerable_nodes,
+            "mapped_answerable_nodes": mapped_answerable_nodes,
+            "unmapped_answerable_nodes": unmapped_nodes,
+            "mapping_count": mapping_count,
+            "available_mappings": available_mappings,
+            "missing_value_mappings": missing_value_mappings,
+            "complete_nodes": complete_nodes,
+            "partial_nodes": partial_nodes,
+            "missing_nodes": missing_nodes,
+            "readiness_percentage": (
+                round(available_mappings / mapping_count * 100, 2)
+                if mapping_count else None
+            ),
+        }
+        return {
+            "report_run_id": str(report_run.id),
+            "status": report_run.status,
+            "summary": summary,
+            "nodes": nodes,
+            "gaps": gaps,
+        }
