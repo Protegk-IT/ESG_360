@@ -2,9 +2,10 @@ from datetime import date
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.test.utils import CaptureQueriesContext
 from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Permission, Role, User, UserRoleAssignment
@@ -313,6 +314,25 @@ class TargetAuthorizationAcceptanceTests(TestCase):
         # Write scope remains only the same qualifying target.set assignment.
         self.assertEqual(client.patch(f"/api/targets/targets/{self.target_b.id}/", {"status": "RETIRED"}, format="json").status_code, 404)
 
+    def test_scoped_target_setter_cannot_create_a_goal_for_an_unrelated_company(self):
+        company_b = Company.objects.create(
+            company_name="Unrelated target company", company_code="TARGET-B",
+            contact_person="Owner", email="target-b@example.test", mobile_number="8888888888",
+        )
+        self.grant(self.actor, self.setter_role, self.site_a)
+        client = self.client_for(self.actor)
+
+        allowed = client.post(
+            "/api/targets/goals/", {"name": "Site A goal", "company": str(self.company.id)}, format="json"
+        )
+        denied = client.post(
+            "/api/targets/goals/", {"name": "Company B goal", "company": str(company_b.id)}, format="json"
+        )
+
+        self.assertEqual(allowed.status_code, 201)
+        self.assertEqual(str(allowed.data["data"]["company"]), str(self.company.id))
+        self.assertEqual(denied.status_code, 404)
+
     def test_ancestor_target_set_scope_covers_descendants_but_not_siblings(self):
         self.grant(self.actor, self.setter_role, self.site_a)
         child_target = self.make_target(self.site_a_child, target_value=Decimal("65"))
@@ -469,3 +489,106 @@ class TargetCorrectionAcceptanceTests(TestCase):
         # guard is that the goal list remains bounded (not one relation query
         # per Goal); this fixture has four Goals and stays below this ceiling.
         self.assertLessEqual(len(queries), 30)
+
+
+class GoalCompanyMigrationCompatibilityTests(TransactionTestCase):
+    """A pre-0003 scoped Goal must retain a usable tenant context on upgrade."""
+
+    migrate_from = ("targets", "0002_strengthen_target_integrity")
+    migrate_to = ("targets", "0003_goal_company_target_uq_editable_target_kpi_org_scope_and_more")
+
+    def setUp(self):
+        super().setUp()
+        self.executor = MigrationExecutor(connection)
+        self.state = [
+            self.migrate_from,
+            ("accounts", "0003_permission_testmodel_userdepartment_and_more"),
+            ("companies", "0003_city_created_at_city_updated_at_country_created_at_and_more"),
+            ("organizations", "0002_remove_facility_department_remove_facility_city_and_more"),
+            ("periods", "0001_initial"),
+            ("datapoints", "0003_alter_unit_factor_to_base"),
+            ("materiality", "0004_materialityassessment_reporting_period_required"),
+        ]
+        self.executor.migrate(self.state)
+        old_apps = self.executor.loader.project_state(self.state).apps
+
+        User = old_apps.get_model("accounts", "User")
+        Company = old_apps.get_model("companies", "Company")
+        OrgNode = old_apps.get_model("organizations", "OrgNode")
+        ReportingPeriod = old_apps.get_model("periods", "ReportingPeriod")
+        Goal = old_apps.get_model("targets", "Goal")
+        KPI = old_apps.get_model("targets", "KPI")
+        Target = old_apps.get_model("targets", "Target")
+
+        user = User.objects.create(username="legacy-m10-owner")
+        company = Company.objects.create(
+            company_name="Legacy M10 Company", company_code="LEGACY-M10",
+            contact_person="Owner", email="legacy-m10@example.test", mobile_number="7777777777",
+        )
+        org = OrgNode.objects.create(
+            company_id=company.pk, node_type="LEGAL_ENTITY", code="LEGACY-M10-ROOT",
+            name="Legacy M10 root", depth=0, path="legacy-m10-root",
+        )
+        baseline = ReportingPeriod.objects.create(
+            name="Legacy M10 FY 2024", period_type="ANNUAL",
+            start_date=date(2024, 4, 1), end_date=date(2025, 3, 31),
+        )
+        target_period = ReportingPeriod.objects.create(
+            name="Legacy M10 FY 2028", period_type="ANNUAL",
+            start_date=date(2028, 4, 1), end_date=date(2029, 3, 31),
+        )
+        goal = Goal.objects.create(name="Legacy scoped Goal", created_by_id=user.pk)
+        kpi = KPI.objects.create(
+            goal_id=goal.pk, code="legacy", name="Legacy KPI",
+            metric_source_type="MANUAL_REFERENCE", metric_code="legacy.metric",
+            direction="REDUCE", aggregation="NONE",
+        )
+        target = Target.objects.create(
+            kpi_id=kpi.pk, org_node_id=org.pk,
+            baseline_period_id=baseline.pk, baseline_value=Decimal("100"),
+            target_period_id=target_period.pk, target_value=Decimal("80"),
+            created_by_id=user.pk,
+        )
+        company_wide_goal = Goal.objects.create(
+            name="Legacy company-wide Goal", created_by_id=user.pk
+        )
+        company_wide_kpi = KPI.objects.create(
+            goal_id=company_wide_goal.pk, code="legacy-company-wide",
+            name="Legacy company-wide KPI", metric_source_type="MANUAL_REFERENCE",
+            metric_code="legacy.company-wide.metric", direction="REDUCE",
+            aggregation="NONE",
+        )
+        company_wide_target = Target.objects.create(
+            kpi_id=company_wide_kpi.pk,
+            baseline_period_id=baseline.pk, baseline_value=Decimal("100"),
+            target_period_id=target_period.pk, target_value=Decimal("80"),
+            created_by_id=user.pk,
+        )
+        self.legacy_goal_id = goal.pk
+        self.legacy_target_id = target.pk
+        self.company_wide_goal_id = company_wide_goal.pk
+        self.company_wide_target_id = company_wide_target.pk
+        self.company_id = company.pk
+
+    def tearDown(self):
+        self.executor = MigrationExecutor(connection)
+        self.executor.migrate(self.executor.loader.graph.leaf_nodes())
+        super().tearDown()
+
+    def test_scoped_legacy_goal_is_backfilled_to_its_target_company(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate([self.migrate_to])
+        new_apps = executor.loader.project_state([self.migrate_to]).apps
+        Goal = new_apps.get_model("targets", "Goal")
+        Target = new_apps.get_model("targets", "Target")
+
+        goal = Goal.objects.get(pk=self.legacy_goal_id)
+        self.assertEqual(goal.company_id, self.company_id)
+        self.assertEqual(Target.objects.get(pk=self.legacy_target_id).kpi.goal_id, goal.pk)
+
+        company_wide_goal = Goal.objects.get(pk=self.company_wide_goal_id)
+        self.assertEqual(company_wide_goal.company_id, self.company_id)
+        self.assertEqual(
+            Target.objects.get(pk=self.company_wide_target_id).kpi.goal_id,
+            company_wide_goal.pk,
+        )

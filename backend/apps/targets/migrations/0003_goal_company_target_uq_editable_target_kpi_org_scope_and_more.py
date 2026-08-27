@@ -5,6 +5,52 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def backfill_goal_company(apps, schema_editor):
+    """Assign only deterministically identifiable legacy Goal companies.
+
+    A target or initiative's OrgNode is tenant evidence. Assessment-topic
+    provenance is tenant evidence too.  Conflicting evidence intentionally
+    leaves the nullable field unset rather than guessing; a sole active
+    Company is the final safe fallback for single-tenant installations.
+    """
+    Goal = apps.get_model("targets", "Goal")
+    Target = apps.get_model("targets", "Target")
+    Initiative = apps.get_model("targets", "KPIInitiative")
+    Company = apps.get_model("companies", "Company")
+
+    sole_active_company = None
+    active_company_ids = list(
+        Company.objects.filter(is_active=True).values_list("pk", flat=True)[:2]
+    )
+    if len(active_company_ids) == 1:
+        sole_active_company = active_company_ids[0]
+
+    for goal in Goal.objects.filter(company__isnull=True).select_related(
+        "source_assessment_topic__assessment"
+    ):
+        candidate_company_ids = set(
+            Target.objects.filter(
+                kpi__goal_id=goal.pk,
+                org_node__isnull=False,
+            ).values_list("org_node__company_id", flat=True).distinct()
+        )
+        candidate_company_ids.update(
+            Initiative.objects.filter(
+                kpi__goal_id=goal.pk,
+                org_node__isnull=False,
+            ).values_list("org_node__company_id", flat=True).distinct()
+        )
+        if goal.source_assessment_topic_id:
+            candidate_company_ids.add(
+                goal.source_assessment_topic.assessment.company_id
+            )
+
+        if len(candidate_company_ids) == 1:
+            Goal.objects.filter(pk=goal.pk).update(company_id=candidate_company_ids.pop())
+        elif not candidate_company_ids and sole_active_company is not None:
+            Goal.objects.filter(pk=goal.pk).update(company_id=sole_active_company)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -22,6 +68,7 @@ class Migration(migrations.Migration):
             name='company',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='goals', to='companies.company'),
         ),
+        migrations.RunPython(backfill_goal_company, migrations.RunPython.noop),
         migrations.AddConstraint(
             model_name='target',
             constraint=models.UniqueConstraint(condition=models.Q(('org_node__isnull', False), ('status__in', ['DRAFT', 'ACTIVE'])), fields=('kpi', 'org_node'), name='uq_editable_target_kpi_org_scope'),

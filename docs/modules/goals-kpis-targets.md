@@ -10,6 +10,12 @@ keeps pre-existing Goals nullable for upgrade safety. A legacy company-wide
 Goal with no Company deliberately resolves no actuals rather than risking a
 cross-company aggregate.
 
+Migration `targets.0003` backfills an existing Goal only when its Company is
+deterministic: all scoped Target/Initiative OrgNodes identify one Company, its
+AssessmentTopic provenance identifies one assessment Company, or the database
+has exactly one active Company. Conflicting evidence remains null for an
+explicit later assignment; the migration never guesses across tenants.
+
 ## Materiality is optional
 
 Goals can be created independently. `material_topic`, `material_subtopic`, and
@@ -75,6 +81,12 @@ company-wide `target.set` assignment; a site-scoped setter cannot create them.
 List/detail responses include a server-calculated `can_manage` capability. The
 frontend uses it for record mutation controls rather than assuming a global
 `target.set` permission grants every visible resource.
+
+Goal creation follows the same boundary: a scoped `target.set` user can choose
+only a Company represented by its own qualifying `target.set` OrgNode
+assignments. A company-wide assignment and superuser retain the platform-wide
+creation contract. An unrelated role/scope cannot be combined to select a
+different Company.
 
 Routes are:
 

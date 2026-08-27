@@ -13,6 +13,7 @@ from .authorization import (
     has_company_wide_target_scope,
     has_target_scope,
     read_scoped_queryset,
+    target_set_company_ids,
     write_scoped_queryset,
 )
 from .models import Goal, KPI, KPIInitiative, Target
@@ -142,12 +143,19 @@ class TargetsAPIView(APIView):
         return self.with_capabilities(queryset, InitiativeSerializer, self.writable_initiatives)
 
     def resolve_goal_company(self, serializer):
-        if serializer.validated_data.get("company"):
-            return serializer.validated_data["company"]
-        companies = Company.objects.filter(is_active=True)
-        if companies.count() == 1:
-            return companies.first()
-        raise ValidationError({"company": "Company is required when more than one active company exists."})
+        company = serializer.validated_data.get("company")
+        if company is None:
+            companies = Company.objects.filter(is_active=True)
+            if companies.count() == 1:
+                company = companies.first()
+            else:
+                raise ValidationError({"company": "Company is required when more than one active company exists."})
+        company_ids = target_set_company_ids(self.request.user)
+        if company_ids is not None and company.pk not in company_ids:
+            # Mirror existing protected-object behavior: a scoped user should
+            # not learn or plan under a tenant outside its qualifying scope.
+            raise NotFound("Company not found.")
+        return company
 
 
 class GoalListCreateAPIView(TargetsAPIView):
