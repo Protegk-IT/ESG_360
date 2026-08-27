@@ -421,3 +421,224 @@ with another role at Site B to generate, inspect, or reassign Site B targets.
 The campaign API is backend-only in this issue; campaign UI, reminders,
 notifications, spreadsheets/imports, calculations, and reporting remain
 separate work.
+
+## Answers Import Integration
+
+M5 Answers can be populated through the M13 `ANSWERS` import handler.
+
+The import reuses the existing M5 `DataRequest`, `Submission`, and `Answer`
+models and services. It does not introduce a separate import-specific
+Answer model or request/submission lifecycle.
+
+### Imported Answer scope
+
+The production ANSWERS importer supports scalar datapoints:
+
+* `DECIMAL`
+* `INTEGER`
+* `TEXT`
+* `LONG_TEXT`
+* `BOOLEAN`
+* `SELECT`
+* `DATE`
+
+`TABLE` datapoints are intentionally not supported by the current importer.
+
+The ReportingPeriod is supplied as ImportBatch context and is authoritative
+for all rows in the workbook.
+
+### DataRequest resolution
+
+For each imported row, M5 resolves the existing DataRequest using:
+
+```text
+Datapoint + OrgNode + ReportingPeriod
+```
+
+The importer does not create DataRequests, Submissions, campaigns, or other
+M5 workflow records.
+
+If no eligible DataRequest exists, the import row is rejected with a
+structured validation error.
+
+The existing request metadata remains unchanged, including:
+
+* assignee
+* due date
+* instructions
+* campaign linkage
+* lifecycle state
+
+### Submission and DRAFT behavior
+
+Imported values may populate only the current editable `DRAFT` Submission
+belonging to an eligible `OPEN` DataRequest.
+
+The importer cannot populate:
+
+* submitted submissions;
+* approved submissions;
+* rejected or otherwise non-editable submissions.
+
+Importing an Answer never automatically:
+
+* submits the Submission;
+* approves the Submission;
+* rejects the Submission;
+* bypasses reviewer workflow.
+
+After import, the draft continues through the normal M5 submission and
+review lifecycle.
+
+### Canonical datapoint and unit resolution
+
+Imported `datapoint_code` values resolve to the active canonical M4
+Datapoint.
+
+The datapoint definition remains authoritative for:
+
+* datapoint type;
+* validation metadata;
+* UnitFamily;
+* supported value semantics.
+
+When a datapoint requires a UnitFamily, the supplied `unit_code` must resolve
+to an active canonical M4 Unit belonging to that UnitFamily.
+
+Units are not recreated or defined by the importer.
+
+### Typed Answer behavior
+
+Imported values are normalized and stored using the existing M5 typed-value
+semantics.
+
+The importer supports the canonical scalar types defined above and
+performs type-specific validation before commit.
+
+SELECT values must resolve to an active registered option for the target
+datapoint.
+
+BOOLEAN and DATE values use the deterministic parsing rules defined by the
+production ANSWERS import contract.
+
+Existing M5 validation remains authoritative for submit-time completeness,
+required evidence, and other workflow requirements.
+
+### Validation versus commit
+
+Import validation is read-only with respect to M5 destination records.
+
+During validation:
+
+* no Answer is created;
+* no existing Answer is updated;
+* no DataRequest is created;
+* no Submission is created;
+* lifecycle and authorization rules are checked.
+
+Only after successful M13 batch validation can the import commit.
+
+During commit, mutable M5 state is revalidated before the Answer is created
+or updated.
+
+Answer persistence uses the existing M5 draft-save/domain-service path.
+
+### Authorization and OrgNode scope
+
+Answers imported through M13 remain subject to the existing M5/RBAC
+authorization rules.
+
+A maker may import only when:
+
+1. the maker is assigned to the target DataRequest; and
+2. the maker has the required `data.enter` capability for the target
+   OrgNode.
+
+An authorized manager may import only where the existing `data.manage`
+contract permits the target OrgNode.
+
+Permission and OrgNode scope must come from the same qualifying
+`UserRoleAssignment`. Unrelated assignments must not be combined to grant
+access.
+
+Knowing an OrgNode UUID or code does not grant permission to write to that
+scope.
+
+Authorization is checked during validation and rechecked during commit
+where mutable authorization state may have changed.
+
+### Update and idempotency
+
+The canonical M5 request context is:
+
+```text
+Datapoint + OrgNode + ReportingPeriod
+```
+
+A later import for an existing editable draft Answer updates the existing
+draft through the supported M5 draft-save semantics rather than creating a
+duplicate Answer.
+
+Submitted or approved historical Answers are never rewritten by the
+importer.
+
+The same M13 ImportBatch cannot be committed more than once.
+
+Duplicate target rows within a single workbook are rejected during
+validation.
+
+### Import provenance
+
+Imported Answers remain traceable to the M13 import that created or last
+populated them.
+
+The provenance contract identifies the originating:
+
+* ImportBatch;
+* ImportRow;
+* source workbook;
+* original Excel row number;
+* importing user.
+
+The entire spreadsheet row is not stored as opaque JSON on the M5 Answer.
+
+This allows an imported draft Answer to be traced back to the workbook,
+batch, and source row that populated it.
+
+### TABLE import limitation
+
+TABLE datapoints are deliberately rejected by the production ANSWERS
+importer.
+
+TABLE import is deferred because it requires a separate spreadsheet
+contract for:
+
+* table rows;
+* dynamic rows;
+* columns;
+* typed cells;
+* row identity;
+* display order;
+* required cells;
+* minimum-row validation.
+
+A future implementation must use the existing M5 `AnswerTableRow` and
+`AnswerTableCell` domain rather than introducing a parallel import-specific
+table model.
+
+### Import API relationship
+
+The ANSWERS importer uses the existing M13 import APIs:
+
+```text
+POST /api/imports/batches/
+POST /api/imports/batches/{id}/validate/
+GET  /api/imports/batches/{id}/rows/
+POST /api/imports/batches/{id}/commit/
+```
+
+After a successful commit, the resulting Answer is part of the normal M5
+DataRequest → Submission → Answer workflow and is exposed through the normal
+M5 Data Capture APIs.
+
+No separate Answers upload API or import-specific Answer store is required.
