@@ -12,13 +12,17 @@ class ImportHandler(ABC):
     """
 
     @abstractmethod
-    def validate_row(self, raw_data):
+    def validate_row(self, raw_data, *,batch=None):
         """
         Validate and normalize one parsed spreadsheet row.
 
         Args:
             raw_data (dict):
                 Raw JSON-safe data produced by the generic parser.
+            batch (ImportBatch | None):
+                Parent import batch. Concrete handlers may use batch-level
+                context such as reporting_period, org_node, module_code,
+                and uploaded_by
 
         Returns:
             tuple[dict, dict]:

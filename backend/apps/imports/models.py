@@ -169,5 +169,13 @@ class ImportRow(BaseModel):
         blank=True,
     )
 
+    answer = models.ForeignKey(
+        "data_capture.Answer",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="import_rows",
+    )
+
     def __str__(self):
         return f"Batch {self.batch_id} - Row {self.row_number}"

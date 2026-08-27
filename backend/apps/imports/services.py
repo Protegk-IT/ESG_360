@@ -134,7 +134,8 @@ class ImportBatchService:
         for row in batch.rows.order_by("row_number"):
 
             normalized_data, errors = handler.validate_row(
-                row.raw_data
+                row.raw_data,
+                batch=batch,
             )
 
             row.raw_data = normalized_data
@@ -159,11 +160,26 @@ class ImportBatchService:
         #
         # This allows a future importer to validate rules that
         # depend on multiple rows.
+        #
+        # IMPORTANT:
+        # Handler-level validation can change row status.
+        # For example, the ANSWERS handler marks duplicate rows
+        # as ERROR. Therefore the original counters calculated
+        # above may no longer be correct.
         handler.validate_batch(
             batch.rows.all()
         )
 
-        # Recalculate the persisted batch counts.
+        # Recalculate counts from the persisted row statuses after
+        # handler-level validation has completed.
+        valid_rows = batch.rows.filter(
+            status=ImportRow.Status.VALID
+        ).count()
+
+        error_rows = batch.rows.filter(
+            status=ImportRow.Status.ERROR
+        ).count()
+
         batch.valid_rows = valid_rows
         batch.error_rows = error_rows
 
