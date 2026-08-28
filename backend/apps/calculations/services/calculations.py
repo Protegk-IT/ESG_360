@@ -1,5 +1,5 @@
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.core.exceptions import ValidationError
 
@@ -213,11 +213,21 @@ class CalculationService:
             quantity * quantity_unit.factor_to_base
         ) / factor.input_unit.factor_to_base
 
+        quantity_in_factor_unit = quantity_in_factor_unit.quantize(
+            Decimal("0.000000000000001"),
+            rounding=ROUND_HALF_UP,
+        )
+
         # -------------------------------------------------
         # CALCULATE RESULT
         # -------------------------------------------------
 
         result = quantity_in_factor_unit * factor.factor_value
+
+        result = result.quantize(
+            Decimal("0.000000000000001"),
+            rounding=ROUND_HALF_UP,
+        )
 
         return {
             "input_quantity": quantity,
