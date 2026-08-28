@@ -19,6 +19,7 @@ codes.
 | `dashboard`, `activity_log` | `.view` |
 | `datapoint` | `.manage` (catalog administration; authenticated users may browse catalog reads) |
 | `data` | `.enter`, `.submit`, `.approve`, `.manage` |
+| `target` | `.view`, `.set` |
 
 `/api/accounts/permissions/` is read-only; `permission.create`,
 `permission.edit`, and `permission.delete` are not valid active codes.
@@ -33,6 +34,13 @@ the code, role mapping, test, and documentation in the same change.
 `data.manage` creates and reassigns M5 Data Requests. It does not grant draft
 entry, submission, or approval; those remain `data.enter`, `data.submit`, and
 `data.approve` respectively.
+
+`target.view` grants scoped read access to Goals, KPIs, Targets, target
+progress, and KPI Initiatives. `target.set` grants the corresponding scoped
+planning writes and also implies read access in M10. The two capabilities are
+resolved independently: a `target.view` assignment never makes a
+`target.set` operation valid outside the scope of a qualifying `target.set`
+assignment.
 
 ## Scoped resolution
 

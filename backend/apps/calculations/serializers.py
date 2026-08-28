@@ -3,6 +3,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.calculations.models import (
+    CalculationResult,
     CalculationRule,
     EmissionFactor,
     EmissionFactorSource,
@@ -99,6 +100,81 @@ class CalculationRuleSerializer(serializers.ModelSerializer):
 
         return value
 
+
+class CalculationResultSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CalculationResult
+        fields = [
+            "id",
+
+            # M5 source
+            "answer",
+            "submission",
+            "data_request",
+
+            # M4 / organization context
+            "datapoint",
+            "org_node",
+            "reporting_period",
+
+            # Calculation rule
+            "calculation_rule",
+            "calculation_rule_code",
+            "calculation_rule_name",
+            "calculation_rule_metadata",
+
+            # Emission factor
+            "emission_factor",
+
+            # Input snapshot
+            "input_quantity",
+            "input_unit",
+            "input_unit_code",
+            "input_unit_name",
+            "input_unit_factor_to_base",
+
+            # Factor input-unit snapshot
+            "factor_input_unit_code",
+            "factor_input_unit_name",
+            "factor_input_unit_factor_to_base",
+
+            "normalized_quantity",
+
+            # Factor / source snapshot
+            "factor_value",
+            "factor_code",
+            "factor_source_code",
+            "factor_source_name",
+            "factor_source_version",
+            "factor_source_reference",
+
+            # Calculation context
+            "activity_key",
+            "geography",
+            "calculation_date",
+
+            # Result
+            "calculated_value",
+            "output_unit",
+            "output_unit_code",
+            "output_unit_name",
+
+            # Lifecycle
+            "status",
+            "calculation_version",
+            "calculated_by",
+            "calculated_at",
+        ]
+
+        read_only_fields = fields
+class ApprovedAnswerCalculationRequestSerializer(serializers.Serializer):
+    answer = serializers.UUIDField()
+    calculation_date = serializers.DateField()
+    geography = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+    )
 
 class CalculationPreviewSerializer(serializers.Serializer):
     quantity = serializers.DecimalField(

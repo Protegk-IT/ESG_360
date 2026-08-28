@@ -18,7 +18,7 @@ from .serializers import (
     ReportRunDetailSerializer,
     FrameworkSnapshotSerializer,
 )
-from .services import freeze_report_run
+from .services import ReportValueResolver, freeze_report_run
 
 
 # ============================================================
@@ -77,6 +77,7 @@ class ReportRunViewSet(ReportingModelViewSet):
         ReportRun.objects
         .select_related(
             "reporting_period",
+            "company",
             "framework_version",
             "framework_version__framework",
             "created_by",
@@ -100,6 +101,7 @@ class ReportRunViewSet(ReportingModelViewSet):
             ReportRun.objects
             .select_related(
                 "reporting_period",
+                "company",
                 "framework_version",
                 "framework_version__framework",
                 "created_by",
@@ -284,6 +286,7 @@ class ReportRunFreezeView(APIView):
         report_run = get_object_or_404(
             ReportRun.objects.select_related(
                 "reporting_period",
+                "company",
                 "framework_version",
                 "framework_version__framework",
                 "created_by",
@@ -416,5 +419,40 @@ class ReportRunSnapshotView(APIView):
 
         return Response(
             serializer.data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class ReportRunResolvedValuesView(APIView):
+    """Return the approved captured values for a frozen report run."""
+
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request, run_id):
+        report_run = get_object_or_404(
+            ReportRun.objects.select_related("reporting_period", "company"),
+            pk=run_id,
+        )
+
+        if not report_run.is_frozen:
+            return Response(
+                {"detail": "The report run has not been frozen yet."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            values = ReportValueResolver.build_dataset(report_run)
+        except DjangoValidationError as exc:
+            return Response(
+                {"detail": getattr(exc, "messages", [str(exc)])},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "report_run_id": str(report_run.id),
+                "status": report_run.status,
+                "values": values,
+            },
             status=status.HTTP_200_OK,
         )

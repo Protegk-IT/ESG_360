@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     "apps.materiality",
     'apps.datapoints',
     'apps.data_capture.apps.DataCaptureConfig',
+    'apps.targets.apps.TargetsConfig',
     'apps.frameworks',
     "apps.reporting",
     "rest_framework",

@@ -5,12 +5,14 @@ import { useAuth } from "@/context/AuthContext";
 
 interface ProtectedRouteProps {
   permission?: string;
+  anyPermissions?: string[];
   superuserOnly?: boolean;
   children: ReactNode;
 }
 
 export default function ProtectedRoute({
   permission,
+  anyPermissions,
   superuserOnly = false,
   children,
 }: ProtectedRouteProps) {
@@ -28,7 +30,10 @@ export default function ProtectedRoute({
   if (superuserOnly) {
     return <AccessDenied />;
   }
-    if (!permission || permissions.includes(permission)) {
+  if (
+    (!permission || permissions.includes(permission)) &&
+    (!anyPermissions?.length || anyPermissions.some((code) => permissions.includes(code)))
+  ) {
     return <>{children}</>;
   }
 
