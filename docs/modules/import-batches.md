@@ -562,6 +562,105 @@ The importer accepts only canonical M4 datapoints.
 
 The final workbook template must use the exact headers listed above.
 
+## 21.1.1 Example XLSX Workbook
+
+The production ANSWERS importer expects an `.xlsx` workbook containing a single worksheet for the scalar import contract.
+
+The worksheet must contain the exact canonical headers:
+
+| datapoint_code     | value      | unit_code | org_node_code | entry_note                      |
+| ------------------ | ---------- | --------- | ------------- | ------------------------------- |
+| ENERGY_CONSUMPTION | 1250.50    | MWH       | PLANT_001     | Monthly electricity consumption |
+| EMPLOYEE_COUNT     | 250        |           | PLANT_001     | Total employees                 |
+| RENEWABLE_ENERGY   | TRUE       |           | PLANT_001     | Renewable energy usage          |
+| REPORTING_STATUS   | Complete   |           | PLANT_001     | Reporting status                |
+| REPORTING_DATE     | 2026-08-14 |           | PLANT_001     | Reporting date                  |
+| WATER_CONSUMPTION  | 450.75     | M3        | PLANT_001     | Water consumption               |
+
+### Required columns
+
+`datapoint_code` is always required.
+
+`value` is required according to the target datapoint's type and draft-value rules.
+
+### Conditional columns
+
+`unit_code` is required when the canonical M4 Datapoint declares a `UnitFamily`.
+
+`org_node_code` is required when the `ImportBatch` does not have a fixed `org_node`.
+
+If the batch has a fixed `org_node`, the `org_node_code` column may be left blank. If it is supplied, it must resolve to the same OrgNode as the batch.
+
+`entry_note` is optional.
+
+### Value examples
+
+The `value` column must contain values compatible with the canonical M4 Datapoint type.
+
+| Datapoint type | Example value                      |
+| -------------- | ---------------------------------- |
+| `DECIMAL`      | `1250.50`                          |
+| `INTEGER`      | `250`                              |
+| `TEXT`         | `Complete`                         |
+| `LONG_TEXT`    | `Monthly sustainability narrative` |
+| `BOOLEAN`      | `TRUE`                             |
+| `SELECT`       | `Complete`                         |
+| `DATE`         | `2026-08-14`                       |
+
+Boolean and date values must use representations accepted by the production importer. Invalid or ambiguous values are rejected during validation.
+
+SELECT values must correspond to an active option registered for the target M4 Datapoint.
+
+### Example workbook rules
+
+The uploaded workbook must satisfy the following rules:
+
+1. The file must be an `.xlsx` workbook.
+2. The workbook must use the exact canonical ANSWERS headers.
+3. Headers must not be duplicated.
+4. `datapoint_code` must resolve to an active canonical M4 Datapoint.
+5. Only scalar datapoint types are supported.
+6. `TABLE` datapoints must not be included.
+7. `unit_code` must be supplied when required by the datapoint's UnitFamily.
+8. `org_node_code` must resolve to the target OrgNode when the batch has no fixed OrgNode.
+9. Each `datapoint_code + org_node_code + reporting_period` target must occur only once in the workbook.
+10. Blank spreadsheet rows are ignored by the generic XLSX parser.
+11. The workbook's reporting period is supplied by the ImportBatch and is not selected independently by individual rows.
+12. The workbook does not create DataRequests or Submissions.
+
+### Recommended workbook structure
+
+For a normal production upload, the workbook should look conceptually like:
+
+```text
+answers.xlsx
+└── Answers
+    ├── datapoint_code
+    ├── value
+    ├── unit_code
+    ├── org_node_code
+    └── entry_note
+```
+
+The importer treats the workbook as input data only. It does not use spreadsheet formatting, formulas, comments, or additional business-specific columns as part of the production ANSWERS contract.
+
+The canonical workbook template should therefore contain only the supported ANSWERS columns and data required by the import contract.
+
+### Example upload context
+
+The workbook is uploaded together with the ImportBatch context:
+
+```text
+file              = answers.xlsx
+import_type       = ANSWERS
+module_code       = energy
+org_node          = <optional-org-node-id>
+reporting_period  = <reporting-period-id>
+```
+
+The `reporting_period`, optional fixed `org_node`, and optional `module_code` are ImportBatch context rather than spreadsheet columns.
+
+
 ---
 
 ## 21.2 Batch and row context

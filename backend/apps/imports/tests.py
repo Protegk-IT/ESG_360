@@ -804,7 +804,7 @@ class ExcelParserTests(ImportTestMixin,TestCase):
 
         self.assertEqual(
             data["report_date"],
-            "2026-08-14T00:00:00",
+            "2026-08-14",
         )
 
         self.assertEqual(
@@ -3545,14 +3545,14 @@ class AnswersImportHandlerTests(TestCase):
 
         self.assertEqual(
             row1.status,
-            ImportRow.Status.ERROR,
+            ImportRow.Status.VALID,
         )
         self.assertEqual(
             row2.status,
             ImportRow.Status.ERROR,
         )
-        self.assertIn("duplicate", row1.errors)
-        self.assertIn("duplicate", row2.errors)
+        self.assertNotIn("duplicate", row1.errors or {})
+        self.assertIn("duplicate", row2.errors or {})
         self.assertEqual(
             batch.status,
             ImportBatch.Status.FAILED,

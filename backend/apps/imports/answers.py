@@ -372,6 +372,9 @@ class AnswersImportHandler(ImportHandler):
     def validate_batch(self, rows):
         """
         Reject duplicate datapoint + OrgNode rows in the same workbook.
+
+        The first occurrence is accepted.
+        Any later occurrence is rejected as a duplicate.
         """
 
         seen = {}
@@ -403,28 +406,8 @@ class AnswersImportHandler(ImportHandler):
                 }
 
                 row.status = "ERROR"
+
                 row.save(
-                    update_fields=[
-                        "errors",
-                        "status",
-                    ]
-                )
-
-                first = rows.get(
-                    row_number=first_row
-                )
-
-                first.errors = {
-                    **(first.errors or {}),
-                    "duplicate": (
-                        "Duplicate ANSWERS row for the same "
-                        "datapoint and OrgNode in this workbook. "
-                        f"Duplicate occurs at row {row.row_number}."
-                    ),
-                }
-
-                first.status = "ERROR"
-                first.save(
                     update_fields=[
                         "errors",
                         "status",

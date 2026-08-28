@@ -183,7 +183,18 @@ class ExcelParser:
 
     @staticmethod
     def _json_safe(value):
-        if isinstance(value, (datetime, date)):
+        if isinstance(value, datetime):
+            if (
+                value.hour == 0
+                and value.minute == 0
+                and value.second == 0
+                and value.microsecond == 0
+            ):
+                return value.date().isoformat()
+
+            return value.isoformat()
+
+        if isinstance(value, date):
             return value.isoformat()
 
         if isinstance(value, Decimal):
