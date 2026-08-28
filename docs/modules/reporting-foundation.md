@@ -998,6 +998,98 @@ POST /report-runs/<id>/freeze/
 
 is rejected with a validation error.
 
+**---**
+
+## 21. Report Readiness and Gap Analysis
+
+Phase 3 exposes deterministic data readiness for a frozen report. It is a
+coverage/readiness measure, not a regulatory, compliance, assurance, audit, or
+materiality conclusion.
+
+The flow is:
+
+```text
+
+frozen SnapshotMapping
+    |
+    v
+ReportValueResolver.build_dataset()
+    |
+    v
+ReportReadinessService
+    |
+    +--> mapping state
+    +--> answerable node state
+    +--> summary
+    +--> gaps
+```
+
+The readiness service consumes the accepted Phase 2 resolver contract and does
+not query or reimplement M5 resolution rules. This keeps the service
+source-agnostic so a future M6 provider can participate through the same
+resolved-value contract.
+
+### Mapping State
+
+Each frozen mapping is classified once:
+
+- `AVAILABLE` means at least one resolver record has explicit status
+  `RESOLVED`;
+- `MISSING_VALUE` means the mapping exists but no resolver record is resolved.
+
+Availability is based on explicit status, never Python truthiness. Therefore a
+resolved decimal `0` or boolean `False` remains available. Multiple OrgNode
+records for one SnapshotMapping remain separate in `resolved_values` but count
+as one available mapping; they are never silently aggregated.
+
+### Node State
+
+Only frozen nodes with `is_answerable=True` participate in readiness counts.
+Structural nodes do not reduce readiness.
+
+- `COMPLETE`: all mappings are available;
+- `PARTIAL`: at least one mapping is available and at least one is missing;
+- `MISSING`: mappings exist but none is available;
+- `UNMAPPED`: the answerable node has no canonical SnapshotMapping.
+
+`UNMAPPED` is distinct from `MISSING_VALUE`: the former identifies absent
+mapping coverage, while the latter identifies a mapped datapoint without usable
+resolved data.
+
+### Summary and Percentage
+
+The summary includes frozen answerable, mapped, and unmapped node counts;
+mapping totals; available and missing mapping counts; node-state counts; and
+`readiness_percentage`.
+
+The percentage is data coverage, calculated as:
+
+```text
+available mapped frozen mappings / mapped frozen mappings * 100
+```
+
+The denominator is `mapping_count` for mapped answerable frozen nodes. When it
+is zero, the percentage is `null`; the API does not fabricate `0%` or `100%`.
+Readiness percentage is not a regulatory compliance percentage.
+
+### Gap Contract and API
+
+`GET /api/reporting/report-runs/<id>/readiness/` returns the report ID, frozen
+status, summary, answerable nodes in frozen snapshot order, and gaps. Gaps are
+ordered by frozen node order, then frozen mapping order. Supported gap types
+are `MISSING_VALUE` and `UNMAPPED_NODE`. Each gap preserves report-run ID,
+snapshot node ID/code/title, mapping ID and canonical code when applicable,
+source status, expected data type/unit when available, and resolver
+`resolved_values`/provenance.
+
+The endpoint is authenticated and read-only. It rejects an unfrozen run and
+does not mutate M5 values, M7 framework rows, M8 snapshots, or the report run.
+All identity, node metadata, mapping metadata, and ordering come from the
+frozen snapshot; later live M7 or M4 edits cannot change gap identity.
+
+Future phases may build task, narrative, notification, or rendering workflows
+on this contract. Those workflows are intentionally not part of Phase 3.
+
 This prevents accidental multiple snapshots for the same run.
 
 **---**

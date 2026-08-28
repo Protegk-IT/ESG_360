@@ -407,3 +407,13 @@ class ReportRunDetailSerializer(
                 "framework_snapshot",
             ]
         )
+
+
+class ReportReadinessSerializer(serializers.Serializer):
+    """Serializer for the deterministic read-only readiness contract."""
+
+    report_run_id = serializers.UUIDField()
+    status = serializers.CharField()
+    summary = serializers.JSONField()
+    nodes = serializers.JSONField()
+    gaps = serializers.JSONField()

@@ -17,8 +17,13 @@ from .serializers import (
     ReportRunSerializer,
     ReportRunDetailSerializer,
     FrameworkSnapshotSerializer,
+    ReportReadinessSerializer,
 )
-from .services import ReportValueResolver, freeze_report_run
+from .services import (
+    ReportReadinessService,
+    ReportValueResolver,
+    freeze_report_run,
+)
 
 
 # ============================================================
@@ -456,3 +461,32 @@ class ReportRunResolvedValuesView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class ReportRunReadinessView(APIView):
+    """Return deterministic readiness and gaps for a frozen report."""
+
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request, run_id):
+        report_run = get_object_or_404(
+            ReportRun.objects.select_related("reporting_period", "company"),
+            pk=run_id,
+        )
+
+        if not report_run.is_frozen:
+            return Response(
+                {"detail": "The report run has not been frozen yet."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            readiness = ReportReadinessService.build(report_run)
+        except DjangoValidationError as exc:
+            return Response(
+                {"detail": getattr(exc, "messages", [str(exc)])},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = ReportReadinessSerializer(readiness)
+        return Response(serializer.data, status=status.HTTP_200_OK)
